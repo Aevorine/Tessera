@@ -11,6 +11,33 @@ if str(PROJECT_ROOT) not in sys.path:
 from modules.file_vault import desktop_control
 
 
+@pytest.fixture(autouse=True)
+def _driver_resolves_to_configured_command(monkeypatch):
+    # 测试机上没装驱动；路径解析有自己的用例，其余用例把它固定成配置值。
+    monkeypatch.setattr(desktop_control, "_resolve_driver", lambda: desktop_control.DRIVER_COMMAND)
+
+
+def test_driver_is_never_resolved_from_the_current_directory(monkeypatch, tmp_path):
+    monkeypatch.undo()
+    planted = tmp_path / "planted"
+    trusted = tmp_path / "trusted"
+    planted.mkdir()
+    trusted.mkdir()
+    suffix = desktop_control._DRIVER_SUFFIXES[0]
+    (planted / ("cua-driver" + suffix)).write_bytes(b"")
+    monkeypatch.setattr(desktop_control, "DRIVER_COMMAND", "cua-driver")
+    monkeypatch.chdir(planted)
+
+    monkeypatch.setenv("PATH", "." + desktop_control.os.pathsep + str(trusted))
+    assert desktop_control._resolve_driver() is None
+
+    (trusted / ("cua-driver" + suffix)).write_bytes(b"")
+    assert desktop_control._resolve_driver() == str(trusted / ("cua-driver" + suffix))
+
+    monkeypatch.setattr(desktop_control, "DRIVER_COMMAND", desktop_control.os.path.join(".", "cua-driver" + suffix))
+    assert desktop_control._resolve_driver() is None
+
+
 class _CompletedProcess:
     def __init__(self, returncode=0, stdout="", stderr=""):
         self.returncode = returncode

@@ -89,6 +89,7 @@ export function PageShell({
     >
       <div
         className={cn(
+          'ds-pane-enter',
           fill && 'min-h-0 flex-1',
           // 留白节奏分三档随窗口宽度变：窄 px-5 py-7 gap-6 / sm px-9 py-9 gap-7 / lg px-14 py-11 gap-8。
           // 必须分档：宽档留白在窄窗口（700px 减 184px 侧栏）会把内容挤到 404px，表格被迫横向滚动。

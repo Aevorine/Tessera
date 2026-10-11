@@ -976,7 +976,8 @@ def tool_file_hash(params: Dict) -> Dict[str, object]:
     if not paths.exists(target) or not target.is_file():
         return {"ok": False, "error": "pcclean.toolbox.pathMissing"}
     sha = hashlib.sha256()
-    md5 = hashlib.md5()
+    # 只用来和官网公布的校验值比对，不承担任何安全判断。
+    md5 = hashlib.md5(usedforsecurity=False)
     size = 0
     try:
         with open(target, "rb") as handle:

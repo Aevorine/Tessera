@@ -21,6 +21,8 @@ import {
 import type { LoginItemSnapshot, StartupPreferences } from './startupMode'
 import { CrossDeviceBridge } from './crossDeviceBridge'
 import { UpdateService, AUTO_CHECK_THROTTLE_MS } from './updateService'
+import { createProxyAwareFetch } from './proxyFetch'
+import { createProcessGovernor } from './processGovernor'
 import { allowThroughFirewall, firewallStatus } from './firewall'
 import { verifySigner } from './authenticode'
 import { requiredFreeBytes } from './updateVersion'
@@ -216,6 +218,9 @@ const CROSSDEVICE_COMMAND = app.isPackaged
 const CROSSDEVICE_DATA_DIR = path.join(app.getPath('userData'), 'crossdevice')
 
 let crossDevice: CrossDeviceBridge | null = null
+
+/** 用户切去别的程序时让后端让出 CPU，见 processGovernor.ts。 */
+const backendGovernor = createProcessGovernor()
 
 function startCrossDeviceBridge(): void {
   if (crossDevice) return
@@ -1066,7 +1071,22 @@ function createWindow() {
     lastWindowBlurAt = Date.now()
   })
 
+  // 只跟真实的窗口事件走，不在创建时判一次：静默自启时窗口从未有过焦点，
+  // 那时就降级会拖慢后端冷启动。
+  const syncForeground = () => {
+    backendGovernor.setForeground(
+      Boolean(win && !win.isDestroyed() && win.isVisible() && !win.isMinimized() && win.isFocused()),
+    )
+  }
+  win.on('focus', syncForeground)
+  win.on('blur', syncForeground)
+  win.on('show', syncForeground)
+  win.on('hide', syncForeground)
+  win.on('minimize', syncForeground)
+  win.on('restore', syncForeground)
+
   bridge = new PythonBridge(BACKEND_TARGET.command, BACKEND_TARGET.leadingArgs, BACKEND_ARGS)
+  bridge.setSpawnListener((pid) => backendGovernor.adopt(pid))
   bridge.setEventListener((payload) => sendToRenderer('vault:event', payload))
   bridge.setFatalListener((detail) => {
     sendToRenderer('vault:backend-fatal', detail)
@@ -2454,7 +2474,11 @@ function getUpdateService(): UpdateService {
   if (!updateService) {
     // 下载目录不在这里定：它必须跟目标 exe 同一个目录（同目录必然同卷，runner
     // 那一步的"原子替换"才成立），而目标 exe 是安装时才解析出来的。
-    updateService = new UpdateService({ currentVersion: app.getVersion() })
+    updateService = new UpdateService({
+      currentVersion: app.getVersion(),
+      // 更新跟着系统代理走；解析交给 Chromium，PAC 和手动代理都认。
+      fetchImpl: createProxyAwareFetch((url) => session.defaultSession.resolveProxy(url)),
+    })
   }
   return updateService
 }
@@ -2654,6 +2678,7 @@ app.on('will-quit', () => {
     autoLockTimer = null
   }
   globalShortcut.unregisterAll()
+  backendGovernor.dispose()
   bridge?.dispose()
 })
 

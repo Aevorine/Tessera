@@ -723,6 +723,18 @@ html[data-decoration="off"] .appearance-studio::after {
   background-size: 100% 180px;
 }
 
+/* 面板入场：只动不透明度。位移要用 transform，会让面板里的 fixed 元素（笔记的悬浮按钮）在动画期间
+   改按面板定位、结束时跳一下。时长跟运行时质量档走，lean 档为 0；不留 forwards，结束后不占合成层。 */
+@keyframes ds-pane-enter {
+  from {
+    opacity: 0;
+  }
+}
+
+.ds-pane-enter {
+  animation: ds-pane-enter calc(140ms * var(--runtime-motion-scale, 1)) cubic-bezier(0.2, 0, 0, 1) backwards;
+}
+
 /* 图标底片：强调色淡底 + 同色相细边。整套 UI 里所有"图标配文字"的组合都用
    它，视觉上立刻统一，且换强调色时自动跟着变。 */
 .ds-icon-chip {

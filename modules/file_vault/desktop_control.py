@@ -8,7 +8,7 @@ mode and writes via ValuePattern, so it never touches OS focus.
 import json
 import os
 import subprocess
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
 from modules.file_vault import errors
 
@@ -21,6 +21,8 @@ _NO_WINDOW_KWARGS = (
 )
 
 DRIVER_COMMAND = os.environ.get("IDEAL1_CUA_DRIVER_COMMAND", "cua-driver")
+# CreateProcess 对裸命令名只补 .exe。
+_DRIVER_SUFFIXES = (".exe",) if os.name == "nt" else ("",)
 SESSION_NAME = "ideal1-file-vault-ai"
 _TIMEOUT_SECONDS = 30
 _MAX_TREE_CHARS = 14_000
@@ -36,11 +38,36 @@ def _invalid_request() -> DesktopControlError:
     return DesktopControlError("ai.desktop_request_invalid")
 
 
+def _resolve_driver() -> Optional[str]:
+    """把驱动解析成绝对路径，找不到返回 None。
+
+    不把裸命令名交给 CreateProcess：它先找当前目录，而当前目录可能是用户从中「打开方式」
+    启动应用的下载目录，放在那里的同名 exe 会被当成驱动执行。这里只认 PATH 里的绝对目录。
+    """
+    command = DRIVER_COMMAND
+    if os.path.isabs(command):
+        return command if os.path.isfile(command) else None
+    if os.path.dirname(command):
+        return None
+    names = [command] if os.path.splitext(command)[1] else [command + suffix for suffix in _DRIVER_SUFFIXES]
+    for directory in os.get_exec_path():
+        if not os.path.isabs(directory):
+            continue
+        for name in names:
+            candidate = os.path.join(directory, name)
+            if os.path.isfile(candidate):
+                return candidate
+    return None
+
+
 def _call_driver(tool: str, payload: Dict[str, Any]) -> Dict[str, Any]:
     """Call the driver without a shell, returning its structured JSON reply."""
+    driver = _resolve_driver()
+    if driver is None:
+        raise DesktopControlError("ai.desktop_unavailable")
     try:
         completed = subprocess.run(
-            [DRIVER_COMMAND, "call", tool],
+            [driver, "call", tool],
             input=json.dumps(payload, ensure_ascii=False),
             text=True,
             encoding="utf-8",

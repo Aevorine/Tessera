@@ -1,6 +1,6 @@
 # Tessera
 
-从 [GitHub Releases](https://github.com/Aevorine/Tessera/releases/latest) 下载已签名的 Windows 免安装版或安装包。0.1.36 从本仓库获取更新，使用 16 连接分段、自适应块大小和断点续传，不设置应用带宽上限；实际速度取决于网络与 GitHub CDN。发行版保留最近两版。本版打包时未运行测试。
+从 [GitHub Releases](https://github.com/Aevorine/Tessera/releases/latest) 下载已签名的 Windows 免安装版或安装包。0.1.36 从本仓库获取更新，使用 16 连接分段、自适应块大小和断点续传，系统设置了代理时自动经代理下载，不设置应用带宽上限；实际速度取决于网络与 GitHub CDN。发行版保留最近两版。本版打包时未运行测试。
 
 [English](README.md) · **简体中文** · [Français](README.fr.md) · [Español](README.es.md) · [Русский](README.ru.md) · [العربية](README.ar.md)
 

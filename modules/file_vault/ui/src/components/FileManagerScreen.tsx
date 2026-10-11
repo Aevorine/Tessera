@@ -913,7 +913,7 @@ export function FileManagerScreen({ isProfessional = false }: { isProfessional?:
     : 0
 
   return (
-    <div ref={containerRef} className="ds-page-wash flex h-full flex-col px-6 py-5" tabIndex={0} onKeyDown={handleKeyDown}>
+    <div ref={containerRef} className="ds-page-wash ds-pane-enter flex h-full flex-col px-6 py-5" tabIndex={0} onKeyDown={handleKeyDown}>
       {/* 标题在最上面，右边跟着挂钩状态徽章——原先标题被夹在状态条下面，
           进这一页第一眼看到的是"挂钩没启动"而不是"这是文件管理器"。
 

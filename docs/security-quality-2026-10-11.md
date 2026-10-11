@@ -35,3 +35,15 @@ The installed govulncheck initially could not parse Go 1.27 source because it wa
 Local ESLint, internationalization consistency, TypeScript compilation and Vite production compilation passed. Tailwind now scans application templates explicitly, excluding Playwright `:visible` selectors; the empty `:is()` compilation warning is absent. No broad scan exclusions or alert blanket-dismissal are used to obtain these results.
 
 GitHub Secret Scanning's alert API initially denied access but became readable on a later request: it returned **0 alerts**. A separate redacted Gitleaks scan of the exact staged publication snapshot (22.88 MB) also found **0 secrets**. A scan of the whole local working directory found session/cache/virtual-environment matches; those private folders are ignored and absent from the publication tree, not waived into the upload. Public reachable history is scanned separately before pushing; local private-history branches are never published.
+
+## Follow-up review before the 0.1.36 release
+
+A second Semgrep pass (security-audit, Python, JavaScript, TypeScript and Go rule packs, telemetry disabled) over 481 source files reported eight findings. One was a real weakness and is fixed:
+
+- **Uncontrolled search path for the optional desktop-control driver** (`desktop_control.py`): the driver was started by bare name. On Windows, process creation searches the current directory before `PATH`, and the current directory can be a downloads folder when the application is started through "Open with". A same-named executable placed there would have run with the user's privileges once the AI desktop tools were used. The driver is now resolved to an absolute path from absolute `PATH` entries only; relative overrides are rejected.
+
+The MD5 value in the cleanup toolbox's file-checksum tool is displayed for comparison with a vendor's published checksum and takes no part in any security decision; it is now created with `usedforsecurity=False`. The remaining six findings are the contextual patterns already described above (HIBP SHA-1, reconnection jitter, signed updater launches, the local build script and the loopback layout probe).
+
+A redacted Gitleaks scan of the published history (3 commits, 23.14 MB) found **0 secrets**.
+
+The update client's new system-proxy route keeps the existing trust model: the proxy carries an opaque TLS tunnel, certificate validation is unchanged, every hop is still checked against the GitHub host allow-list, and installation still depends on the Authenticode signature. It has not been exercised against a live proxy.

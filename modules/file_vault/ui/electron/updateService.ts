@@ -63,7 +63,7 @@ function isAllowedDownloadUrl(url: string): boolean {
   }
 }
 
-const FETCH_POLICY: FetchPolicy = { isAllowedUrl: isAllowedDownloadUrl, userAgent: 'Tessera-Updater' }
+const BASE_FETCH_POLICY: FetchPolicy = { isAllowedUrl: isAllowedDownloadUrl, userAgent: 'Tessera-Updater' }
 
 /**
  * 这个构建认哪个签名者——整条信任链的锚点。值来自仓库里的 `signer-policy.json`，由
@@ -117,6 +117,8 @@ export interface PendingUpdate {
 
 export interface UpdateServiceOptions {
   currentVersion: string
+  /** 跟着系统代理走的 fetch（见 proxyFetch.ts）；不传就用全局 fetch 直连。 */
+  fetchImpl?: typeof fetch
 }
 
 export class UpdateService {
@@ -124,9 +126,11 @@ export class UpdateService {
   private cachedResult: UpdateCheckResult | null = null
   private pending: PendingUpdate | null = null
   private readonly options: UpdateServiceOptions
+  private readonly fetchPolicy: FetchPolicy
 
   constructor(options: UpdateServiceOptions) {
     this.options = options
+    this.fetchPolicy = { ...BASE_FETCH_POLICY, fetchImpl: options.fetchImpl }
   }
 
   /** 检查更新，只读元数据。`force=false` 时受 24 小时节流约束，返回缓存结果。 */
@@ -241,7 +245,7 @@ export class UpdateService {
     let downloaded: DownloadResult
     try {
       downloaded = await downloadFile({
-        ...FETCH_POLICY,
+        ...this.fetchPolicy,
         url: asset.browser_download_url,
         size: asset.size,
         partPath: temp,
@@ -299,7 +303,7 @@ export class UpdateService {
   private async fetchLatestRelease(): Promise<GithubRelease> {
     let response: Response
     try {
-      const fetched = await fetchFollowing(FETCH_POLICY, LATEST_RELEASE_URL, METADATA_TIMEOUT_MS, {
+      const fetched = await fetchFollowing(this.fetchPolicy, LATEST_RELEASE_URL, METADATA_TIMEOUT_MS, {
         Accept: 'application/vnd.github+json',
         'X-GitHub-Api-Version': '2022-11-28',
       })

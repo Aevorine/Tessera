@@ -101,6 +101,7 @@ export class PythonBridge {
   private onEvent: ((payload: VaultPushEvent) => void) | null = null
   private onRestart: (() => void) | null = null
   private onFatal: ((detail: string) => void) | null = null
+  private onSpawn: ((pid: number | undefined) => void) | null = null
   private disposed = false
   /** 连续崩溃次数。活过 RESTART_HEALTHY_UPTIME_MS 就清零。 */
   private crashCount = 0
@@ -128,6 +129,7 @@ export class PythonBridge {
       stdio: ['pipe', 'pipe', 'pipe'],
       env: { ...process.env, PYTHONIOENCODING: 'utf-8' },
     })
+    this.onSpawn?.(this.proc.pid)
 
     const rl = readline.createInterface({ input: this.proc.stdout })
     rl.on('line', (line) => this.handleLine(line))
@@ -199,6 +201,12 @@ export class PythonBridge {
    *  对用户是两件事，前者是提示，后者要给出能照着做的下一步。 */
   setFatalListener(listener: (detail: string) => void): void {
     this.onFatal = listener
+  }
+
+  /** 每次起进程（含崩溃重拉、锁定重起）都报一次 pid；登记时把当前这个也补报。 */
+  setSpawnListener(listener: (pid: number | undefined) => void): void {
+    this.onSpawn = listener
+    listener(this.proc.pid)
   }
 
   /** Registers the (single) listener for unsolicited backend push events -

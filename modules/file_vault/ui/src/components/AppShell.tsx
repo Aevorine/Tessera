@@ -1,4 +1,4 @@
-import { Fragment, Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Fragment, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Activity, Bot, Boxes, CircleHelp, ClipboardList, FolderOpen, Gauge, GripVertical, HardDrive, KeyRound, KeySquare, Lock, MonitorSmartphone, NotebookText, PanelLeftClose, PanelLeftOpen, ScrollText, Search, Settings as SettingsIcon, ShieldCheck, Sparkles, SlidersHorizontal, Star, Wrench } from 'lucide-react'
 import {
@@ -22,29 +22,46 @@ import { LanguageSwitcher } from '@/components/LanguageSwitcher'
 import { ContinuityBanner } from '@/components/ContinuityBanner'
 
 // ---- 面板按需加载 ----
-// 十个面板合计一万七千多行且各带重依赖（NotesScreen 带 CodeMirror、tesseract.js、docx、
-// markdown-it、DOMPurify）；
-// 静态 import 会让它们全落在入口 chunk，登录界面渲染前就要下载解析。改 React.lazy
-// 后只在首次切到该面板时加载；
-// 面板本就是 `pane === 'x' && <X/>` 条件挂载，与 lazy 天然吻合。
-const FilesPane = lazy(() => import('@/components/FilesPane').then((m) => ({ default: m.FilesPane })))
-// 清理套件的五个面板合并成一个外壳（顶部标签页），见 PcCleanSuiteScreen 的注释。
-// 五个 pane 值仍然保留，命令面板和原生菜单据此深链到具体标签。
-const PcCleanSuiteScreen = lazy(() => import('@/components/pcclean/PcCleanSuiteScreen').then((m) => ({ default: m.PcCleanSuiteScreen })))
-const DiagnosticLogScreen = lazy(() => import('@/components/DiagnosticLogScreen').then((m) => ({ default: m.DiagnosticLogScreen })))
-const SettingsScreen = lazy(() => import('@/components/SettingsScreen').then((m) => ({ default: m.SettingsScreen })))
-const PasswordScreen = lazy(() => import('@/components/PasswordScreen').then((m) => ({ default: m.PasswordScreen })))
-const ClipboardScreen = lazy(() => import('@/components/ClipboardScreen').then((m) => ({ default: m.ClipboardScreen })))
-const CrossDeviceScreen = lazy(() => import('@/components/CrossDeviceScreen').then((m) => ({ default: m.CrossDeviceScreen })))
-const SecurityHealthScreen = lazy(() => import('@/components/SecurityHealthScreen').then((m) => ({ default: m.SecurityHealthScreen })))
-const AIChatScreen = lazy(() => import('@/components/AIChatScreen').then((m) => ({ default: m.AIChatScreen })))
-const NotesScreen = lazy(() => import('@/components/NotesScreen').then((m) => ({ default: m.NotesScreen })))
-const NetworkSpeedTestScreen = lazy(() =>
-  import('@/components/NetworkSpeedTestScreen').then((m) => ({ default: m.NetworkSpeedTestScreen })),
-)
-const FileManagerScreen = lazy(() => import('@/components/FileManagerScreen').then((m) => ({ default: m.FileManagerScreen })))
-const HelpScreen = lazy(() => import('@/components/HelpScreen').then((m) => ({ default: m.HelpScreen })))
-const RecoveryCodesScreen = lazy(() => import('@/components/RecoveryCodesScreen').then((m) => ({ default: m.RecoveryCodesScreen })))
+// 十几个面板合计一万七千多行且各带重依赖（NotesScreen 带 CodeMirror、tesseract.js、docx、markdown-it、
+// DOMPurify），静态 import 会全落进入口 chunk。每个面板一个代码块，首次用到才加载；
+// preload 供预取用（见下方 panePrefetch），取好之后切过去不再经过 Suspense 占位。
+// 清理套件的五个标签共用一个外壳（PcCleanSuiteScreen）；五个 pane 值留给命令面板和原生菜单深链。
+const { Pane: FilesPane, preload: loadFiles } = preloadablePane(() => import('@/components/FilesPane'), (m) => m.FilesPane)
+const { Pane: PcCleanSuiteScreen, preload: loadPcClean } = preloadablePane(() => import('@/components/pcclean/PcCleanSuiteScreen'), (m) => m.PcCleanSuiteScreen)
+const { Pane: DiagnosticLogScreen, preload: loadDiagnostics } = preloadablePane(() => import('@/components/DiagnosticLogScreen'), (m) => m.DiagnosticLogScreen)
+const { Pane: SettingsScreen, preload: loadSettings } = preloadablePane(() => import('@/components/SettingsScreen'), (m) => m.SettingsScreen)
+const { Pane: PasswordScreen, preload: loadPasswords } = preloadablePane(() => import('@/components/PasswordScreen'), (m) => m.PasswordScreen)
+const { Pane: ClipboardScreen, preload: loadClipboard } = preloadablePane(() => import('@/components/ClipboardScreen'), (m) => m.ClipboardScreen)
+const { Pane: CrossDeviceScreen, preload: loadCrossDevice } = preloadablePane(() => import('@/components/CrossDeviceScreen'), (m) => m.CrossDeviceScreen)
+const { Pane: SecurityHealthScreen, preload: loadSecurity } = preloadablePane(() => import('@/components/SecurityHealthScreen'), (m) => m.SecurityHealthScreen)
+const { Pane: AIChatScreen, preload: loadAiChat } = preloadablePane(() => import('@/components/AIChatScreen'), (m) => m.AIChatScreen)
+const { Pane: NotesScreen, preload: loadNotes } = preloadablePane(() => import('@/components/NotesScreen'), (m) => m.NotesScreen)
+const { Pane: NetworkSpeedTestScreen, preload: loadNetwork } = preloadablePane(() => import('@/components/NetworkSpeedTestScreen'), (m) => m.NetworkSpeedTestScreen)
+const { Pane: FileManagerScreen, preload: loadFileManager } = preloadablePane(() => import('@/components/FileManagerScreen'), (m) => m.FileManagerScreen)
+const { Pane: HelpScreen, preload: loadHelp } = preloadablePane(() => import('@/components/HelpScreen'), (m) => m.HelpScreen)
+const { Pane: RecoveryCodesScreen, preload: loadRecoveryCodes } = preloadablePane(() => import('@/components/RecoveryCodesScreen'), (m) => m.RecoveryCodesScreen)
+
+// 入口到代码块的对应，供预取用：指针停留、会话内的转移预测、常用区三路信号（见 lib/panePrefetch.ts）。
+const panePrefetch = createPanePrefetcher<Pane>({
+  files: loadFiles,
+  clipboard: loadClipboard,
+  crossdevice: loadCrossDevice,
+  passwords: loadPasswords,
+  recoverycodes: loadRecoveryCodes,
+  notes: loadNotes,
+  ai: loadAiChat,
+  network: loadNetwork,
+  filemanager: loadFileManager,
+  pcclean: loadPcClean,
+  pccleanspace: loadPcClean,
+  pccleanstartup: loadPcClean,
+  pccleansoftware: loadPcClean,
+  pccleantoolbox: loadPcClean,
+  security: loadSecurity,
+  settings: loadSettings,
+  diagnostics: loadDiagnostics,
+  help: loadHelp,
+})
 
 /**
  * 面板切换占位：刻意不放 spinner（chunk 在本地磁盘，几十毫秒，转圈只会闪一下更显卡），
@@ -64,6 +81,8 @@ import {
   saveNavPreferences,
   type FavoritablePane,
 } from '@/lib/navPrefs'
+import { createPanePrefetcher } from '@/lib/panePrefetch'
+import { preloadablePane } from '@/lib/preloadablePane'
 import { cn } from '@/lib/utils'
 import { electronApi } from '@/lib/electronApi'
 import { vaultApi } from '@/lib/vaultApi'
@@ -90,6 +109,11 @@ function loadStoredNavCollapsed(): boolean {
   return localStorage.getItem(NAV_COLLAPSED_STORAGE_KEY) === 'true'
 }
 
+/** 清理套件的五个标签在侧边栏是同一项：停在任一标签上都要高亮它，否则看不出自己在哪。 */
+function isNavItemActive(item: Pane, current: Pane): boolean {
+  return item === current || (item === 'pcclean' && isPcCleanPane(current))
+}
+
 /**
  * 一个导航条目；抽出来因为它出现在常用区（拖拽把手 + 移出按钮）、全部区（加入常用按钮）、
  * 折叠态（仅图标）三种上下文，内联抄写易出现一像素高度差。
@@ -108,9 +132,23 @@ function NavItemButton({
   className?: string
 }) {
   const Icon = item.icon
+  // 指针或焦点停在入口上就预取它的代码块，掠过不算。
+  const cancelIntent = useRef<(() => void) | null>(null)
+  const startIntent = () => {
+    cancelIntent.current?.()
+    cancelIntent.current = panePrefetch.intent(item.pane)
+  }
+  const stopIntent = () => {
+    cancelIntent.current?.()
+    cancelIntent.current = null
+  }
   return (
     <button
       onClick={() => onSelect(item.pane)}
+      onPointerEnter={startIntent}
+      onPointerLeave={stopIntent}
+      onFocus={startIntent}
+      onBlur={stopIntent}
       aria-label={item.label}
       aria-current={active ? 'page' : undefined}
       className={cn(
@@ -118,7 +156,7 @@ function NavItemButton({
         collapsed ? 'justify-center px-2' : 'ps-4 pe-1 text-start',
         active
           ? 'bg-sidebar-accent font-medium text-sidebar-accent-foreground'
-          : 'text-sidebar-foreground hover:bg-sidebar-accent/50',
+          : 'text-sidebar-foreground hover:bg-sidebar-accent/50 active:bg-sidebar-accent/80',
         className,
       )}
     >
@@ -304,6 +342,14 @@ function AppShellInner({
   const [navCollapsed, setNavCollapsed] = useState<boolean>(loadStoredNavCollapsed)
   const [paletteOpen, setPaletteOpen] = useState(false)
 
+  // 每次切换：记进转移计数并预取预测的下一站；再把高亮的入口滚回视野——从命令面板或原生菜单
+  // 跳转时它可能在侧栏滚动区之外。
+  const navScrollerRef = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    panePrefetch.visited(pane)
+    navScrollerRef.current?.querySelector('[aria-current="page"]')?.scrollIntoView({ block: 'nearest' })
+  }, [pane])
+
   /**
    * 窗口窄到一定程度时自动收起侧栏。侧栏展开固定 184px，窗口 700px 时内容区放不下一张表格；
    * 阈值 900px ≈ 184(侧栏) + 640(两列表格) + 留白。
@@ -336,6 +382,10 @@ function AppShellInner({
   // 存脏必须安全退回默认，不能让侧边栏抛异常拖垮外壳）。
   const [favorites, setFavorites] = useState<FavoritablePane[]>(() => loadNavPreferences().favorites)
   const favoriteSet = useMemo(() => new Set<Pane>(favorites), [favorites])
+  // 用户自己置顶的入口最可能被点，空闲时先把代码块取好。
+  useEffect(() => {
+    panePrefetch.warm(favorites)
+  }, [favorites])
   const changeFavorites = useCallback((next: FavoritablePane[]) => {
     setFavorites(next)
     saveNavPreferences({ favorites: next })
@@ -596,7 +646,7 @@ function AppShellInner({
             就永远不生效（这正是这个 bug 的成因）。
             `overscroll-contain` 挡住滚动链：列表滚到底之后滚轮不再往外冒泡，
             否则会连带把右边的内容区也带着跳一下。 */}
-        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
+        <div ref={navScrollerRef} className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
         {/* ---- 常用区 ----------------------------------------------------
             置顶，而且**折叠态照样在**：把常用做成"只有展开才有"，等于对所有
             把侧边栏收起来的人不存在，而那正是最在意屏幕空间、也最需要快捷入口
@@ -615,7 +665,7 @@ function AppShellInner({
                       <div className="flex items-center">
                         <NavItemButton
                           item={item}
-                          active={pane === item.pane}
+                          active={isNavItemActive(item.pane, pane)}
                           collapsed
                           onSelect={handleNavSelect}
                         />
@@ -636,7 +686,7 @@ function AppShellInner({
                       <SortableFavoriteRow
                         key={item.pane}
                         item={item}
-                        active={pane === item.pane}
+                        active={isNavItemActive(item.pane, pane)}
                         onSelect={handleNavSelect}
                         onRemove={() => toggleFavorite(item.pane as FavoritablePane, false)}
                         removeLabel={t('navRemoveFavorite', { name: item.label })}
@@ -667,7 +717,7 @@ function AppShellInner({
               </p>
             )}
             {group.items.map((item) => {
-              const active = pane === item.pane
+              const active = isNavItemActive(item.pane, pane)
               const isFavorite = favoriteSet.has(item.pane)
               const navRow = (
                 <div className="group flex items-center">
