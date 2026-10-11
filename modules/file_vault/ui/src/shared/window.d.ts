@@ -6,6 +6,7 @@ import type {
   RuntimeMetricsSnapshot,
   UpdateCheckResult,
   UpdateProgress,
+  UpdateSourceId,
   VaultMethodName,
   VaultMethods,
   VaultPushEvent,
@@ -84,7 +85,13 @@ declare global {
       getPathForFile(file: File): string
 
       // 应用更新：渲染端完全不碰网络和文件系统，没有任何方法接受 URL 或路径参数。见 preload.ts。
-      getUpdateState(): Promise<{ currentVersion: string; autoCheck: boolean; canSelfUpdate: boolean }>
+      getUpdateState(): Promise<{
+        currentVersion: string
+        autoCheck: boolean
+        canSelfUpdate: boolean
+        source: UpdateSourceId
+      }>
+      setUpdateSource(source: UpdateSourceId): Promise<UpdateSourceId>
       setUpdateAutoCheck(enabled: boolean): Promise<boolean>
       checkForUpdate(force: boolean): Promise<UpdateCheckResult>
       installUpdate(): Promise<{ ok: true } | { ok: false; errorCode: string; errorMessage?: string }>

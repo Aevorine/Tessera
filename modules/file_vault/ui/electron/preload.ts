@@ -7,6 +7,7 @@ import type {
   RuntimeMetricsSnapshot,
   UpdateCheckResult,
   UpdateProgress,
+  UpdateSourceId,
   VaultMethodName,
   VaultMethods,
   VaultPushEvent,
@@ -181,9 +182,16 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   // ---- 应用更新 ----
   // 渲染端完全不碰网络和文件系统：检查、下载、验签、安装都在主进程，因为渲染端可能跑着被注入的内容。
-  // 这里只暴露四个不带路径/URL 参数的动作，渲染端无法指定下载哪个 URL 或写到哪个文件。
-  getUpdateState: (): Promise<{ currentVersion: string; autoCheck: boolean; canSelfUpdate: boolean }> =>
-    ipcRenderer.invoke('update:getState'),
+  // 这里暴露的动作都不带路径/URL 参数，渲染端无法指定下载哪个 URL 或写到哪个文件；
+  // 更新源也只能在两个内置仓库的代号之间选。
+  getUpdateState: (): Promise<{
+    currentVersion: string
+    autoCheck: boolean
+    canSelfUpdate: boolean
+    source: UpdateSourceId
+  }> => ipcRenderer.invoke('update:getState'),
+
+  setUpdateSource: (source: UpdateSourceId): Promise<UpdateSourceId> => ipcRenderer.invoke('update:setSource', source),
 
   setUpdateAutoCheck: (enabled: boolean): Promise<boolean> => ipcRenderer.invoke('update:setAutoCheck', enabled),
 

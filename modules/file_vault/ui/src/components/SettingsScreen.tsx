@@ -79,6 +79,7 @@ import type {
   TaskCardPosition,
   UpdateCheckResult,
   UpdateProgress,
+  UpdateSourceId,
 } from '@/shared/ipcTypes'
 import { copyText } from '@/lib/clipboard'
 
@@ -276,7 +277,12 @@ export function SettingsScreen({
 // 说不出"下载哪个链接"。见 electron/preload.ts 里对这个信任边界的说明。
 function UpdateSetting() {
   const { t } = useTranslation('settings')
-  const [state, setState] = useState<{ currentVersion: string; autoCheck: boolean; canSelfUpdate: boolean } | null>(null)
+  const [state, setState] = useState<{
+    currentVersion: string
+    autoCheck: boolean
+    canSelfUpdate: boolean
+    source: UpdateSourceId
+  } | null>(null)
   const [result, setResult] = useState<UpdateCheckResult | null>(null)
   const [checking, setChecking] = useState(false)
   const [installing, setInstalling] = useState(false)
@@ -365,6 +371,33 @@ function UpdateSetting() {
           {t('updateAutoCheckLabel')}
         </Label>
         <InfoHint text={t('updateAutoCheckHint')} />
+      </div>
+
+      <div className="flex flex-wrap items-center gap-2">
+        <Label htmlFor="update-source" className="text-sm">
+          {t('updateSourceLabel')}
+        </Label>
+        <Select
+          value={state.source}
+          disabled={checking || installing}
+          onValueChange={(value) => {
+            // 换源后上一个仓库的检查结果不再算数，一并清掉。
+            void electronApi.setUpdateSource(value as UpdateSourceId).then((applied) => {
+              setState({ ...state, source: applied })
+              setResult(null)
+              setCheckedAt(null)
+            })
+          }}
+        >
+          <SelectTrigger id="update-source" className="w-72 max-w-full">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="main">{t('updateSourceMain')}</SelectItem>
+            <SelectItem value="mirror">{t('updateSourceMirror')}</SelectItem>
+          </SelectContent>
+        </Select>
+        <InfoHint text={t('updateSourceHint')} />
       </div>
 
       {result?.status === 'up-to-date' && <p className="text-sm text-muted-foreground">{t('updateUpToDate')}</p>}

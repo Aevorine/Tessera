@@ -24,8 +24,13 @@ object Updater {
     private const val PREFS = "tessera-update"
     private const val KEY_AUTO = "auto_check"
 
-    private const val REPO = "Aevorine/Tessera"
-    private const val LATEST_URL = "https://api.github.com/repos/$REPO/releases/latest"
+    private const val KEY_SOURCE = "source"
+
+    /** 更新源只能在这两个仓库里选，写死不做成任意地址；两个仓库发布同一份签名安装包。 */
+    const val SOURCE_MAIN = "main"
+    const val SOURCE_MIRROR = "mirror"
+    private const val REPO_MAIN = "Aevorine/Tessera"
+    private const val REPO_MIRROR = "Aevorine/Tessera-releases"
     private const val CONNECT_TIMEOUT_MS = 15_000
     private const val READ_TIMEOUT_MS = 30_000
     private const val MAX_REDIRECTS = 5
@@ -48,6 +53,20 @@ object Updater {
         prefs(c).edit().putBoolean(KEY_AUTO, auto).apply()
     }
 
+    /** 认不出的存量值一律当主仓库。 */
+    fun source(c: Context): String =
+        if (prefs(c).getString(KEY_SOURCE, SOURCE_MAIN) == SOURCE_MIRROR) SOURCE_MIRROR else SOURCE_MAIN
+
+    fun setSource(c: Context, source: String) {
+        val known = if (source == SOURCE_MIRROR) SOURCE_MIRROR else SOURCE_MAIN
+        prefs(c).edit().putString(KEY_SOURCE, known).apply()
+    }
+
+    internal fun latestUrl(source: String): String {
+        val repo = if (source == SOURCE_MIRROR) REPO_MIRROR else REPO_MAIN
+        return "https://api.github.com/repos/$repo/releases/latest"
+    }
+
     /** 检查结果。`available` 为假时 `version`/`url` 无意义。 */
     data class Result(
         val available: Boolean,
@@ -66,7 +85,7 @@ object Updater {
      * 匿名请求下 404 = 仓库私有或不存在（GitHub 故意不区分），重试没有意义，所以单列错误码。
      */
     fun check(c: Context): Result {
-        val conn = (URL(LATEST_URL).openConnection() as HttpURLConnection).apply {
+        val conn = (URL(latestUrl(source(c))).openConnection() as HttpURLConnection).apply {
             requestMethod = "GET"
             connectTimeout = CONNECT_TIMEOUT_MS
             readTimeout = READ_TIMEOUT_MS

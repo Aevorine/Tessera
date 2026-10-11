@@ -20,7 +20,8 @@ import {
 } from './startupMode'
 import type { LoginItemSnapshot, StartupPreferences } from './startupMode'
 import { CrossDeviceBridge } from './crossDeviceBridge'
-import { UpdateService, AUTO_CHECK_THROTTLE_MS } from './updateService'
+import { UpdateService, AUTO_CHECK_THROTTLE_MS, DEFAULT_UPDATE_SOURCE, parseUpdateSource } from './updateService'
+import type { UpdateSourceId } from './updateService'
 import { createProxyAwareFetch } from './proxyFetch'
 import { createProcessGovernor } from './processGovernor'
 import { allowThroughFirewall, firewallStatus } from './firewall'
@@ -2450,22 +2451,36 @@ const UPDATE_PREFS_FILE = path.join(app.getPath('userData'), 'update-preferences
  *  **不是信任源**，用它之前必须先验那个文件确实是我们签的（见安装流程）。 */
 const INSTALL_LOCATION_FILE = path.join(LOCAL_APP_DATA_ROOT, 'install-location.json')
 
-function readAutoCheckEnabled(): boolean {
+interface UpdatePreferences {
+  autoCheck: boolean
+  source: UpdateSourceId
+}
+
+function readUpdatePreferences(): UpdatePreferences {
   try {
-    const raw = JSON.parse(fs.readFileSync(UPDATE_PREFS_FILE, 'utf-8')) as { autoCheck?: unknown }
-    return raw.autoCheck !== false
+    const raw = JSON.parse(fs.readFileSync(UPDATE_PREFS_FILE, 'utf-8')) as { autoCheck?: unknown; source?: unknown }
+    return { autoCheck: raw.autoCheck !== false, source: parseUpdateSource(raw.source) }
   } catch {
-    return true
+    return { autoCheck: true, source: DEFAULT_UPDATE_SOURCE }
   }
 }
 
-function writeAutoCheckEnabled(enabled: boolean): void {
+/** 只改给出的字段：两项偏好共用一个文件，各写各的会互相抹掉。 */
+function writeUpdatePreferences(patch: Partial<UpdatePreferences>): void {
   try {
     fs.mkdirSync(path.dirname(UPDATE_PREFS_FILE), { recursive: true })
-    fs.writeFileSync(UPDATE_PREFS_FILE, JSON.stringify({ autoCheck: enabled }), 'utf-8')
+    fs.writeFileSync(UPDATE_PREFS_FILE, JSON.stringify({ ...readUpdatePreferences(), ...patch }), 'utf-8')
   } catch (error) {
-    console.error('[update] failed to persist the auto-check preference', error)
+    console.error('[update] failed to persist the update preferences', error)
   }
+}
+
+function readAutoCheckEnabled(): boolean {
+  return readUpdatePreferences().autoCheck
+}
+
+function writeAutoCheckEnabled(enabled: boolean): void {
+  writeUpdatePreferences({ autoCheck: enabled })
 }
 
 let updateService: UpdateService | null = null
@@ -2476,6 +2491,7 @@ function getUpdateService(): UpdateService {
     // 那一步的"原子替换"才成立），而目标 exe 是安装时才解析出来的。
     updateService = new UpdateService({
       currentVersion: app.getVersion(),
+      source: readUpdatePreferences().source,
       // 更新跟着系统代理走；解析交给 Chromium，PAC 和手动代理都认。
       fetchImpl: createProxyAwareFetch((url) => session.defaultSession.resolveProxy(url)),
     })
@@ -2523,6 +2539,7 @@ function registerUpdateIpc(): void {
     return {
       currentVersion: app.getVersion(),
       autoCheck: readAutoCheckEnabled(),
+      source: getUpdateService().getSource(),
       // 安装版不需要稳定 exe 路径；免安装版必须定位到自己的 exe，定位不到只能提示手动下载，绝不猜路径。
       // 开发模式两者都不满足，故为 false。
       canSelfUpdate:
@@ -2535,6 +2552,15 @@ function registerUpdateIpc(): void {
     assertTrustedRenderer(event)
     writeAutoCheckEnabled(enabled === true)
     return readAutoCheckEnabled()
+  })
+
+  ipcMain.handle('update:setSource', (event, source: unknown) => {
+    assertTrustedRenderer(event)
+    // 渲染端只能在两个内置仓库之间选，说不出别的地址。
+    const next = parseUpdateSource(source)
+    writeUpdatePreferences({ source: next })
+    getUpdateService().setSource(next)
+    return next
   })
 
   ipcMain.handle('update:check', async (event, force: boolean) => {
