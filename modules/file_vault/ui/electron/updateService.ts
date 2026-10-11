@@ -41,11 +41,21 @@ import {
   type SignerPolicy,
 } from './updateVersion'
 
-/** 只认这一个仓库，写死不做成配置：能改配置文件的东西就能把更新源指到别处。
- *  保持占位符 `OWNER/REPO` 时明确报"未配置更新源"并拒绝任何更新。 */
-const REPO = 'Aevorine/Tessera'
-const REPO_CONFIGURED = !/^(OWNER\/REPO)$/.test(REPO)
-const LATEST_RELEASE_URL = `https://api.github.com/repos/${REPO}/releases/latest`
+/**
+ * 更新源只能在这两个仓库里选，写死不做成自由配置：能填任意地址的东西就能把更新指到别处。
+ * 两个仓库由同一个发布者维护、发布同一份签名安装包；选哪个都不改变信任——装不装只看签名。
+ */
+export const UPDATE_SOURCES = {
+  main: 'Aevorine/Tessera',
+  mirror: 'Aevorine/Tessera-releases',
+} as const
+export type UpdateSourceId = keyof typeof UPDATE_SOURCES
+export const DEFAULT_UPDATE_SOURCE: UpdateSourceId = 'main'
+
+/** 存下来的偏好和渲染端传来的值都是不可信输入：认不出的一律当默认源。 */
+export function parseUpdateSource(value: unknown): UpdateSourceId {
+  return value === 'mirror' ? 'mirror' : DEFAULT_UPDATE_SOURCE
+}
 /** GitHub 的下载会 302 到 CDN；每一跳都必须落在这几个域里。 */
 const ALLOWED_DOWNLOAD_HOSTS = new Set([
   'github.com',
@@ -119,6 +129,7 @@ export interface UpdateServiceOptions {
   currentVersion: string
   /** 跟着系统代理走的 fetch（见 proxyFetch.ts）；不传就用全局 fetch 直连。 */
   fetchImpl?: typeof fetch
+  source?: UpdateSourceId
 }
 
 export class UpdateService {
@@ -127,10 +138,25 @@ export class UpdateService {
   private pending: PendingUpdate | null = null
   private readonly options: UpdateServiceOptions
   private readonly fetchPolicy: FetchPolicy
+  private source: UpdateSourceId
 
   constructor(options: UpdateServiceOptions) {
     this.options = options
     this.fetchPolicy = { ...BASE_FETCH_POLICY, fetchImpl: options.fetchImpl }
+    this.source = options.source ?? DEFAULT_UPDATE_SOURCE
+  }
+
+  getSource(): UpdateSourceId {
+    return this.source
+  }
+
+  /** 换源后旧结果一律作废：缓存的检查结果和待装快照都来自另一个仓库。 */
+  setSource(source: UpdateSourceId): void {
+    if (source === this.source) return
+    this.source = source
+    this.lastCheckedAt = 0
+    this.cachedResult = null
+    this.pending = null
   }
 
   /** 检查更新，只读元数据。`force=false` 时受 24 小时节流约束，返回缓存结果。 */
@@ -140,6 +166,7 @@ export class UpdateService {
       return this.cachedResult
     }
 
+    const source = this.source
     let result: UpdateCheckResult
     try {
       result = await this.performCheck(now, flavor)
@@ -152,15 +179,17 @@ export class UpdateService {
         checkedAt: now,
       }
     }
+    if (source !== this.source) {
+      // 查的途中换了源：这次的结果不留作缓存，也不留待装快照。
+      this.pending = null
+      return result
+    }
     this.lastCheckedAt = now
     this.cachedResult = result
     return result
   }
 
   private async performCheck(now: number, flavor: InstallFlavor): Promise<UpdateCheckResult> {
-    if (!REPO_CONFIGURED) {
-      throw new UpdateError('no update source repository is configured in this build', 'no_update_source')
-    }
     // 没有发布者就没有信任根，下回来的东西无论如何不会被接受，所以在联网之前就拒绝。
     if (!SIGNER_CONFIGURED) {
       throw new UpdateError('this build has no trusted update publisher configured', 'no_trusted_publisher')
@@ -301,12 +330,18 @@ export class UpdateService {
   }
 
   private async fetchLatestRelease(): Promise<GithubRelease> {
+    const repo = UPDATE_SOURCES[this.source]
     let response: Response
     try {
-      const fetched = await fetchFollowing(this.fetchPolicy, LATEST_RELEASE_URL, METADATA_TIMEOUT_MS, {
-        Accept: 'application/vnd.github+json',
-        'X-GitHub-Api-Version': '2022-11-28',
-      })
+      const fetched = await fetchFollowing(
+        this.fetchPolicy,
+        `https://api.github.com/repos/${repo}/releases/latest`,
+        METADATA_TIMEOUT_MS,
+        {
+          Accept: 'application/vnd.github+json',
+          'X-GitHub-Api-Version': '2022-11-28',
+        },
+      )
       response = fetched.response
     } catch (error) {
       throw error instanceof DownloadError ? new UpdateError(error.message, error.code) : error
@@ -316,7 +351,7 @@ export class UpdateService {
       // 都不是"稍后重试"能解决的故障，所以给出各自的错误码。
       if (response.status === 404) {
         throw new UpdateError(
-          `release feed for ${REPO} is not publicly reachable (HTTP 404)`,
+          `release feed for ${repo} is not publicly reachable (HTTP 404)`,
           'update_source_unreachable',
         )
       }

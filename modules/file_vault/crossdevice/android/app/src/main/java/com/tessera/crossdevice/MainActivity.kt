@@ -1898,6 +1898,11 @@ class MainActivity : AppCompatActivity() {
             // 它是拨开关那一刻才需要知道的事，不是每次滚过这张卡都要重读一遍的事。
             if (view.isPressed) snack(getString(R.string.update_auto_hint))
         }
+        ui.switchUpdateMirror.isChecked = Updater.source(this) == Updater.SOURCE_MIRROR
+        ui.switchUpdateMirror.setOnCheckedChangeListener { view, checked ->
+            Updater.setSource(this, if (checked) Updater.SOURCE_MIRROR else Updater.SOURCE_MAIN)
+            if (view.isPressed) snack(getString(R.string.update_mirror_hint))
+        }
         ui.btnCheckUpdate.setOnClickListener { checkForUpdate(userInitiated = true) }
         if (Updater.isAutoCheck(this)) checkForUpdate(userInitiated = false)
     }

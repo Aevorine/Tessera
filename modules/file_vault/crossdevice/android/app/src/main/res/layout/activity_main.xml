@@ -1162,6 +1162,12 @@
                         android:checked="true"
                         android:text="@string/update_auto_label" />
 
+                    <com.google.android.material.materialswitch.MaterialSwitch
+                        android:id="@+id/switchUpdateMirror"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="@string/update_mirror_label" />
+
                     <!-- 「自动只自动到检查这一步」那句解释挪进了拨开关时的 Snackbar。
                          它是**打开开关的那一刻**才需要知道的事，不是每次滚到这里
                          都要重读一遍的事。 -->

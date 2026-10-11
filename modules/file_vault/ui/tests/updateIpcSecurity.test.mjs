@@ -16,6 +16,7 @@ test('every update IPC rejects calls from an untrusted renderer', () => {
   for (const channel of [
     'update:getState',
     'update:setAutoCheck',
+    'update:setSource',
     'update:check',
     'update:install',
   ]) {

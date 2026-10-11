@@ -361,6 +361,9 @@ export interface UpdateCheckResult {
   checkedAt: number
 }
 
+/** 更新源的两个内置选项，与 electron/updateService.ts 的 UPDATE_SOURCES 的键一一对应。 */
+export type UpdateSourceId = 'main' | 'mirror'
+
 /** 更新包下载进度，跟 electron/segmentedDownload.ts 的 DownloadProgress 一一对应。 */
 export interface UpdateProgress {
   received: number

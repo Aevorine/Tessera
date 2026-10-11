@@ -6,6 +6,17 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class UpdaterSecurityTest {
+    @Test
+    fun updateSourcesAreLimitedToTheTwoBuiltInRepositories() {
+        val main = "https://api.github.com/repos/Aevorine/Tessera/releases/latest"
+        assertEquals(main, Updater.latestUrl(Updater.SOURCE_MAIN))
+        assertEquals(
+            "https://api.github.com/repos/Aevorine/Tessera-releases/releases/latest",
+            Updater.latestUrl(Updater.SOURCE_MIRROR),
+        )
+        assertEquals(main, Updater.latestUrl("https://attacker.example"))
+    }
+
 
     @Test
     fun trustedDownloadUrlAcceptsOnlyHttpsGitHubControlledHosts() {
