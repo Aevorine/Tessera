@@ -15,7 +15,7 @@ The security workflow now audits development dependencies too: Electron is a dev
 GitHub CodeQL default setup is enabled with the extended query suite for JavaScript/TypeScript, Python and Go. Initial analysis found nine alerts. Seven code changes address:
 
 - Incorrect Unicode ranges in clipboard language detection.
-- Tag stripping that could produce another tag after a single replacement; plain-text results now also remove remaining angle brackets.
+- Tag stripping that could produce another tag after a single replacement; a shared linear scanner now extracts plain text without constructing intermediate markup or retaining angle brackets.
 - Inline JavaScript quote escaping in a design prototype; the event handler now uses an integer index rather than interpolating a filename.
 - Download sidecar stat/read race: open once, inspect and read the same handle, cap the read at 64 KiB, and reject path-bearing asset names.
 - An incomplete shell language-identification boundary.

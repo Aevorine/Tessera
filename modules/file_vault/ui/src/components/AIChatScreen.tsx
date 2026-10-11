@@ -13,6 +13,7 @@ import { vaultApi } from '@/lib/vaultApi'
 import { electronApi } from '@/lib/electronApi'
 import { translateError } from '@/i18n/errors'
 import { cn } from '@/lib/utils'
+import { stripMarkupTags } from '@/shared/plainText'
 import type { AiChatMessage, AiHistoryListItem, AiModelDetail, AiSkill } from '@/shared/ipcTypes'
 
 const NO_SKILL_VALUE = '__none__'
@@ -48,7 +49,7 @@ interface PendingAttachment {
 }
 
 function stripDsmlTags(value: string): string {
-  return value.replace(/<[^>]*>/g, '').replace(/[<>]/g, '').trim()
+  return stripMarkupTags(value).trim()
 }
 
 function extractReasoningFromReply(reply: string, t: (key: string, options?: Record<string, string>) => string) {

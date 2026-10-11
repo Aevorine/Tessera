@@ -24,6 +24,7 @@ import { UpdateService, AUTO_CHECK_THROTTLE_MS } from './updateService'
 import { allowThroughFirewall, firewallStatus } from './firewall'
 import { verifySigner } from './authenticode'
 import { requiredFreeBytes } from './updateVersion'
+import { stripMarkupTags } from '../src/shared/plainText'
 import { formatStartupReport, markStartup } from './startupTiming'
 import {
   detectInstallFlavor,
@@ -288,7 +289,7 @@ function writeIncomingClip(clip: IncomingClip): void {
   if (html) payload.html = html.toString('utf-8')
   if (rtf) payload.rtf = rtf.toString('utf-8')
   // 纯文本兜底永远要有：没有它的话，只认 CF_UNICODETEXT 的老程序什么都粘不到。
-  if (!payload.text && payload.html) payload.text = payload.html.replace(/<[^>]+>/g, '').replace(/[<>]/g, '')
+  if (!payload.text && payload.html) payload.text = stripMarkupTags(payload.html)
   if (Object.keys(payload).length === 0) return
   try {
     clipboard.write(payload)
