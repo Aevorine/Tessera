@@ -82,7 +82,11 @@ export function detectCodeLanguage(text: string): string | null {
     return 'Python'
   }
   if (/\bpublic\s+(static\s+)?(class|void|int|String)\b|System\.out\.|using\s+System;/.test(src)) return 'Java/C#'
-  if (/^\s*(interface\s+\w+|type\s+\w+\s*=|enum\s+\w+\s*\{)|:\s*(string|number|boolean)\b/m.test(src)) return 'TypeScript'
+  // 分成两条：声明只认行首，类型标注可在任意位置。写成一条正则时 `^` 只管得到第一个分支，
+  // 读的人和扫描器都分不清那是有意还是漏了。
+  const declaresType = /^\s*(interface\s+\w+|type\s+\w+\s*=|enum\s+\w+\s*\{)/m.test(src)
+  const annotatesType = /:\s*(string|number|boolean)\b/.test(src)
+  if (declaresType || annotatesType) return 'TypeScript'
   if (/\b(const|let|var)\s+\w+\s*=|=>|\bfunction\s*\w*\s*\(|\bexport\s+(default\s+)?|\bimport\s+.*\s+from\s+['"]|console\.log\(/.test(src)) {
     return 'JavaScript'
   }
