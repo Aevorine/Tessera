@@ -62,7 +62,7 @@ actually kept.
 | [TypeScript](https://www.typescriptlang.org/) | Apache-2.0 |
 | [Tailwind CSS](https://tailwindcss.com/) | MIT |
 | [Radix UI](https://radix-ui.com/primitives) | MIT |
-| [shadcn/ui](https://github.com/shadcn-ui/ui) | MIT |
+| [shadcn/ui](https://github.com/shadcn-ui/ui) | MIT — source components and vendored CSS utilities from 4.21.4; full CSS licence in `modules/file_vault/ui/src/vendor/shadcn-LICENSE.txt` |
 | [lucide-react](https://lucide.dev/) | ISC |
 | [cmdk](https://github.com/pacocoursey/cmdk) | MIT |
 | [sonner](https://sonner.emilkowal.ski/) | MIT |

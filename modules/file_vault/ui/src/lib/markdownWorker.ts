@@ -27,6 +27,10 @@ const ctx = self as unknown as {
 }
 
 ctx.onmessage = (event) => {
+  // Dedicated workers normally use an empty origin; reject cross-origin senders
+  // if this module is ever reused in a window or another messaging context.
+  if (event.origin && event.origin !== self.location.origin) return
+  if (!event.data || !Number.isSafeInteger(event.data.id) || typeof event.data.content !== 'string') return
   const { id, content } = event.data
   try {
     const chunks = splitMarkdownForStreaming(content)

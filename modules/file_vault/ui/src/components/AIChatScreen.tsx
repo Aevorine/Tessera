@@ -48,7 +48,7 @@ interface PendingAttachment {
 }
 
 function stripDsmlTags(value: string): string {
-  return value.replace(/<[^>]*>/g, '').trim()
+  return value.replace(/<[^>]*>/g, '').replace(/[<>]/g, '').trim()
 }
 
 function extractReasoningFromReply(reply: string, t: (key: string, options?: Record<string, string>) => string) {

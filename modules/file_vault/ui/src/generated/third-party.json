@@ -1,7 +1,13 @@
 {
   "generatedBy": "scripts/gen-third-party-notices.mjs",
-  "count": 65,
+  "count": 66,
   "components": [
+    {
+      "name": "shadcn CSS utilities (4.21.4)",
+      "license": "MIT",
+      "url": "https://github.com/shadcn-ui/ui",
+      "group": "content"
+    },
     {
       "name": "Electron",
       "license": "MIT",
@@ -180,7 +186,7 @@
     },
     {
       "name": "golang.org/x/crypto",
-      "version": "v0.54.0",
+      "version": "v0.56.0",
       "license": "BSD-3-Clause",
       "url": "https://pkg.go.dev/golang.org/x/crypto",
       "group": "go"
@@ -222,7 +228,7 @@
     },
     {
       "name": "golang.org/x/text",
-      "version": "v0.40.0",
+      "version": "v0.41.0",
       "license": "BSD-3-Clause",
       "url": "https://pkg.go.dev/golang.org/x/text",
       "group": "go"
@@ -243,7 +249,7 @@
     },
     {
       "name": "@codemirror/lang-markdown",
-      "version": "6.5.1",
+      "version": "6.5.2",
       "license": "MIT",
       "url": "https://code.haverbeke.berlin/codemirror/lang-markdown",
       "group": "ui"
@@ -278,21 +284,21 @@
     },
     {
       "name": "@fontsource-variable/geist",
-      "version": "5.2.9",
+      "version": "5.3.0",
       "license": "OFL-1.1",
       "url": "https://fontsource.org/fonts/geist",
       "group": "ui"
     },
     {
       "name": "@tanstack/react-virtual",
-      "version": "3.14.6",
+      "version": "3.14.14",
       "license": "MIT",
       "url": "https://tanstack.com/virtual",
       "group": "ui"
     },
     {
       "name": "@uiw/react-codemirror",
-      "version": "4.25.11",
+      "version": "4.25.12",
       "license": "MIT",
       "url": "https://uiwjs.github.io/react-codemirror",
       "group": "ui"
@@ -327,42 +333,42 @@
     },
     {
       "name": "docx",
-      "version": "9.7.1",
+      "version": "9.10.0",
       "license": "MIT",
       "url": "https://docx.js.org",
       "group": "ui"
     },
     {
       "name": "dompurify",
-      "version": "3.4.13",
+      "version": "3.4.16",
       "license": "(MPL-2.0 OR Apache-2.0)",
       "url": "https://github.com/cure53/DOMPurify",
       "group": "ui"
     },
     {
       "name": "i18next",
-      "version": "26.3.6",
+      "version": "26.4.3",
       "license": "MIT",
       "url": "https://www.i18next.com",
       "group": "ui"
     },
     {
       "name": "katex",
-      "version": "0.18.4",
+      "version": "0.18.10",
       "license": "MIT",
       "url": "https://katex.org",
       "group": "ui"
     },
     {
       "name": "lucide-react",
-      "version": "1.23.0",
+      "version": "1.55.0",
       "license": "ISC",
       "url": "https://lucide.dev",
       "group": "ui"
     },
     {
       "name": "markdown-it",
-      "version": "14.3.0",
+      "version": "14.3.2",
       "license": "MIT",
       "url": "https://github.com/markdown-it/markdown-it",
       "group": "ui"
@@ -383,7 +389,7 @@
     },
     {
       "name": "radix-ui",
-      "version": "1.6.2",
+      "version": "1.7.0",
       "license": "MIT",
       "url": "https://radix-ui.com/primitives",
       "group": "ui"
@@ -404,21 +410,21 @@
     },
     {
       "name": "react-i18next",
-      "version": "17.0.9",
+      "version": "17.0.16",
       "license": "MIT",
       "url": "https://github.com/i18next/react-i18next",
       "group": "ui"
     },
     {
       "name": "sonner",
-      "version": "2.0.7",
+      "version": "2.0.8",
       "license": "MIT",
       "url": "https://sonner.emilkowal.ski/",
       "group": "ui"
     },
     {
       "name": "tailwind-merge",
-      "version": "3.6.0",
+      "version": "3.7.0",
       "license": "MIT",
       "url": "https://github.com/dcastil/tailwind-merge",
       "group": "ui"

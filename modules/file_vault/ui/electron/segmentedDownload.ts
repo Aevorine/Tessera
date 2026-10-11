@@ -263,9 +263,21 @@ export async function removeStaleParts(dir: string, keepAssetName: string): Prom
     if (!name.endsWith('.part.json')) continue
     const sidecar = path.join(dir, name)
     try {
-      if ((await fsp.stat(sidecar)).size > 64 * 1024) continue
-      const record = JSON.parse(await fsp.readFile(sidecar, 'utf8')) as { kind?: unknown; assetName?: unknown } | null
+      const handle = await fsp.open(sidecar, 'r')
+      let contents: string
+      try {
+        const info = await handle.stat()
+        if (!info.isFile() || info.size > 64 * 1024) continue
+        const buffer = Buffer.alloc(64 * 1024 + 1)
+        const { bytesRead } = await handle.read(buffer, 0, buffer.length, 0)
+        if (bytesRead > 64 * 1024) continue
+        contents = buffer.toString('utf8', 0, bytesRead)
+      } finally {
+        await handle.close()
+      }
+      const record = JSON.parse(contents) as { kind?: unknown; assetName?: unknown } | null
       if (!record || record.kind !== RESUME_KIND || typeof record.assetName !== 'string') continue
+      if (path.basename(record.assetName) !== record.assetName || /[\\/]/.test(record.assetName)) continue
       if (record.assetName === keepAssetName || name !== `${record.assetName}.part.json`) continue
       await Promise.all(
         [`${record.assetName}.part`, name, `${name}.tmp`].map((f) => fsp.rm(path.join(dir, f), { force: true })),

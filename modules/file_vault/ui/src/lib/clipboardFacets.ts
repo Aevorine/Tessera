@@ -87,7 +87,7 @@ export function detectCodeLanguage(text: string): string | null {
     return 'JavaScript'
   }
   if (/^\s*\$\w+\s*=|\b(Get|Set|New|Remove|Write)-[A-Z]\w+/m.test(src)) return 'PowerShell'
-  if (/^#!\/(usr\/)?bin\/(env\s+)?(ba|z)?sh|^\s*(sudo|apt(-get)?|brew|npm|pnpm|yarn|pip|git|cd|ls|echo|export|curl|wget)\s/m.test(src)) {
+  if (/^#!\/(usr\/)?bin\/(env\s+)?(ba|z)?sh(?:\s|$)|^\s*(sudo|apt(-get)?|brew|npm|pnpm|yarn|pip|git|cd|ls|echo|export|curl|wget)\s/m.test(src)) {
     return 'Shell'
   }
   if (/[.#]?[\w-]+\s*\{[^{}]*:[^{}]*;[^{}]*\}/.test(src)) return 'CSS'

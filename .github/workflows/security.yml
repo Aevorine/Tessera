@@ -11,8 +11,8 @@
 #      可能就带着一个 critical 了，而那天可能根本没人提交代码。
 #   2. **只有 high/critical 才让构建失败。** 把阈值设成 low 的结果是没人看它，
 #      然后所有人开始习惯性忽略红叉——那时真正的 critical 也会被一起忽略。
-#   3. **只扫生产依赖。** devDependencies 里的漏洞进不了用户下载的那个 exe。
-#      把它们算进来只会产生大量与用户无关的告警。
+#   3. **扫描完整依赖树。** Electron 虽列在 devDependencies，仍被打包进 EXE；
+#      构建工具也是供应链的一部分，不能只检查 renderer 的生产依赖。
 
 name: Security scan
 
@@ -42,14 +42,14 @@ permissions:
 
 jobs:
   npm-audit:
-    name: npm audit (production deps)
+    name: npm audit (all dependencies)
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020  # v4
         with:
-          node-version: '22'
+          node-version: '24'
           cache: 'npm'
           cache-dependency-path: modules/file_vault/ui/package-lock.json
 
@@ -61,7 +61,7 @@ jobs:
 
       - name: Audit
         working-directory: modules/file_vault/ui
-        run: npm audit --omit=dev --audit-level=high
+        run: npm audit --audit-level=high
 
       # 第三方组件清单是 LICENSING.md 里的一个承诺，不是装饰。依赖变了但清单
       # 没重新生成的话，应用内"关于"页展示的就是一份过期的归属声明。

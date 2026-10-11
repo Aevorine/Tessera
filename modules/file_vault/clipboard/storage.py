@@ -719,7 +719,9 @@ def fetch_html_payload(conn: sqlite3.Connection, entry_id: int) -> Optional[str]
 
 # 不用空格分词的文字（汉字、假名、泰文）。命中这些字符时光靠 FTS5 的 MATCH
 # 搜不全——理由和 notes/storage.py 的 _needs_substring_pass 完全一样。
-_UNSEGMENTED_SCRIPT_RE = re.compile("[㐀-䶿一-鿿豈-﫿぀-ヿ฀-๿]")
+_UNSEGMENTED_SCRIPT_RE = re.compile(
+    r"[\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff\u3040-\u30ff\u0e00-\u0e7f]"
+)
 
 
 def _like_escape(term: str) -> str:

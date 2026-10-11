@@ -555,7 +555,7 @@ function renderOverview(mc) {
         <div class="card-body" style="padding:8px">
           <div class="table-wrap">
             <table><thead><tr><th>文件名</th><th>状态</th><th>日期</th></tr></thead>
-              <tbody>${mockData.slice(0,5).map(f => `<tr class="searchable-row" onclick="showDetail('${f.name.replace(/'/g,"\\'")}','状态：${f.status}<br>大小：${f.size}<br>日期：${f.date}')"><td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${f.name}</td><td><span class="badge badge-${f.status==='已加密'?'success':f.status==='待处理'?'warning':'info'}">${f.status}</span></td><td>${f.date}</td></tr>`).join('')}</tbody>
+              <tbody>${mockData.slice(0,5).map((f, index) => `<tr class="searchable-row" onclick="showDetail(mockData[${index}].name, '文件详情')"><td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${f.name}</td><td><span class="badge badge-${f.status==='已加密'?'success':f.status==='待处理'?'warning':'info'}">${f.status}</span></td><td>${f.date}</td></tr>`).join('')}</tbody>
             </table>
           </div>
         </div>

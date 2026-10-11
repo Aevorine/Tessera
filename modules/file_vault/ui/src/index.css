@@ -1,6 +1,10 @@
-@import "tailwindcss";
+@import "tailwindcss" source(none);
+/* Only application templates contain Tailwind classes. Test/tool selectors such
+   as Playwright's :visible are not CSS variants and must not be scanned. */
+@source "./";
+@source "../index.html";
 @import "tw-animate-css";
-@import "shadcn/tailwind.css";
+@import "./vendor/shadcn-tailwind.css";
 
 @custom-variant dark (&:is(.dark *));
 

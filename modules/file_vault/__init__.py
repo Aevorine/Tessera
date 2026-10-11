@@ -3,7 +3,7 @@
 MODULE_META = {
     "name": "file_vault",
     "description": "Multi-factor file encryption (password/email/TOTP/machine fingerprint, any one unlocks) with an Electron + React GUI.",
-    "version": "0.1.35",
+    "version": "0.1.36",
 }
 
 

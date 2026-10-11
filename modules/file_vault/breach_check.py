@@ -38,7 +38,8 @@ class BreachCheckError(RuntimeError):
 
 def sha1_prefix_suffix(password: str) -> Tuple[str, str]:
     """返回 (前 5 位, 后 35 位) 大写十六进制。用 SHA-1 只因泄露库按它建索引。"""
-    digest = hashlib.sha1(password.encode("utf-8")).hexdigest().upper()
+    # HIBP requires SHA-1 for its range lookup; this is not a password-storage KDF.
+    digest = hashlib.sha1(password.encode("utf-8"), usedforsecurity=False).hexdigest().upper()
     return digest[:5], digest[5:]
 
 

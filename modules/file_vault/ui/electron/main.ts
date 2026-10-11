@@ -288,7 +288,7 @@ function writeIncomingClip(clip: IncomingClip): void {
   if (html) payload.html = html.toString('utf-8')
   if (rtf) payload.rtf = rtf.toString('utf-8')
   // 纯文本兜底永远要有：没有它的话，只认 CF_UNICODETEXT 的老程序什么都粘不到。
-  if (!payload.text && payload.html) payload.text = payload.html.replace(/<[^>]+>/g, '')
+  if (!payload.text && payload.html) payload.text = payload.html.replace(/<[^>]+>/g, '').replace(/[<>]/g, '')
   if (Object.keys(payload).length === 0) return
   try {
     clipboard.write(payload)

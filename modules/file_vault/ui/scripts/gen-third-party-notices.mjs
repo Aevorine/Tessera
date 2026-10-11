@@ -18,6 +18,7 @@ const OUT_JSON = path.join(UI_DIR, 'src', 'generated', 'third-party.json')
 // Bundled components invisible to npm (inside Electron, Python wheels, PyInstaller); kept here so
 // the About screen shows them too.
 const PLATFORM_COMPONENTS = [
+  { name: 'shadcn CSS utilities (4.21.4)', license: 'MIT', url: 'https://github.com/shadcn-ui/ui', group: 'content' },
   // Electron is a devDependency (electron-builder packages it), so the dependencies-only scan never
   // sees it, yet it is the largest third-party code in the exe.
   { name: 'Electron', license: 'MIT', url: 'https://github.com/electron/electron', group: 'platform' },
