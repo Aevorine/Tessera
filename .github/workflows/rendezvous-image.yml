@@ -5,9 +5,9 @@
 # the release, so the image and the downloadable archives are byte-for-byte the
 # same program. Only the Docker CLI and gh that ship on the runner are used.
 #
-# The package was first published from the Tessera-releases mirror. Until its
-# "Manage Actions access" setting grants this repository write access, the push
-# step here is denied and the run fails; nothing else depends on it.
+# The package was first published from the Tessera-releases mirror, so pushing
+# from here relies on the package's "Manage Actions access" setting giving this
+# repository the Write role. Without that grant the push step is denied.
 name: Publish rendezvous image
 
 on:
