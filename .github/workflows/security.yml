@@ -1,0 +1,192 @@
+# 依赖漏洞扫描 + 快速自检。
+#
+# 安全审计（docs/security-audit-2026-07.md）把"CI 里一个依赖扫描都没有"列为
+# 待办第 2 条。一个存密码的应用，依赖树里出了已知 CVE 却没人知道，比任何一处
+# 代码写法都更容易变成真实事故——DOMPurify、markdown-it、tesseract.js 这几个
+# 直接处理不可信输入的库尤其如此。
+#
+# 三条原则：
+#
+#   1. **定时跑，不只在 push 时跑。** 依赖不动，CVE 会动。今天干净的树，下周
+#      可能就带着一个 critical 了，而那天可能根本没人提交代码。
+#   2. **只有 high/critical 才让构建失败。** 把阈值设成 low 的结果是没人看它，
+#      然后所有人开始习惯性忽略红叉——那时真正的 critical 也会被一起忽略。
+#   3. **只扫生产依赖。** devDependencies 里的漏洞进不了用户下载的那个 exe。
+#      把它们算进来只会产生大量与用户无关的告警。
+
+name: Security scan
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'modules/file_vault/ui/package.json'
+      - 'modules/file_vault/ui/package-lock.json'
+      - 'pyproject.toml'
+      - 'modules/file_vault/crossdevice/go.mod'
+      - 'modules/file_vault/crossdevice/go.sum'
+      - '.github/workflows/security.yml'
+  pull_request:
+    branches: [main]
+  schedule:
+    - cron: '0 3 * * 1'   # 每周一 03:00 UTC
+  workflow_dispatch:
+    inputs:
+      run_tests:
+        description: 'Explicitly opt in to tests'
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  npm-audit:
+    name: npm audit (production deps)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020  # v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: modules/file_vault/ui/package-lock.json
+
+      # --ignore-scripts：这里只需要依赖树，不需要 Electron 那 100+ MB 的二进制
+      # postinstall 下载。省下的是分钟级的时间。
+      - name: Install
+        working-directory: modules/file_vault/ui
+        run: npm ci --ignore-scripts
+
+      - name: Audit
+        working-directory: modules/file_vault/ui
+        run: npm audit --omit=dev --audit-level=high
+
+      # 第三方组件清单是 LICENSING.md 里的一个承诺，不是装饰。依赖变了但清单
+      # 没重新生成的话，应用内"关于"页展示的就是一份过期的归属声明。
+      - name: Third-party notices are up to date
+        working-directory: modules/file_vault/ui
+        run: npm run notices:check
+
+  pip-audit:
+    name: pip-audit (Python deps)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065  # v5
+        with:
+          python-version: '3.11'
+
+      # 在 Linux 上装：Windows 专有的那几个包（pywin32）带 sys_platform marker，
+      # pip 会自动跳过，剩下的正是跨平台那部分——也就是 cryptography 这类真正
+      # 值得盯着 CVE 的库。为这一步单开一台 Windows runner 不划算。
+      - name: Install project dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e .
+
+      # 审计的输入是一份**冻结出来的第三方依赖清单**，而不是"当前环境里的所有包"。
+      #
+      # 为什么要这么绕：`pip install -e .` 会把项目自己（包名 ideal1）以 editable
+      # 模式装进环境，而 pip-audit 默认审计环境里的每一个包。ideal1 不在 PyPI 上
+      # （pyproject 的 classifiers 里就写着 "Private :: Do Not Upload"），于是
+      # --strict 把它判成 collection 失败，这个 job 因此长红：
+      #
+      #     ERROR:pip_audit._cli:ideal1: Dependency not found on PyPI
+      #     and could not be audited: ideal1 (0.1.4)
+      #
+      # pip-audit 自带的 --skip-editable **解决不了**这件事。它确实能认出 ideal1
+      # 是 editable 包，但 --strict 会把「被跳过的 distribution」同样算成 collection
+      # 失败，照旧 exit 1，只是报错换了一句：
+      #
+      #     ERROR:pip_audit._cli:ideal1: distribution marked as editable
+      #
+      # 两个开关合不到一起。所以改成从**输入侧**排除：--exclude-editable 让项目
+      # 自身压根不出现在清单里，pip-audit 无从对它报错，--strict 对其余每一个
+      # 真实第三方依赖照常严格——那正是这道扫描要保住的东西。
+      #
+      # 冻结**必须在装 pip-audit 之前**做。反过来的话，pip-audit 自己那一串依赖
+      # 会被一起冻进清单，而它们属于 CI 工具链，进不了用户下载的那个 exe；把它们
+      # 算进来只会产生与用户无关的告警，正是本文件开头第 3 条原则要避免的。
+      - name: Freeze third-party dependencies
+        run: |
+          pip freeze --exclude-editable > "$RUNNER_TEMP/requirements-audit.txt"
+          # 把清单打进日志，并断言它非空。
+          #
+          # 清单为空的话，pip-audit 会老老实实地"审计 0 个包"，然后输出
+          # `No known vulnerabilities found` 并以 0 退出——绿灯，但一个包都没查。
+          # 那种绿和真的没有漏洞长得一模一样，是这道扫描最容易失效又最难发现的
+          # 方式（比如哪天 --exclude-editable 的行为变了，或者装依赖那步悄悄失败）。
+          # `test -s` 让"什么都没审"直接变成红灯。
+          echo "将审计 $(wc -l < "$RUNNER_TEMP/requirements-audit.txt") 个第三方包："
+          cat "$RUNNER_TEMP/requirements-audit.txt"
+          test -s "$RUNNER_TEMP/requirements-audit.txt"
+
+      - name: Install pip-audit
+        run: pip install pip-audit
+
+      - name: Audit
+        run: pip-audit --strict --desc -r "$RUNNER_TEMP/requirements-audit.txt"
+
+  python-tests:
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.run_tests }}
+    name: Python tests
+    runs-on: windows-latest
+    # 这个套件是**故意慢**的，不要按"正常单元测试"的直觉给它设超时。
+    #
+    # scrypt 的成本参数是 N=2¹⁷（OWASP 推荐的下限），每次派生要 128 MiB 内存；
+    # 而 setup_complete 会把主密钥包进 5 个解锁槽位 = 5 次派生。大量用例都会走
+    # 一遍完整 setup，于是整套 1534 个测试在开发机上要跑 45~60 分钟，双核的
+    # GitHub runner 上只会更久。
+    #
+    # 原来这里是 25 分钟——那几乎必然超时，而超时的表现是"测试失败"，看起来
+    # 跟真的有测试挂了没有区别，排查方向会完全跑偏。
+    #
+    # **不要为了让 CI 快而调低 scrypt 参数**：那是拿用户金库的真实抗爆破能力去
+    # 换构建时长。要提速就去合并测试夹具（让用例共用少数几个已 setup 的金库），
+    # 那样省下的是重复劳动，不是安全性。
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065  # v5
+        with:
+          python-version: '3.9'
+          architecture: 'x64'
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+      # -X utf8：仓库里大量中文注释和测试数据，Windows 默认的 GBK 代码页会在
+      # 收集阶段就抛 UnicodeDecodeError，而且报的行号跟真正的问题毫无关系。
+      - name: Run tests
+        run: python -X utf8 -m pytest -q
+
+  # Go 的依赖漏洞。npm-audit / pip-audit 各管一门语言，Go 这门原先没人管——
+  # 跨设备核心用了 quic-go 这类直接暴露在网络上的库，恰恰是最不该漏掉的一门。
+  #
+  # govulncheck 跟 npm audit 有个重要区别：它**只报真正被调用到的**漏洞函数。
+  # 依赖里有个 CVE 但我们的代码根本不走那条路径时它不报——所以它报出来的每一条
+  # 都值得处理，不会像纯版本比对那样淹在噪音里。
+  govulncheck:
+    name: govulncheck (Go deps)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: modules/file_vault/crossdevice
+
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
+
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff  # v5
+        with:
+          go-version-file: modules/file_vault/crossdevice/go.mod
+          cache-dependency-path: modules/file_vault/crossdevice/go.sum
+
+      - name: Install govulncheck
+        run: go install golang.org/x/vuln/cmd/govulncheck@latest
+
+      - name: Scan
+        run: govulncheck ./...

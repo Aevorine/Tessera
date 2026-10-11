@@ -1,0 +1,671 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>File Vault UI 方案 C · 自适应工作台</title>
+<style>
+:root {
+  --primary: #4a6741;
+  --primary-hover: #5a7d50;
+  --primary-light: #edf3eb;
+  --success: #3a7a4e;
+  --warning: #a3690c;
+  --danger: #c0392b;
+  --info: #2c7da0;
+  --bg: #f5f3ef;
+  --bg-card: #ffffff;
+  --bg-panel: #fcfcf9;
+  --bg-sidebar: #f0ede6;
+  --bg-header: #ffffff;
+  --bg-input: #ffffff;
+  --text: #2b2a26;
+  --text-secondary: #7a7568;
+  --text-muted: #a09b8d;
+  --border: #e0dbcd;
+  --border-input: #d5cfbf;
+  --radius: 8px;
+  --shadow: 0 1px 2px rgba(0,0,0,0.06);
+  --shadow-md: 0 2px 8px rgba(0,0,0,0.1);
+  --font: system-ui, -apple-system, 'PingFang SC', 'Microsoft YaHei', sans-serif;
+  --font-size: 14px;
+  --sidebar-w: 44px;
+  --sidebar-expanded: 180px;
+}
+.dark {
+  --bg: #1a1b17;
+  --bg-card: #22231e;
+  --bg-panel: #1e1f1a;
+  --bg-sidebar: #1e1f1a;
+  --bg-header: #22231e;
+  --bg-input: #1a1b17;
+  --text: #e0ddd2;
+  --text-secondary: #8a8677;
+  --text-muted: #656156;
+  --border: #2d2e27;
+  --border-input: #2d2e27;
+  --primary: #6b9a5e;
+  --primary-light: #222b1e;
+}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  font-family: var(--font);
+  font-size: var(--font-size);
+  background: var(--bg);
+  color: var(--text);
+  line-height: 1.6;
+  overflow: hidden;
+  min-width: 0;
+  min-height: 0;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+.app { display: flex; height: 100vh; width: 100vw; }
+/* ===== Sidebar ===== */
+.sidebar {
+  width: var(--sidebar-w);
+  background: var(--bg-sidebar);
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  transition: width 0.2s ease;
+  overflow: hidden;
+  flex-shrink: 0;
+  position: relative;
+}
+.sidebar:hover .sidebar-expand-hint { opacity: 1; }
+.sidebar.expanded { --sidebar-w: var(--sidebar-expanded); }
+.sidebar-header {
+  padding: 12px 10px;
+  text-align: center;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+.sidebar-header .logo { font-size: 18px; }
+.sidebar.expanded .sidebar-header { padding: 12px 16px; display: flex; align-items: center; gap: 8px; }
+.sidebar-header .title { display: none; font-size: 13px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sidebar.expanded .title { display: block; }
+.sidebar.expanded .sidebar-header .logo { font-size: 16px; }
+.sidebar-nav { flex: 1; overflow-y: auto; padding: 4px 0; }
+.nav-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px;
+  margin: 1px 6px;
+  cursor: pointer;
+  color: var(--text-secondary);
+  border-radius: 8px;
+  transition: all 0.12s;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+  justify-content: center;
+}
+.sidebar.expanded .nav-item { justify-content: flex-start; padding: 8px 12px; }
+.nav-item:hover { background: var(--primary-light); color: var(--primary); }
+.nav-item.active { background: var(--primary); color: white; font-weight: 500; }
+.nav-item .icon { width: 18px; height: 18px; flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; font-size: 15px; }
+.nav-item .label { display: none; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sidebar.expanded .nav-item .label { display: inline; }
+.nav-item .badge-dot {
+  width: 6px; height: 6px; border-radius: 50%;
+  flex-shrink: 0; display: none;
+}
+.sidebar.expanded .nav-item .badge-dot { display: block; }
+.sidebar-footer { border-top: 1px solid var(--border); padding: 8px 6px; text-align: center; }
+.sidebar-footer button {
+  border: none; background: transparent;
+  color: var(--text-secondary); cursor: pointer;
+  padding: 6px; border-radius: 6px; font-size: 14px;
+  width: 100%;
+}
+.sidebar-footer button:hover { background: var(--primary-light); }
+.sidebar.expanded .sidebar-footer button { text-align: left; padding: 6px 10px; font-size: 12px; display: flex; align-items: center; gap: 8px; }
+/* ===== Main ===== */
+.main-area { flex: 1; display: flex; flex-direction: column; overflow: hidden; min-width: 0; }
+.topbar {
+  height: 44px;
+  background: var(--bg-header);
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  padding: 0 12px;
+  gap: 8px;
+  flex-shrink: 0;
+}
+.topbar-menu-btn {
+  border: none; background: transparent;
+  font-size: 16px; cursor: pointer; color: var(--text-secondary);
+  padding: 4px; border-radius: 4px; width: 28px; height: 28px;
+  display: flex; align-items: center; justify-content: center;
+}
+.topbar-menu-btn:hover { background: var(--primary-light); }
+.topbar-title { font-size: 14px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.topbar-spacer { flex: 1; min-width: 0; }
+.topbar-actions { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
+.topbar-actions .search-wrap { position: relative; }
+.topbar-actions .search-wrap input {
+  width: 160px; padding: 5px 8px 5px 24px;
+  border: 1px solid var(--border-input); border-radius: 6px;
+  font-size: 12px; background: var(--bg-input); color: var(--text); outline: none;
+}
+.topbar-actions .search-wrap input:focus { border-color: var(--primary); }
+.topbar-actions .search-wrap .s-icon { position: absolute; left: 7px; top: 50%; transform: translateY(-50%); color: var(--text-muted); font-size: 12px; pointer-events: none; }
+/* ===== Workspace ===== */
+.workspace {
+  flex: 1; display: flex; overflow: hidden; min-height: 0;
+}
+/* Panels */
+.panel {
+  display: flex; flex-direction: column;
+  overflow: hidden; min-width: 0; min-height: 0;
+}
+.panel-header {
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-shrink: 0;
+  cursor: grab;
+  background: var(--bg-panel);
+  user-select: none;
+}
+.panel-header:active { cursor: grabbing; }
+.panel-title { font-size: 12px; font-weight: 600; color: var(--text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.panel-body { flex: 1; overflow-y: auto; padding: 8px; min-height: 0; }
+.panel-resize-handle {
+  width: 4px;
+  cursor: col-resize;
+  background: transparent;
+  flex-shrink: 0;
+  position: relative;
+  transition: background 0.15s;
+}
+.panel-resize-handle:hover,
+.panel-resize-handle.active { background: var(--primary); }
+.panel.collapsed .panel-body { display: none; }
+.panel.collapsed .panel-header { border-bottom: none; }
+/* Left panel */
+.panel-left { width: 260px; border-right: 1px solid var(--border); flex-shrink: 0; }
+.panel-left.collapsed { width: auto; }
+.panel-left.collapsed .panel-body { display: none; }
+/* Center panel */
+.panel-center { flex: 1; min-width: 0; }
+/* Right panel */
+.panel-right { width: 280px; border-left: 1px solid var(--border); flex-shrink: 0; }
+.panel-right.collapsed { width: auto; }
+.panel-right.collapsed .panel-body { display: none; }
+.panel-right.hidden { display: none; }
+/* Tree */
+.tree-item {
+  display: flex; align-items: center; gap: 6px;
+  padding: 4px 8px; border-radius: 4px; cursor: pointer;
+  font-size: 13px; color: var(--text); transition: background 0.1s;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  min-width: 0;
+}
+.tree-item:hover { background: var(--primary-light); }
+.tree-item.active { background: var(--primary); color: white; }
+.tree-item .icon { flex-shrink: 0; font-size: 14px; }
+.tree-item .label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tree-item .tree-indent { width: 16px; flex-shrink: 0; }
+/* Cards */
+.card { background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius); min-width: 0; min-height: 0; }
+.card-header { padding: 10px 12px; display: flex; justify-content: space-between; align-items: center; gap: 8px; border-bottom: 1px solid var(--border); }
+.card-title { font-size: 13px; font-weight: 600; min-width: 0; }
+.card-body { padding: 10px 12px; min-width: 0; }
+/* Buttons */
+.btn { display: inline-flex; align-items: center; gap: 5px; padding: 5px 12px; border-radius: 6px; border: 1px solid var(--border); background: var(--bg-card); color: var(--text); font-size: 12px; cursor: pointer; transition: all 0.12s; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; min-width: 0; }
+.btn:hover { border-color: var(--primary); color: var(--primary); }
+.btn:active { transform: scale(0.97); }
+.btn:disabled { opacity: 0.4; cursor: not-allowed; }
+.btn-primary { background: var(--primary); color: white; border-color: var(--primary); }
+.btn-primary:hover { background: var(--primary-hover); color: white; }
+.btn-sm { padding: 2px 8px; font-size: 11px; }
+.btn-icon { width: 28px; height: 28px; padding: 0; display: inline-flex; align-items: center; justify-content: center; }
+.btn-ghost { border-color: transparent; background: transparent; }
+.btn-ghost:hover { background: var(--primary-light); }
+/* Input */
+.input { border: 1px solid var(--border-input); border-radius: 6px; padding: 5px 8px; font-size: 13px; background: var(--bg-input); color: var(--text); outline: none; min-width: 0; width: 100%; }
+.input:focus { border-color: var(--primary); }
+.select { border: 1px solid var(--border-input); border-radius: 6px; padding: 5px 8px; font-size: 13px; background: var(--bg-input); color: var(--text); outline: none; min-width: 0; }
+/* Table */
+.table-wrap { overflow-x: auto; min-width: 0; }
+table { width: 100%; border-collapse: collapse; font-size: 13px; }
+th, td { text-align: left; padding: 6px 10px; border-bottom: 1px solid var(--border); overflow-wrap: anywhere; word-break: break-word; line-height: 1.5; vertical-align: top; }
+th { font-weight: 600; color: var(--text-secondary); font-size: 12px; white-space: nowrap; }
+tr:hover td { background: var(--primary-light); }
+/* Badge */
+.badge { display: inline-block; padding: 1px 6px; border-radius: 8px; font-size: 10px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 120px; }
+.badge-success { background: rgba(58,122,78,0.12); color: var(--success); }
+.badge-warning { background: rgba(163,105,12,0.12); color: var(--warning); }
+.badge-info { background: rgba(44,125,160,0.12); color: var(--info); }
+/* Alert */
+.alert { padding: 8px 12px; border-radius: 6px; font-size: 12px; border: 1px solid transparent; }
+.alert-info { background: rgba(44,125,160,0.08); border-color: rgba(44,125,160,0.15); color: var(--info); }
+.alert-warning { background: rgba(163,105,12,0.08); border-color: rgba(163,105,12,0.15); color: var(--warning); }
+/* Progress */
+.progress { width: 100%; height: 4px; background: var(--border); border-radius: 2px; overflow: hidden; }
+.progress-bar { height: 100%; background: var(--primary); border-radius: 2px; transition: width 0.3s; }
+/* Modal */
+.modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.4); display: none; align-items: center; justify-content: center; z-index: 100; }
+.modal-overlay.open { display: flex; }
+.modal { background: var(--bg-card); border-radius: 10px; box-shadow: 0 8px 32px rgba(0,0,0,0.15); width: 90%; max-width: 480px; max-height: 85vh; overflow-y: auto; min-width: 0; }
+.modal-header { padding: 16px 20px 0; display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; }
+.modal-title { font-size: 15px; font-weight: 600; }
+.modal-body { padding: 16px 20px; }
+.modal-footer { padding: 0 20px 16px; display: flex; gap: 8px; justify-content: flex-end; }
+.modal-close { border: none; background: transparent; cursor: pointer; font-size: 18px; color: var(--text-secondary); width: 28px; height: 28px; border-radius: 4px; display: flex; align-items: center; justify-content: center; }
+.modal-close:hover { background: var(--primary-light); }
+/* Toast */
+.toast-container { position: fixed; top: 12px; right: 12px; z-index: 200; display: flex; flex-direction: column; gap: 6px; pointer-events: none; }
+.toast { background: var(--bg-card); border: 1px solid var(--border); border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.12); padding: 10px 14px; font-size: 13px; min-width: 200px; max-width: 340px; pointer-events: auto; animation: slideIn 0.25s ease; }
+.toast-success { border-left: 3px solid var(--success); }
+.toast-error { border-left: 3px solid var(--danger); }
+.toast-info { border-left: 3px solid var(--info); }
+@keyframes slideIn { from { transform: translateX(80px); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+/* Empty */
+.empty-state { display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 32px 16px; text-align: center; color: var(--text-secondary); }
+.empty-state .icon { font-size: 28px; margin-bottom: 8px; opacity: 0.3; }
+.empty-state h3 { font-size: 14px; margin-bottom: 4px; color: var(--text); }
+.empty-state p { font-size: 12px; max-width: 260px; }
+/* Status bar */
+.statusbar { height: 24px; border-top: 1px solid var(--border); display: flex; align-items: center; padding: 0 10px; font-size: 11px; color: var(--text-muted); background: var(--bg-panel); flex-shrink: 0; gap: 12px; min-width: 0; }
+.statusbar-item { display: flex; align-items: center; gap: 3px; white-space: nowrap; }
+.sb-spacer { flex: 1; min-width: 0; }
+/* Long text */
+.long-text-test { border: 1px dashed var(--border); padding: 10px; margin: 8px 0; border-radius: 6px; font-size: 13px; line-height: 1.6; overflow-wrap: anywhere; word-break: break-word; min-width: 0; width: 100%; }
+/* Workspace mode toggle */
+.mode-controls { display: flex; gap: 4px; }
+.mode-btn { border: none; background: transparent; padding: 4px 10px; border-radius: 4px; font-size: 11px; cursor: pointer; color: var(--text-secondary); }
+.mode-btn.active { background: var(--primary); color: white; }
+/* Util */
+.flex { display: flex; }
+.flex-1 { flex: 1; min-width: 0; }
+.gap-2 { gap: 8px; }
+.gap-3 { gap: 12px; }
+.items-center { align-items: center; }
+.justify-between { justify-content: space-between; }
+.mb-2 { margin-bottom: 8px; }
+.mb-3 { margin-bottom: 12px; }
+.mt-2 { margin-top: 8px; }
+.mt-3 { margin-top: 12px; }
+.space-y-2 > * + * { margin-top: 8px; }
+.space-y-3 > * + * { margin-top: 12px; }
+.p-3 { padding: 12px; }
+.text-sm { font-size: 13px; }
+.text-xs { font-size: 11px; }
+.text-center { text-align: center; }
+.text-secondary { color: var(--text-secondary); }
+.text-muted { color: var(--text-muted); }
+.truncate { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.w-full { width: 100%; }
+@media (max-width: 768px) {
+  .panel-left { width: 44px !important; }
+  .panel-left .panel-body { display: none; }
+  .panel-left .panel-header span { display: none; }
+  .panel-right { position: fixed; right: 0; top: 0; bottom: 0; z-index: 50; box-shadow: -4px 0 12px rgba(0,0,0,0.15); }
+  .topbar-actions .search-wrap input { width: 100px; }
+}
+</style>
+</head>
+<body>
+<div class="app" id="app">
+  <!-- Sidebar (Icon Palette) -->
+  <aside class="sidebar" id="sidebar">
+    <div class="sidebar-header">
+      <span class="logo">🔐</span>
+      <span class="title">File Vault</span>
+    </div>
+    <nav class="sidebar-nav">
+      <div class="nav-item active" data-pane="overview" onclick="switchPane('overview',this)"><span class="icon">📊</span><span class="label">概览</span><span class="badge-dot" style="background:var(--success)"></span></div>
+      <div class="nav-item" data-pane="files" onclick="switchPane('files',this)"><span class="icon">🔐</span><span class="label">文件</span></div>
+      <div class="nav-item" data-pane="clipboard" onclick="switchPane('clipboard',this)"><span class="icon">📋</span><span class="label">剪贴板</span></div>
+      <div class="nav-item" data-pane="passwords" onclick="switchPane('passwords',this)"><span class="icon">🔑</span><span class="label">密码</span></div>
+      <div class="nav-item" data-pane="notes" onclick="switchPane('notes',this)"><span class="icon">📝</span><span class="label">笔记</span></div>
+      <div class="nav-item" data-pane="network" onclick="switchPane('network',this)"><span class="icon">📡</span><span class="label">网络</span></div>
+      <div class="nav-item" data-pane="tasks" onclick="switchPane('tasks',this)"><span class="icon">📋</span><span class="label">任务</span><span class="badge-dot" style="background:var(--warning)"></span></div>
+      <div class="nav-item" data-pane="settings" onclick="switchPane('settings',this)"><span class="icon">⚙️</span><span class="label">设置</span></div>
+    </nav>
+    <div class="sidebar-footer">
+      <button onclick="toggleTheme()">🌓</button>
+      <button onclick="document.getElementById('sidebar').classList.toggle('expanded')">☰</button>
+    </div>
+  </aside>
+
+  <div class="main-area">
+    <header class="topbar">
+      <button class="topbar-menu-btn" onclick="document.getElementById('sidebar').classList.toggle('expanded')">☰</button>
+      <span class="topbar-title" id="pageTitle">概览</span>
+      <div class="topbar-spacer"></div>
+      <div class="mode-controls">
+        <button class="mode-btn active" data-ws="default" onclick="setWorkspace('default')">默认</button>
+        <button class="mode-btn" data-ws="compact" onclick="setWorkspace('compact')">紧凑</button>
+        <button class="mode-btn" data-ws="diagnostic" onclick="setWorkspace('diagnostic')">诊断</button>
+        <button class="mode-btn" data-ws="minimal" onclick="setWorkspace('minimal')">极简</button>
+      </div>
+      <div class="topbar-actions">
+        <div class="search-wrap"><span class="s-icon">🔍</span><input placeholder="搜索…" id="globalSearch" oninput="onSearch(this.value)"></div>
+        <button class="btn btn-primary btn-sm" onclick="showToast('success','操作成功')">新建</button>
+        <button class="btn btn-sm btn-icon" onclick="toggleTheme()">🌓</button>
+      </div>
+    </header>
+
+    <div class="workspace">
+      <!-- Left Panel: Context / Navigator -->
+      <div class="panel panel-left" id="panelLeft">
+        <div class="panel-header">
+          <span class="panel-title">导航</span>
+          <button class="btn btn-sm btn-ghost" onclick="togglePanel('panelLeft')">◀</button>
+        </div>
+        <div class="panel-body" id="leftPanelBody">
+          <div style="margin-bottom:8px">
+            <div class="tree-item" onclick="this.classList.toggle('active')"><span class="icon">📁</span><span class="label">文件加密</span></div>
+            <div class="tree-item" style="padding-left:28px"><span class="icon">📄</span><span class="label">最近加密</span></div>
+            <div class="tree-item" style="padding-left:28px"><span class="icon">🕐</span><span class="label">待处理</span></div>
+            <div class="tree-item" onclick="this.classList.toggle('active')"><span class="icon">📋</span><span class="label">剪贴板</span></div>
+            <div class="tree-item" onclick="this.classList.toggle('active')"><span class="icon">🔑</span><span class="label">密码管理</span></div>
+            <div class="tree-item" onclick="this.classList.toggle('active')"><span class="icon">📝</span><span class="label">笔记</span></div>
+          </div>
+          <div class="card" style="margin-bottom:8px">
+            <div class="card-body" style="padding:8px">
+              <p class="text-xs text-secondary" style="margin-bottom:6px">快速操作</p>
+              <button class="btn btn-sm w-full" style="margin-bottom:4px" onclick="showToast('info','选择文件…')">🔐 加密文件</button>
+              <button class="btn btn-sm w-full" onclick="showToast('info','扫描中…')">🔍 扫描残留</button>
+            </div>
+          </div>
+          <div class="card">
+            <div class="card-header"><span class="card-title">状态</span></div>
+            <div class="card-body" style="padding:8px">
+              <div class="text-xs text-secondary space-y-1">
+                <div>🟢 已解锁</div>
+                <div>📦 0 任务</div>
+                <div>💾 24 MB 缓存</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="panel-resize-handle" id="resizeLeft" onmousedown="startResize('panelLeft',event)"></div>
+
+      <!-- Center Panel: Main Content -->
+      <div class="panel panel-center" id="panelCenter">
+        <div class="panel-body" id="mainContent"></div>
+      </div>
+
+      <!-- Right Panel: Detail -->
+      <div class="panel-resize-handle" id="resizeRight" onmousedown="startResize('panelRight',event)"></div>
+      <div class="panel panel-right" id="panelRight">
+        <div class="panel-header">
+          <span class="panel-title">详情</span>
+          <div><button class="btn btn-sm btn-ghost" onclick="togglePanel('panelRight')">▶</button><button class="btn btn-sm btn-ghost" onclick="document.getElementById('panelRight').classList.add('hidden')">✕</button></div>
+        </div>
+        <div class="panel-body" id="detailBody">
+          <div class="empty-state"><div class="icon">ℹ️</div><h3>选择项目</h3><p>在列表中点击任意条目查看详情</p></div>
+        </div>
+      </div>
+    </div>
+
+    <footer class="statusbar">
+      <span class="statusbar-item">🟢 已解锁</span>
+      <span class="statusbar-item">📦 0 任务</span>
+      <span class="sb-spacer"></span>
+      <span class="statusbar-item">点击 ☰ 展开侧栏</span>
+      <span class="statusbar-item">v0.1.0</span>
+    </footer>
+  </div>
+</div>
+
+<!-- Modal -->
+<div class="modal-overlay" id="modalOverlay">
+  <div class="modal"><div class="modal-header"><h2 class="modal-title" id="modalTitle">标题</h2><button class="modal-close" onclick="closeModal()">✕</button></div>
+    <div class="modal-body" id="modalBody"></div>
+    <div class="modal-footer" id="modalFooter"></div>
+  </div>
+</div>
+<!-- Toast -->
+<div class="toast-container" id="toastContainer"></div>
+
+<script>
+let currentPane = 'overview';
+let isDark = false;
+let dataCount = 'medium';
+let panelWidths = { panelLeft: 260, panelRight: 280 };
+
+const mockData = [
+  { name: '年终总结报告_v7_final_真的最终版.docx', size: '12.8 MB', status: '已加密', date: '2026-07-24', tags: ['工作','重要'] },
+  { name: '全家福照片合集（2026春节）.zip', size: '256 MB', status: '已加密', date: '2026-07-23', tags: ['照片'] },
+  { name: '项目源代码备份_fullstack.tar.gz', size: '89.5 MB', status: '待处理', date: '2026-07-22', tags: [] },
+  { name: '毕业论文_final_submit.docx', size: '3.2 MB', status: '已加密', date: '2026-07-21', tags: ['重要','论文'] },
+  { name: '音乐收藏_Classic_Rock.flac', size: '1.2 GB', status: '加密中…', date: '2026-07-20', tags: ['音乐'] },
+  { name: '密码备份_2026-07-19.csv', size: '45 KB', status: '已加密', date: '2026-07-19', tags: [] },
+  { name: '设计稿_v3_用这个.pdf', size: '8.6 MB', status: '待处理', date: '2026-07-18', tags: ['设计'] },
+  { name: '财务报表_Q2_审计.xlsx', size: '1.5 MB', status: '已加密', date: '2026-07-17', tags: ['工作','财务'] },
+];
+
+function getData() { return mockData; }
+
+function showToast(type, title, desc) {
+  const c = document.getElementById('toastContainer');
+  const t = document.createElement('div');
+  t.className = `toast toast-${type}`;
+  t.innerHTML = `<strong>${title}</strong>${desc ? '<br><span style="color:var(--text-secondary)">'+desc+'</span>' : ''}`;
+  c.appendChild(t);
+  setTimeout(()=>{t.style.opacity='0';t.style.transition='opacity 0.3s';setTimeout(()=>t.remove(),300);},3000);
+}
+
+function switchPane(pane, el) {
+  currentPane = pane;
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+  if (el) el.classList.add('active');
+  const titles = {overview:'概览',files:'文件加密',clipboard:'剪贴板',passwords:'密码管理',notes:'笔记',network:'网络测速',tasks:'任务中心',settings:'设置'};
+  document.getElementById('pageTitle').textContent = titles[pane]||'页面';
+  renderContent(pane);
+}
+
+function toggleTheme() { isDark=!isDark; document.body.classList.toggle('dark',isDark); }
+
+function togglePanel(id) {
+  const p = document.getElementById(id);
+  p.classList.toggle('collapsed');
+}
+
+let searchTimer;
+function onSearch(v) {
+  clearTimeout(searchTimer);
+  searchTimer = setTimeout(() => {
+    document.querySelectorAll('.searchable-row').forEach(r => { r.style.display = r.textContent.toLowerCase().includes(v.toLowerCase()) ? '' : 'none'; });
+  }, 150);
+}
+
+function openModal(title, body, footer) {
+  document.getElementById('modalOverlay').classList.add('open');
+  document.getElementById('modalTitle').textContent = title||'';
+  document.getElementById('modalBody').innerHTML = body||'';
+  document.getElementById('modalFooter').innerHTML = footer||'<button class="btn" onclick="closeModal()">关闭</button>';
+}
+function closeModal() { document.getElementById('modalOverlay').classList.remove('open'); }
+
+let wsMode = 'default';
+function setWorkspace(mode) {
+  wsMode = mode;
+  document.querySelectorAll('.mode-btn').forEach(b => b.classList.toggle('active', b.dataset.ws === mode));
+  const pl = document.getElementById('panelLeft');
+  const pr = document.getElementById('panelRight');
+  if (mode === 'compact') { pl.style.width='44px'; pl.classList.add('collapsed'); pr.style.width='220px'; }
+  else if (mode === 'diagnostic') { pl.style.width='200px'; pl.classList.remove('collapsed'); pr.style.width='300px'; }
+  else if (mode === 'minimal') { pl.style.width='44px'; pl.classList.add('collapsed'); pr.classList.add('hidden'); }
+  else { pl.style.width='260px'; pl.classList.remove('collapsed'); pr.classList.remove('hidden'); pr.style.width='280px'; }
+}
+
+function showDetail(title, content) {
+  document.getElementById('detailBody').innerHTML = `<h3 style="font-size:14px;font-weight:600;margin-bottom:8px">${title}</h3><div class="text-sm text-secondary">${content}</div>`;
+}
+
+function startResize(id, e) {
+  e.preventDefault();
+  const panel = document.getElementById(id);
+  const startX = e.clientX;
+  const startW = panel.offsetWidth;
+  const handle = id === 'panelLeft' ? document.getElementById('resizeLeft') : document.getElementById('resizeRight');
+  handle.classList.add('active');
+  function onMove(ev) {
+    let w = id === 'panelLeft' ? startW + (ev.clientX - startX) : startW - (ev.clientX - startX);
+    w = Math.max(44, Math.min(400, w));
+    panel.style.width = w + 'px';
+    panelWidths[id] = w;
+    panel.classList.remove('collapsed');
+  }
+  function onUp() {
+    handle.classList.remove('active');
+    document.removeEventListener('mousemove', onMove);
+    document.removeEventListener('mouseup', onUp);
+  }
+  document.addEventListener('mousemove', onMove);
+  document.addEventListener('mouseup', onUp);
+}
+
+function renderContent(pane) {
+  const mc = document.getElementById('mainContent');
+  mc.innerHTML = '';
+  (pane === 'overview' ? renderOverview :
+   pane === 'files' ? renderFiles :
+   pane === 'clipboard' ? renderClipboard :
+   pane === 'passwords' ? renderPasswords :
+   pane === 'notes' ? renderNotes :
+   pane === 'network' ? renderNetwork :
+   pane === 'tasks' ? renderTasks :
+   renderSettings)(mc);
+}
+
+function renderOverview(mc) {
+  mc.innerHTML = `
+    <div style="padding:4px 0">
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px;margin-bottom:12px">
+        <div class="card p-3 text-center"><div style="font-size:22px;font-weight:700">${mockData.length}</div><div class="text-xs text-secondary">总文件</div></div>
+        <div class="card p-3 text-center"><div style="font-size:22px;font-weight:700">${mockData.filter(f=>f.status==='已加密').length}</div><div class="text-xs text-secondary">已加密</div></div>
+        <div class="card p-3 text-center"><div style="font-size:22px;font-weight:700">0</div><div class="text-xs text-secondary">待办</div></div>
+        <div class="card p-3 text-center"><div style="font-size:22px;font-weight:700">98%</div><div class="text-xs text-secondary">健康</div></div>
+      </div>
+      <div class="card" style="margin-bottom:12px">
+        <div class="card-header"><span class="card-title">最近文件</span></div>
+        <div class="card-body" style="padding:8px">
+          <div class="table-wrap">
+            <table><thead><tr><th>文件名</th><th>状态</th><th>日期</th></tr></thead>
+              <tbody>${mockData.slice(0,5).map(f => `<tr class="searchable-row" onclick="showDetail('${f.name.replace(/'/g,"\\'")}','状态：${f.status}<br>大小：${f.size}<br>日期：${f.date}')"><td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${f.name}</td><td><span class="badge badge-${f.status==='已加密'?'success':f.status==='待处理'?'warning':'info'}">${f.status}</span></td><td>${f.date}</td></tr>`).join('')}</tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-header"><span class="card-title">长文字测试</span></div>
+        <div class="card-body">
+          <div class="long-text-test">
+            <p><strong>超长中文：</strong>中华人民共和国万岁这是一个非常非常非常非常非常非常非常非常非常非常非常非常非常非常非常非常长的测试句子。</p>
+            <p class="mt-2"><strong>无空格超长字符串：</strong>SupercalifragilisticexpialidociousPneumonoultramicroscopicsilicovolcanoconiosisAntidisestablishmentarism</p>
+            <p class="mt-2"><strong>路径：</strong>C:\Users\username\Projects\src\app\components\features\tools\utils\helpers\formatters\long\path\index.tsx</p>
+            <p class="mt-2"><strong>Emoji + 符号：</strong>🌟 Hello 世界！│ ═══ ─── → ← ↑ ↓ ※ ～ ∞ ≈ ≠ ≤ ≥ √ π ∑ ∫ ±</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function renderFiles(mc) {
+  mc.innerHTML = `<div style="padding:4px 0">
+    <div class="flex justify-between items-center mb-3"><p class="text-sm text-secondary">加密/解密文件，支持批量操作</p>
+      <div class="flex gap-2"><button class="btn btn-primary" onclick="showToast('info','选择文件…')">＋ 选择文件</button><button class="btn" onclick="showToast('info','扫描中…')">🔍 扫描</button></div></div>
+    <div class="card">
+      <div class="card-header"><span class="card-title">文件列表</span></div>
+      <div class="card-body" style="padding:8px">
+        <div class="flex gap-2 mb-2 flex-wrap"><input class="input" placeholder="筛选…" style="width:160px"><select class="select"><option>全部</option><option>已加密</option><option>待处理</option></select></div>
+        <div class="table-wrap">
+          <table><thead><tr><th>文件名</th><th>状态</th><th>标签</th><th>操作</th></tr></thead>
+            <tbody>${mockData.map(f => `<tr class="searchable-row"><td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${f.name}</td><td><span class="badge badge-${f.status==='已加密'?'success':f.status==='待处理'?'warning':'info'}">${f.status}</span></td><td>${(f.tags||[]).map(t=>`<span class="badge badge-info" style="margin-right:3px">${t}</span>`).join('')||'—'}</td><td><button class="btn btn-sm">${f.status==='已加密'?'🔓':'🔐'}</button></td></tr>`).join('')}</tbody>
+          </table>
+        </div>
+      </div>
+    </div></div>`;
+}
+
+function renderClipboard(mc) {
+  mc.innerHTML = `<div style="padding:4px 0">
+    <p class="text-sm text-secondary mb-3">剪贴板历史记录</p>
+    <div class="flex gap-2 mb-3 flex-wrap"><input class="input" placeholder="搜索内容…" style="width:180px"><select class="select"><option>全部</option><option>文本</option><option>链接</option></select></div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:8px">
+      ${['Hello World 测试文本','https://github.com/very/long/url','const x = (a) => a.repeat(3);','带 emoji 🌟🌟🌟'].map((c,i) => `<div class="card p-3 searchable-row"><div class="flex justify-between mb-1"><span class="badge badge-info">${['文本','链接','代码','文本'][i]}</span><span class="text-xs text-secondary">${['10:32','10:28','10:25','10:20'][i]}</span></div><p class="text-sm">${c}</p></div>`).join('')}
+    </div></div>`;
+}
+
+function renderPasswords(mc) {
+  mc.innerHTML = `<div style="padding:4px 0">
+    <div class="flex justify-between items-center mb-3"><p class="text-sm text-secondary">${mockData.length} 个条目</p><button class="btn btn-primary" onclick="showToast('info','新增密码')">＋ 新增</button></div>
+    <div class="card"><div class="card-header"><span class="card-title">密码列表</span></div>
+      <div class="card-body" style="padding:8px">
+        <div class="table-wrap"><table><thead><tr><th>网站</th><th>用户名</th><th>强度</th></tr></thead>
+          <tbody>
+            <tr><td>github.com</td><td>user@example.com</td><td><span class="badge badge-success">强</span></td></tr>
+            <tr><td>google.com</td><td>myaccount@gmail.com</td><td><span class="badge badge-success">强</span></td></tr>
+            <tr><td>weak.example.com</td><td>admin</td><td><span class="badge badge-warning">弱</span></td></tr>
+          </tbody></table></div>
+      </div></div></div>`;
+}
+
+function renderNotes(mc) {
+  mc.innerHTML = `<div style="padding:4px 0">
+    <div class="flex justify-between items-center mb-3"><p class="text-sm text-secondary">Markdown 笔记</p><button class="btn btn-primary" onclick="showToast('info','新建笔记')">＋ 新建</button></div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:8px">
+      <div class="card p-3 searchable-row"><h3 style="font-size:14px;font-weight:600;margin-bottom:4px">会议记录</h3><p class="text-sm text-secondary" style="overflow:hidden;text-overflow:ellipsis;display:-webkit-box;-webkit-line-clamp:2;line-clamp:2;-webkit-box-orient:vertical">讨论了项目进展和下一步计划。</p><div class="flex gap-2 mt-2"><span class="badge badge-info">工作</span><span class="text-xs text-secondary">07-24</span></div></div>
+      <div class="card p-3 searchable-row"><h3 style="font-size:14px;font-weight:600;margin-bottom:4px">React 性能备忘</h3><p class="text-sm text-secondary" style="overflow:hidden;text-overflow:ellipsis;display:-webkit-box;-webkit-line-clamp:2;line-clamp:2;-webkit-box-orient:vertical">虚拟列表和动态行高测量方案。</p><div class="flex gap-2 mt-2"><span class="badge badge-info">技术</span><span class="text-xs text-secondary">07-23</span></div></div>
+    </div></div>`;
+}
+
+function renderNetwork(mc) {
+  mc.innerHTML = `<div style="padding:4px 0">
+    <p class="text-sm text-secondary mb-3">网络连接速度和质量测试</p>
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:12px">
+      <div class="card p-3 text-center"><div style="font-size:20px;font-weight:700">12 ms</div><div class="text-xs text-secondary">延迟</div></div>
+      <div class="card p-3 text-center"><div style="font-size:20px;font-weight:700">98.5</div><div class="text-xs text-secondary">下载 Mbps</div></div>
+      <div class="card p-3 text-center"><div style="font-size:20px;font-weight:700">45.2</div><div class="text-xs text-secondary">上传 Mbps</div></div>
+    </div>
+    <button class="btn btn-primary" onclick="showToast('info','测速中…')">▶ 开始测速</button>
+  </div>`;
+}
+
+function renderTasks(mc) {
+  mc.innerHTML = `<div style="padding:4px 0">
+    <p class="text-sm text-secondary mb-3">管理耗时任务</p>
+    <div class="card p-3 mb-3">
+      <div class="flex justify-between mb-2"><span style="font-weight:600">批量加密 12 个文件</span><span class="badge badge-info">进行中</span></div>
+      <div class="progress mb-2"><div class="progress-bar" style="width:65%"></div></div>
+      <div class="flex justify-between text-xs text-secondary mb-2"><span>8/12</span><span>约 30s</span></div>
+      <div class="flex gap-2"><button class="btn btn-sm" onclick="showToast('info','已暂停')">⏸ 暂停</button><button class="btn btn-sm btn-danger" onclick="showToast('warning','已取消')">✕ 取消</button></div>
+    </div>
+    <div class="card p-3">
+      <div class="flex justify-between mb-2"><span style="font-weight:600">导入 CSV</span><span class="badge badge-warning">等待</span></div>
+      <button class="btn btn-sm" onclick="showToast('info','已开始')">▶ 继续</button>
+    </div>
+  </div>`;
+}
+
+function renderSettings(mc) {
+  mc.innerHTML = `<div style="padding:4px 0;max-width:400px">
+    <div class="card"><div class="card-header"><span class="card-title">账户</span></div>
+      <div class="card-body space-y-2">
+        <button class="btn w-full" onclick="showToast('info','修改密码')">🔑 修改密码</button>
+        <button class="btn w-full" onclick="showToast('info','重新绑定验证器')">📱 重新绑定</button>
+        <button class="btn w-full" onclick="showToast('info','更新邮箱')">📧 更新邮箱</button>
+      </div></div>
+    <div class="card mt-3"><div class="card-header"><span class="card-title">集成</span></div>
+      <div class="card-body"><label style="display:flex;align-items:center;gap:8px;font-size:13px"><input type="checkbox" checked> 开机自启</label></div></div>
+  </div>`;
+}
+
+renderContent('overview');
+</script>
+</body>
+</html>

@@ -1,0 +1,8 @@
+{
+  "scannedAt": 1787064353.0306005,
+  "tool": "npm audit --omit=dev",
+  "critical": 0,
+  "high": 0,
+  "moderate": 0,
+  "low": 0
+}

@@ -1,0 +1,901 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>File Vault UI 方案 B · 专业仪表盘型</title>
+<style>
+/* ===== Design System ===== */
+:root {
+  --primary: #1a3a5c;
+  --primary-hover: #244d78;
+  --primary-light: #e8edf5;
+  --success: #0d7c4f;
+  --warning: #b8860b;
+  --danger: #b91c1c;
+  --info: #2563eb;
+  --bg: #f0f2f5;
+  --bg-card: #ffffff;
+  --bg-sidebar: #1a2332;
+  --bg-input: #ffffff;
+  --bg-header: #ffffff;
+  --text: #1e1e2e;
+  --text-secondary: #6b7280;
+  --text-muted: #9ca3af;
+  --text-sidebar: #c8cdd5;
+  --text-sidebar-active: #ffffff;
+  --border: #e5e7eb;
+  --border-input: #d1d5db;
+  --radius: 6px;
+  --shadow: 0 1px 3px rgba(0,0,0,0.1), 0 1px 2px rgba(0,0,0,0.06);
+  --shadow-lg: 0 4px 16px rgba(0,0,0,0.12);
+  --font: 'Inter', system-ui, -apple-system, 'PingFang SC', 'Microsoft YaHei', sans-serif;
+  --sidebar-w: 220px;
+  --font-size: 13px;
+}
+.dark {
+  --bg: #0f1117;
+  --bg-card: #1a1d27;
+  --bg-sidebar: #0d0f15;
+  --bg-input: #1a1d27;
+  --bg-header: #1a1d27;
+  --text: #e4e5ea;
+  --text-secondary: #8b8d97;
+  --text-muted: #5c5e6a;
+  --text-sidebar: #8b8d97;
+  --text-sidebar-active: #ffffff;
+  --border: #2a2d3a;
+  --border-input: #2a2d3a;
+  --primary: #3b82f6;
+  --primary-light: #1a2235;
+  --shadow: 0 1px 3px rgba(0,0,0,0.3);
+  --shadow-lg: 0 4px 16px rgba(0,0,0,0.4);
+}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  font-family: var(--font);
+  font-size: var(--font-size);
+  background: var(--bg);
+  color: var(--text);
+  line-height: 1.5;
+  overflow: hidden;
+  min-width: 0;
+  min-height: 0;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+/* ===== Layout ===== */
+.app { display: flex; height: 100vh; width: 100vw; }
+/* ===== Sidebar ===== */
+.sidebar {
+  width: var(--sidebar-w);
+  background: var(--bg-sidebar);
+  display: flex;
+  flex-direction: column;
+  transition: width 0.2s ease;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+.sidebar.collapsed { width: 56px; }
+.sidebar-header {
+  padding: 16px;
+  border-bottom: 1px solid rgba(255,255,255,0.08);
+}
+.sidebar-header h1 {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text-sidebar-active);
+  letter-spacing: 0.5px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.sidebar-header .version {
+  font-size: 10px;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.sidebar-nav { flex: 1; overflow-y: auto; padding: 8px 0; }
+.nav-section { margin-bottom: 4px; }
+.nav-section-title {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 1.2px;
+  color: var(--text-muted);
+  padding: 12px 16px 4px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.sidebar.collapsed .nav-section-title { display: none; }
+.nav-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 16px;
+  cursor: pointer;
+  color: var(--text-sidebar);
+  border-radius: 0 6px 6px 0;
+  margin: 1px 8px 1px 0;
+  transition: all 0.12s;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+.nav-item:hover { background: rgba(255,255,255,0.06); color: var(--text-sidebar-active); }
+.nav-item.active {
+  background: var(--primary);
+  color: white;
+  font-weight: 500;
+}
+.nav-item .icon {
+  width: 16px; height: 16px;
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+}
+.nav-item .label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.nav-item .badge-count {
+  margin-left: auto;
+  background: var(--danger);
+  color: white;
+  font-size: 10px;
+  padding: 1px 6px;
+  border-radius: 8px;
+  flex-shrink: 0;
+}
+.sidebar.collapsed .nav-item .label,
+.sidebar.collapsed .nav-item .badge-count { display: none; }
+.sidebar.collapsed .nav-item { justify-content: center; margin: 1px 4px; border-radius: 6px; padding: 8px; }
+.sidebar-footer {
+  padding: 12px 16px;
+  border-top: 1px solid rgba(255,255,255,0.08);
+}
+.sidebar-footer-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px;
+  border-radius: 6px;
+  cursor: pointer;
+  color: var(--text-sidebar);
+  font-size: 12px;
+  transition: background 0.12s;
+}
+.sidebar-footer-item:hover { background: rgba(255,255,255,0.06); }
+/* ===== Main Area ===== */
+.main-area { flex: 1; display: flex; flex-direction: column; overflow: hidden; min-width: 0; }
+/* ===== Top Bar ===== */
+.topbar {
+  height: 48px;
+  background: var(--bg-header);
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  padding: 0 16px;
+  gap: 12px;
+  flex-shrink: 0;
+}
+.topbar-title { font-size: 15px; font-weight: 600; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.topbar-breadcrumb { display: flex; align-items: center; gap: 4px; font-size: 12px; color: var(--text-secondary); }
+.breadcrumb-sep { color: var(--text-muted); }
+.topbar-spacer { flex: 1; min-width: 0; }
+.topbar-actions { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
+.search-wrapper {
+  position: relative;
+}
+.search-wrapper input {
+  width: 200px;
+  padding: 6px 10px 6px 30px;
+  border: 1px solid var(--border-input);
+  border-radius: 6px;
+  font-size: 12px;
+  background: var(--bg-input);
+  color: var(--text);
+  outline: none;
+}
+.search-wrapper input:focus { border-color: var(--primary); }
+.search-icon { position: absolute; left: 9px; top: 50%; transform: translateY(-50%); color: var(--text-muted); font-size: 13px; pointer-events: none; }
+/* ===== Content ===== */
+.content { flex: 1; overflow-y: auto; padding: 20px; min-height: 0; }
+/* ===== Cards ===== */
+.card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  min-width: 0;
+  min-height: 0;
+}
+.card-header {
+  padding: 14px 16px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  border-bottom: 1px solid var(--border);
+}
+.card-title { font-size: 13px; font-weight: 600; min-width: 0; }
+.card-body { padding: 14px 16px; min-width: 0; }
+/* Dashboard Metric Cards */
+.metric-row { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 12px; margin-bottom: 16px; }
+.metric-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 16px;
+  box-shadow: var(--shadow);
+  position: relative;
+  overflow: hidden;
+  min-width: 0;
+}
+.metric-card::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 3px;
+  background: var(--primary);
+}
+.metric-card .metric-label { font-size: 11px; font-weight: 500; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.metric-card .metric-value { font-size: 26px; font-weight: 700; line-height: 1.2; }
+.metric-card .metric-change { font-size: 11px; margin-top: 2px; }
+.metric-card .metric-change.up { color: var(--success); }
+.metric-card .metric-change.down { color: var(--danger); }
+/* Buttons */
+.btn {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 6px 14px; border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--bg-card);
+  color: var(--text); font-size: 13px;
+  cursor: pointer; transition: all 0.12s;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  max-width: 100%; min-width: 0;
+}
+.btn:hover { border-color: var(--primary); color: var(--primary); }
+.btn:active { transform: scale(0.97); }
+.btn:disabled { opacity: 0.4; cursor: not-allowed; }
+.btn-primary { background: var(--primary); color: white; border-color: var(--primary); }
+.btn-primary:hover { background: var(--primary-hover); color: white; }
+.btn-danger { background: var(--danger); color: white; border-color: var(--danger); }
+.btn-sm { padding: 3px 10px; font-size: 12px; }
+.btn-icon { width: 32px; height: 32px; padding: 0; display: inline-flex; align-items: center; justify-content: center; }
+.btn-ghost { border-color: transparent; background: transparent; }
+.btn-ghost:hover { background: var(--primary-light); }
+/* Inputs */
+.input {
+  border: 1px solid var(--border-input); border-radius: 6px;
+  padding: 6px 10px; font-size: 13px;
+  background: var(--bg-input); color: var(--text);
+  outline: none; transition: border-color 0.12s;
+  min-width: 0; width: 100%; max-width: 100%;
+}
+.input:focus { border-color: var(--primary); box-shadow: 0 0 0 3px rgba(59,130,246,0.1); }
+.select {
+  border: 1px solid var(--border-input); border-radius: 6px;
+  padding: 6px 10px; font-size: 13px;
+  background: var(--bg-input); color: var(--text);
+  outline: none; min-width: 0;
+}
+/* Table */
+.table-wrap { overflow-x: auto; min-width: 0; }
+table { width: 100%; border-collapse: collapse; font-size: 13px; }
+th, td { text-align: left; padding: 8px 12px; border-bottom: 1px solid var(--border); overflow-wrap: anywhere; word-break: break-word; line-height: 1.5; vertical-align: top; }
+th { font-weight: 600; color: var(--text-secondary); font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; white-space: nowrap; }
+tr:hover td { background: var(--primary-light); }
+/* Badge */
+.badge {
+  display: inline-block; padding: 1px 7px; border-radius: 10px;
+  font-size: 11px; font-weight: 500;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 150px;
+}
+.badge-success { background: rgba(13,124,79,0.12); color: var(--success); }
+.badge-warning { background: rgba(184,134,11,0.12); color: var(--warning); }
+.badge-danger { background: rgba(185,28,28,0.12); color: var(--danger); }
+.badge-info { background: rgba(37,99,235,0.12); color: var(--info); }
+/* Alert */
+.alert { padding: 10px 14px; border-radius: 6px; font-size: 13px; border: 1px solid transparent; }
+.alert-error { background: rgba(185,28,28,0.08); border-color: rgba(185,28,28,0.2); color: var(--danger); }
+.alert-success { background: rgba(13,124,79,0.08); border-color: rgba(13,124,79,0.2); color: var(--success); }
+.alert-warning { background: rgba(184,134,11,0.08); border-color: rgba(184,134,11,0.2); color: var(--warning); }
+.alert-info { background: rgba(37,99,235,0.08); border-color: rgba(37,99,235,0.2); color: var(--info); }
+/* Progress */
+.progress { width: 100%; height: 6px; background: var(--border); border-radius: 3px; overflow: hidden; }
+.progress-bar { height: 100%; background: var(--primary); border-radius: 3px; transition: width 0.3s; }
+/* Tabs */
+.tabs { display: flex; gap: 0; border-bottom: 1px solid var(--border); margin-bottom: 16px; }
+.tab { padding: 8px 16px; cursor: pointer; font-size: 13px; color: var(--text-secondary); border-bottom: 2px solid transparent; transition: all 0.12s; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tab:hover { color: var(--text); }
+.tab.active { color: var(--primary); border-bottom-color: var(--primary); font-weight: 500; }
+/* Modal */
+.modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.5); display: none; align-items: center; justify-content: center; z-index: 100; backdrop-filter: blur(2px); }
+.modal-overlay.open { display: flex; }
+.modal { background: var(--bg-card); border-radius: 10px; box-shadow: var(--shadow-lg); width: 90%; max-width: 480px; max-height: 85vh; overflow-y: auto; min-width: 0; }
+.modal-header { padding: 16px 20px; display: flex; justify-content: space-between; align-items: center; gap: 8px; border-bottom: 1px solid var(--border); }
+.modal-title { font-size: 15px; font-weight: 600; }
+.modal-body { padding: 16px 20px; }
+.modal-footer { padding: 12px 20px; display: flex; gap: 8px; justify-content: flex-end; border-top: 1px solid var(--border); }
+.modal-close { border: none; background: transparent; cursor: pointer; font-size: 18px; color: var(--text-secondary); width: 28px; height: 28px; border-radius: 4px; display: flex; align-items: center; justify-content: center; }
+.modal-close:hover { background: var(--primary-light); }
+/* Toast */
+.toast-container { position: fixed; top: 12px; right: 12px; z-index: 200; display: flex; flex-direction: column; gap: 8px; pointer-events: none; }
+.toast { background: var(--bg-card); border: 1px solid var(--border); border-radius: 8px; box-shadow: var(--shadow-lg); padding: 12px 16px; font-size: 13px; min-width: 240px; max-width: 360px; pointer-events: auto; animation: slideIn 0.3s ease; }
+.toast-success { border-left: 3px solid var(--success); }
+.toast-error { border-left: 3px solid var(--danger); }
+.toast-warning { border-left: 3px solid var(--warning); }
+.toast-info { border-left: 3px solid var(--info); }
+@keyframes slideIn { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+/* Empty State */
+.empty-state { display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 48px 20px; text-align: center; color: var(--text-secondary); }
+.empty-state .icon { font-size: 40px; margin-bottom: 12px; opacity: 0.25; }
+.empty-state h3 { font-size: 15px; font-weight: 600; margin-bottom: 6px; color: var(--text); }
+.empty-state p { font-size: 13px; max-width: 320px; }
+/* Long text test */
+.long-text-test {
+  border: 1px dashed var(--border);
+  padding: 12px; margin: 8px 0;
+  border-radius: 6px;
+  font-size: 13px;
+  line-height: 1.6;
+  overflow-wrap: anywhere; word-break: break-word;
+  min-width: 0; width: 100%;
+}
+/* Status Bar */
+.statusbar {
+  height: 26px;
+  background: var(--bg-sidebar);
+  color: rgba(255,255,255,0.5);
+  display: flex;
+  align-items: center;
+  padding: 0 12px;
+  font-size: 11px;
+  gap: 16px;
+  flex-shrink: 0;
+  min-width: 0;
+}
+.statusbar-item { display: flex; align-items: center; gap: 4px; white-space: nowrap; }
+.statusbar-spacer { flex: 1; min-width: 0; }
+/* Filter Bar */
+.filter-bar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 12px; }
+/* Dashboard Charts */
+.chart-area {
+  margin: 12px 0;
+  min-width: 0;
+}
+.chart-container {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 16px;
+  box-shadow: var(--shadow);
+  min-width: 0;
+}
+.chart-title { font-size: 12px; font-weight: 600; margin-bottom: 8px; color: var(--text-secondary); }
+.chart-svg { width: 100%; height: 120px; }
+/* KPI Grid */
+.kpi-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px; margin-bottom: 16px; }
+.kpi-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  box-shadow: var(--shadow);
+  min-width: 0;
+}
+.kpi-title { font-size: 11px; font-weight: 500; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.kpi-value { font-size: 28px; font-weight: 700; line-height: 1.2; }
+.kpi-footer { font-size: 11px; color: var(--text-muted); margin-top: auto; }
+.kpi-row { display: flex; gap: 8px; align-items: baseline; }
+/* Util */
+.flex { display: flex; }
+.flex-1 { flex: 1; min-width: 0; }
+.gap-2 { gap: 8px; }
+.gap-3 { gap: 12px; }
+.gap-4 { gap: 16px; }
+.items-center { align-items: center; }
+.justify-between { justify-content: space-between; }
+.mb-2 { margin-bottom: 8px; }
+.mb-3 { margin-bottom: 12px; }
+.mb-4 { margin-bottom: 16px; }
+.mt-2 { margin-top: 8px; }
+.mt-3 { margin-top: 12px; }
+.mt-4 { margin-top: 16px; }
+.space-y-2 > * + * { margin-top: 8px; }
+.space-y-3 > * + * { margin-top: 12px; }
+.space-y-4 > * + * { margin-top: 16px; }
+.p-3 { padding: 12px; }
+.p-4 { padding: 16px; }
+.text-sm { font-size: 13px; }
+.text-xs { font-size: 11px; }
+.text-center { text-align: center; }
+.text-right { text-align: right; }
+.text-secondary { color: var(--text-secondary); }
+.text-muted { color: var(--text-muted); }
+.truncate { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.w-full { width: 100%; }
+.hidden { display: none; }
+/* Grid layouts */
+.grid-2 { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 16px; }
+.grid-3 { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 12px; }
+.grid-4 { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 12px; }
+@media (max-width: 768px) {
+  .sidebar { width: 56px; }
+  .sidebar .nav-item .label,
+  .sidebar .nav-item .badge-count,
+  .sidebar .nav-section-title,
+  .sidebar .version { display: none; }
+  .search-wrapper input { width: 120px; }
+  .grid-2, .grid-3, .grid-4, .kpi-grid { grid-template-columns: 1fr; }
+}
+</style>
+</head>
+<body>
+<div class="app" id="app">
+  <!-- Sidebar -->
+  <aside class="sidebar" id="sidebar">
+    <div class="sidebar-header">
+      <h1>VAULT DASH</h1>
+      <div class="version">v0.1.0 · 已解锁</div>
+    </div>
+    <nav class="sidebar-nav">
+      <div class="nav-section">
+        <div class="nav-section-title">概览</div>
+        <div class="nav-item active" data-pane="overview" onclick="switchPane('overview',this)"><span class="icon">📊</span><span class="label">仪表盘</span></div>
+        <div class="nav-item" data-pane="tasks" onclick="switchPane('tasks',this)"><span class="icon">📋</span><span class="label">任务中心</span><span class="badge-count">2</span></div>
+      </div>
+      <div class="nav-section">
+        <div class="nav-section-title">安全</div>
+        <div class="nav-item" data-pane="files" onclick="switchPane('files',this)"><span class="icon">🔐</span><span class="label">文件加密</span></div>
+        <div class="nav-item" data-pane="passwords" onclick="switchPane('passwords',this)"><span class="icon">🔑</span><span class="label">密码库</span></div>
+        <div class="nav-item" data-pane="recovery" onclick="switchPane('recovery',this)"><span class="icon">🆘</span><span class="label">恢复密钥</span></div>
+      </div>
+      <div class="nav-section">
+        <div class="nav-section-title">生产力</div>
+        <div class="nav-item" data-pane="clipboard" onclick="switchPane('clipboard',this)"><span class="icon">📋</span><span class="label">剪贴板</span></div>
+        <div class="nav-item" data-pane="notes" onclick="switchPane('notes',this)"><span class="icon">📝</span><span class="label">笔记</span></div>
+        <div class="nav-item" data-pane="ai" onclick="switchPane('ai',this)"><span class="icon">🤖</span><span class="label">AI 助手</span></div>
+      </div>
+      <div class="nav-section">
+        <div class="nav-section-title">网络</div>
+        <div class="nav-item" data-pane="network" onclick="switchPane('network',this)"><span class="icon">📡</span><span class="label">测速</span></div>
+        <div class="nav-item" data-pane="filemanager" onclick="switchPane('filemanager',this)"><span class="icon">🗂️</span><span class="label">文件管理</span></div>
+      </div>
+      <div class="nav-section">
+        <div class="nav-section-title">系统</div>
+        <div class="nav-item" data-pane="diagnostics" onclick="switchPane('diagnostics',this)"><span class="icon">🔬</span><span class="label">诊断中心</span></div>
+        <div class="nav-item" data-pane="settings" onclick="switchPane('settings',this)"><span class="icon">⚙️</span><span class="label">设置</span></div>
+        <div class="nav-item" data-pane="help" onclick="switchPane('help',this)"><span class="icon">❓</span><span class="label">帮助</span></div>
+      </div>
+    </nav>
+    <div class="sidebar-footer">
+      <div class="sidebar-footer-item" onclick="toggleTheme()">🌓 切换主题</div>
+      <div class="sidebar-footer-item" onclick="toggleSidebar()">◀ 折叠侧栏</div>
+    </div>
+  </aside>
+
+  <!-- Main -->
+  <div class="main-area">
+    <header class="topbar">
+      <span class="topbar-title" id="pageTitle">仪表盘</span>
+      <span class="topbar-breadcrumb"><span>仪表盘</span></span>
+      <div class="topbar-spacer"></div>
+      <div class="topbar-actions">
+        <div class="search-wrapper">
+          <span class="search-icon">🔍</span>
+          <input placeholder="搜索命令或数据…" id="globalSearch" oninput="onSearch(this.value)">
+        </div>
+        <button class="btn btn-primary btn-sm" onclick="showToast('success','新建成功')">＋ 新建</button>
+        <button class="btn btn-sm" onclick="showToast('info','导入中…')">导入</button>
+        <button class="btn btn-sm btn-icon" onclick="toggleTheme()" data-tooltip="主题">🌓</button>
+      </div>
+    </header>
+
+    <main class="content" id="mainContent"></main>
+
+    <footer class="statusbar">
+      <span class="statusbar-item">🔒 加密已就绪</span>
+      <span class="statusbar-item">📦 0 任务队列</span>
+      <span class="statusbar-item">⚡ 98% 健康</span>
+      <span class="statusbar-item">💾 缓存 24 MB</span>
+      <span class="statusbar-spacer"></span>
+      <span class="statusbar-item">v0.1.0</span>
+    </footer>
+  </div>
+</div>
+
+<!-- Modal -->
+<div class="modal-overlay" id="modalOverlay">
+  <div class="modal">
+    <div class="modal-header">
+      <h2 class="modal-title" id="modalTitle">标题</h2>
+      <button class="modal-close" onclick="closeModal()">✕</button>
+    </div>
+    <div class="modal-body" id="modalBody"></div>
+    <div class="modal-footer" id="modalFooter"></div>
+  </div>
+</div>
+
+<!-- Toast -->
+<div class="toast-container" id="toastContainer"></div>
+
+<script>
+let currentPane = 'overview';
+let isDark = false;
+let dataCount = 'medium';
+const mockData = [
+  { name: '年终总结报告_v7_final_真的最终版.docx', size: '12.8 MB', status: '已加密', date: '2026-07-24', tags: ['工作','重要'], encryptTime: '2.3s' },
+  { name: '全家福照片合集（2026春节）.zip', size: '256 MB', status: '已加密', date: '2026-07-23', tags: ['照片'], encryptTime: '8.7s' },
+  { name: '项目源代码备份_fullstack.tar.gz', size: '89.5 MB', status: '待处理', date: '2026-07-22', tags: [], encryptTime: '-' },
+  { name: '毕业论文_final_submit.docx', size: '3.2 MB', status: '已加密', date: '2026-07-21', tags: ['重要','论文'], encryptTime: '0.8s' },
+  { name: '音乐收藏_Classic_Rock.flac', size: '1.2 GB', status: '加密中…', date: '2026-07-20', tags: ['音乐'], encryptTime: '42.5s' },
+  { name: '密码备份_2026-07-19.csv', size: '45 KB', status: '已加密', date: '2026-07-19', tags: [], encryptTime: '0.1s' },
+  { name: '设计稿_UI_UX_最新修改稿_v3_用这个.pdf', size: '8.6 MB', status: '待处理', date: '2026-07-18', tags: ['设计'], encryptTime: '-' },
+  { name: '财务报表_2026_Q2_审计备份.xlsx', size: '1.5 MB', status: '已加密', date: '2026-07-17', tags: ['工作','财务'], encryptTime: '0.4s' },
+];
+
+function getData() { return mockData; }
+function showToast(type, title, desc) {
+  const c = document.getElementById('toastContainer');
+  const t = document.createElement('div');
+  t.className = `toast toast-${type}`;
+  t.innerHTML = `<strong>${title}</strong>${desc ? '<br><span style="color:var(--text-secondary)">' + desc + '</span>' : ''}`;
+  c.appendChild(t);
+  setTimeout(() => { t.style.opacity='0'; t.style.transition='opacity 0.3s'; setTimeout(()=>t.remove(),300); }, 3000);
+}
+
+function switchPane(pane, el) {
+  currentPane = pane;
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+  if (el) el.classList.add('active');
+  const titles = { overview:'仪表盘', tasks:'任务中心', files:'文件加密', passwords:'密码库', recovery:'恢复密钥', clipboard:'剪贴板', notes:'笔记', ai:'AI 助手', network:'网络测速', filemanager:'文件管理', diagnostics:'诊断中心', settings:'设置', help:'帮助' };
+  document.getElementById('pageTitle').textContent = titles[pane]||'页面';
+  renderContent(pane);
+}
+
+function toggleTheme() { isDark=!isDark; document.body.classList.toggle('dark',isDark); }
+function toggleSidebar() { document.getElementById('sidebar').classList.toggle('collapsed'); }
+
+let searchTimer;
+function onSearch(v) {
+  clearTimeout(searchTimer);
+  searchTimer = setTimeout(() => {
+    document.querySelectorAll('.searchable-row').forEach(r => { r.style.display = r.textContent.toLowerCase().includes(v.toLowerCase()) ? '' : 'none'; });
+  }, 150);
+}
+
+function openModal(title, body, footer) {
+  document.getElementById('modalOverlay').classList.add('open');
+  document.getElementById('modalTitle').textContent = title||'弹窗';
+  document.getElementById('modalBody').innerHTML = body||'';
+  document.getElementById('modalFooter').innerHTML = footer||'<button class="btn" onclick="closeModal()">关闭</button>';
+}
+function closeModal() { document.getElementById('modalOverlay').classList.remove('open'); }
+
+function renderContent(pane) {
+  const mc = document.getElementById('mainContent');
+  mc.innerHTML = '';
+  const renderers = {
+    overview: renderOverview,
+    tasks: renderTasks,
+    files: renderFiles,
+    passwords: renderPasswords,
+    recovery: () => mc.innerHTML = `<div class="empty-state"><div class="icon">🆘</div><h3>恢复密钥管理</h3><p>管理第三方 2FA 恢复密钥，支持导入、查看、标记已使用和导出备份。</p><button class="btn btn-primary mt-3" onclick="showToast('info','查看恢复密钥','需要重新验证身份')">查看恢复密钥</button></div>`,
+    clipboard: renderClipboard,
+    notes: renderNotes,
+    ai: () => mc.innerHTML = `<div class="empty-state"><div class="icon">🤖</div><h3>AI 助手</h3><p>基于 OpenAI 兼容接口的智能对话，支持技能选择和历史记录。</p></div>`,
+    network: renderNetwork,
+    filemanager: () => mc.innerHTML = `<div class="empty-state"><div class="icon">🗂️</div><h3>文件管理器</h3><p>浏览文件、拖放操作、批量重命名、重复检测。</p></div>`,
+    diagnostics: renderDiagnostics,
+    settings: renderSettings,
+    help: () => mc.innerHTML = `<div class="empty-state"><div class="icon">❓</div><h3>帮助与快捷键</h3><p>查看操作指南和全部快捷键。</p></div>`,
+  };
+  (renderers[pane]||renderOverview)(mc);
+}
+
+function renderOverview(mc) {
+  mc.innerHTML = `
+    <div class="space-y-4">
+      <div class="flex justify-between items-center">
+        <div><h2 style="font-size:17px;font-weight:700">概览仪表盘</h2><p class="text-sm text-secondary">系统运行状态 · ${new Date().toLocaleDateString()}</p></div>
+        <div class="flex gap-2">
+          <button class="btn btn-sm btn-ghost" onclick="showToast('info','正在刷新…')">🔄 刷新</button>
+          <select class="select" style="width:auto" onchange="showToast('info','时间范围：'+this.value)">
+            <option>今日</option><option>本周</option><option>本月</option>
+          </select>
+        </div>
+      </div>
+      <div class="kpi-grid">
+        <div class="kpi-card"><div class="kpi-title">总文件数</div><div class="kpi-value">${mockData.length}</div><div class="kpi-footer">${mockData.filter(f=>f.status==='已加密').length} 已加密</div></div>
+        <div class="kpi-card"><div class="kpi-title">保护数据量</div><div class="kpi-value">${(Math.random()*2+1).toFixed(1)} GB</div><div class="kpi-footer kpi-row"><span class="up" style="color:var(--success)">↑ 12.3%</span><span>较上周</span></div></div>
+        <div class="kpi-card"><div class="kpi-title">系统健康</div><div class="kpi-value" style="color:var(--success)">98%</div><div class="kpi-footer">最近 24h 无异常</div></div>
+        <div class="kpi-card"><div class="kpi-title">内存占用</div><div class="kpi-value">186 MB</div><div class="kpi-footer">峰值 312 MB</div></div>
+        <div class="kpi-card"><div class="kpi-title">活跃任务</div><div class="kpi-value">2</div><div class="kpi-footer">1 等待中 · 1 进行中</div></div>
+      </div>
+      <div class="grid-2">
+        <div class="chart-container">
+          <div class="chart-title">加密操作趋势（最近 7 天）</div>
+          <svg class="chart-svg" viewBox="0 0 300 120">
+            <defs><linearGradient id="area1" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="var(--primary)" stop-opacity="0.2"/><stop offset="100%" stop-color="var(--primary)" stop-opacity="0"/></linearGradient></defs>
+            <polyline points="10,95 50,70 100,80 150,40 200,55 250,30 290,45" fill="none" stroke="var(--primary)" stroke-width="2"/>
+            <polygon points="10,95 50,70 100,80 150,40 200,55 250,30 290,45 290,120 10,120" fill="url(#area1)"/>
+            <circle cx="250" cy="30" r="4" fill="var(--primary)"/>
+          </svg>
+        </div>
+        <div class="chart-container">
+          <div class="chart-title">性能监控</div>
+          <svg class="chart-svg" viewBox="0 0 300 120">
+            <polyline points="10,20 50,35 100,60 150,45 200,70 250,55 290,40" fill="none" stroke="var(--success)" stroke-width="2" stroke-dasharray="4,3"/>
+            <polyline points="10,80 50,65 100,50 150,75 200,45 250,60 290,55" fill="none" stroke="var(--primary)" stroke-width="2"/>
+          </svg>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-header"><span class="card-title">最近文件活动</span></div>
+        <div class="card-body">
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>文件名</th><th>大小</th><th>状态</th><th>耗时</th><th>日期</th></tr></thead>
+              <tbody>
+                ${mockData.map(f => `<tr class="searchable-row"><td style="max-width:250px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" data-tooltip="${f.name}">${f.name}</td><td>${f.size}</td><td><span class="badge badge-${f.status==='已加密'?'success':f.status==='待处理'?'warning':'info'}">${f.status}</span></td><td>${f.encryptTime}</td><td>${f.date}</td></tr>`).join('')}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-header"><span class="card-title">长文字测试</span></div>
+        <div class="card-body">
+          <div class="long-text-test">
+            <p><strong>超长中文+英文混排：</strong>中华人民共和国万岁 World Peace 这是一个非常非常非常非常非常非常非常非常非常非常非常非常非常非常非常非常长的测试句子用于验证文字换行行高。</p>
+            <p class="mt-2"><strong>无空格长字符串：</strong>SupercalifragilisticexpialidociousPneumonoultramicroscopicsilicovolcanoconiosisAntidisestablishmentarism@#$%^&*()_+</p>
+            <p class="mt-2"><strong>路径：</strong>C:\Users\username\Documents\Project\src\components\modules\features\submodules\renderer\utils\helpers\formatters\index.tsx</p>
+            <p class="mt-2"><strong>Emoji 和特殊符号：</strong>🌟 Hello 世界！│ ═══ 分隔符 ─── → ← ↑ ↓ ※ ～ ∞ ≈ ≠ ≤ ≥ √ π ∑ ∫ ±</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function renderTasks(mc) {
+  mc.innerHTML = `
+    <div class="space-y-4">
+      <h2 style="font-size:17px;font-weight:700">任务中心</h2>
+      <div class="metric-row">
+        <div class="metric-card"><div class="metric-label">进行中</div><div class="metric-value">1</div></div>
+        <div class="metric-card"><div class="metric-label">队列中</div><div class="metric-value">1</div></div>
+        <div class="metric-card"><div class="metric-label">今日完成</div><div class="metric-value">8</div><div class="metric-change up">↑ 3</div></div>
+        <div class="metric-card"><div class="metric-label">失败率</div><div class="metric-value" style="color:var(--success)">0%</div></div>
+      </div>
+      <div class="card">
+        <div class="card-body">
+          <div class="space-y-3">
+            <div class="card p-3">
+              <div class="flex justify-between mb-2"><span style="font-size:14px;font-weight:600">批量加密 12 个文件</span><span class="badge badge-info">进行中</span></div>
+              <div class="progress mb-2"><div class="progress-bar" style="width:65%"></div></div>
+              <div class="flex justify-between text-xs text-secondary"><span>已完成 8/12</span><span>约 30s</span></div>
+              <div class="flex gap-2 mt-2"><button class="btn btn-sm" onclick="showToast('info','已暂停')">⏸ 暂停</button><button class="btn btn-sm btn-danger" onclick="showToast('warning','已取消')">✕ 取消</button></div>
+            </div>
+            <div class="card p-3">
+              <div class="flex justify-between mb-2"><span style="font-size:14px;font-weight:600">导入密码 CSV</span><span class="badge badge-warning">等待中</span></div>
+              <div class="flex gap-2"><button class="btn btn-sm" onclick="showToast('info','已开始')">▶ 继续</button><button class="btn btn-sm" onclick="showToast('warning','已取消')">✕ 取消</button></div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-header"><span class="card-title">操作影响预览</span></div>
+        <div class="card-body">
+          <div class="alert alert-info mb-3">⚠️ 即将批量加密 5 个文件</div>
+          <table>
+            <thead><tr><th>文件</th><th>大小</th><th>操作</th><th>可撤销</th></tr></thead>
+            <tbody>
+              <tr><td>工作报告.docx</td><td>2.3 MB</td><td>加密 + 安全删除</td><td style="color:var(--danger)">❌ 不可撤销</td></tr>
+              <tr><td>财务表.xlsx</td><td>1.5 MB</td><td>加密 + 安全删除</td><td style="color:var(--danger)">❌ 不可撤销</td></tr>
+            </tbody>
+          </table>
+          <div class="flex gap-2 mt-3"><button class="btn btn-primary" onclick="showToast('success','开始处理')">确认执行</button><button class="btn" onclick="showToast('info','已取消')">取消</button></div>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function renderFiles(mc) {
+  mc.innerHTML = `
+    <div class="space-y-4">
+      <div class="flex justify-between"><div><h2 style="font-size:17px;font-weight:700">文件加密</h2><p class="text-sm text-secondary">AES-256-GCM · 批量加密 · 安全删除</p></div>
+        <div class="flex gap-2"><button class="btn btn-primary" onclick="showToast('info','选择文件…')">＋ 选择文件</button><button class="btn" onclick="showToast('info','正在扫描…')">🔍 扫描残留</button></div>
+      </div>
+      <div class="metric-row">
+        <div class="metric-card"><div class="metric-label">已加密文件</div><div class="metric-value">${mockData.filter(f=>f.status==='已加密').length}</div></div>
+        <div class="metric-card"><div class="metric-label">待处理</div><div class="metric-value">${mockData.filter(f=>f.status==='待处理').length}</div></div>
+        <div class="metric-card"><div class="metric-label">今日新增</div><div class="metric-value">3</div></div>
+      </div>
+      <div class="card">
+        <div class="card-header"><span class="card-title">文件列表</span></div>
+        <div class="card-body">
+          <div class="filter-bar">
+            <input class="input" placeholder="筛选文件名…" style="width:200px">
+            <select class="select"><option>全部状态</option><option>已加密</option><option>待处理</option></select>
+            <button class="btn btn-sm">清除</button>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>文件名</th><th>大小</th><th>状态</th><th>标签</th><th>操作</th></tr></thead>
+              <tbody>
+                ${mockData.map(f => `<tr class="searchable-row"><td style="max-width:250px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${f.name}</td><td>${f.size}</td><td><span class="badge badge-${f.status==='已加密'?'success':f.status==='待处理'?'warning':'info'}">${f.status}</span></td><td>${(f.tags||[]).map(t => `<span class="badge badge-info" style="margin-right:4px">${t}</span>`).join('')||'—'}</td><td><button class="btn btn-sm">${f.status==='已加密'?'🔓 解密':'🔐 加密'}</button></td></tr>`).join('')}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function renderPasswords(mc) {
+  mc.innerHTML = `
+    <div class="space-y-4">
+      <div class="flex justify-between"><div><h2 style="font-size:17px;font-weight:700">密码库</h2><p class="text-sm text-secondary">${mockData.length} 个条目 · 最后更新 ${new Date().toLocaleDateString()}</p></div>
+        <div class="flex gap-2"><button class="btn btn-primary" onclick="showToast('info','新增密码')">＋ 新增</button><button class="btn">导入 CSV</button><button class="btn">导出</button></div>
+      </div>
+      <div class="metric-row">
+        <div class="metric-card"><div class="metric-label">总密码</div><div class="metric-value">3</div></div>
+        <div class="metric-card"><div class="metric-label">高强度</div><div class="metric-value" style="color:var(--success)">2</div></div>
+        <div class="metric-card"><div class="metric-label">弱密码</div><div class="metric-value" style="color:var(--danger)">1</div></div>
+        <div class="metric-card"><div class="metric-label">健康评分</div><div class="metric-value" style="color:var(--warning)">67%</div></div>
+      </div>
+      <div class="card">
+        <div class="card-body">
+          <div class="filter-bar"><input class="input" placeholder="搜索网站或用户名…" style="width:200px"><select class="select"><option>全部</option><option>高强度</option><option>弱密码</option></select></div>
+          <div class="table-wrap">
+            <table><thead><tr><th>网站</th><th>用户名</th><th>密码</th><th>强度</th><th>操作</th></tr></thead>
+              <tbody>
+                <tr><td>github.com</td><td>user@example.com</td><td>••••••••</td><td><span class="badge badge-success">强</span></td><td><button class="btn btn-sm btn-ghost">复制</button><button class="btn btn-sm btn-ghost">编辑</button></td></tr>
+                <tr><td>google.com</td><td>myaccount@gmail.com</td><td>••••••••</td><td><span class="badge badge-success">强</span></td><td><button class="btn btn-sm btn-ghost">复制</button><button class="btn btn-sm btn-ghost">编辑</button></td></tr>
+                <tr><td>weak.example.com</td><td>admin</td><td>••••••</td><td><span class="badge badge-danger">弱</span></td><td><button class="btn btn-sm btn-ghost">编辑</button></td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function renderClipboard(mc) {
+  mc.innerHTML = `
+    <div class="space-y-4">
+      <div class="flex justify-between"><div><h2 style="font-size:17px;font-weight:700">剪贴板历史</h2><p class="text-sm text-secondary">自动分类 · 可搜索 · 软删除</p></div>
+        <div class="flex gap-2"><button class="btn btn-sm" onclick="showToast('info','已清除')">清空</button><button class="btn btn-sm">导出</button></div>
+      </div>
+      <div class="filter-bar">
+        <input class="input" placeholder="搜索内容…" style="width:200px">
+        <select class="select"><option>全部分类</option><option>文本</option><option>链接</option><option>代码</option></select>
+      </div>
+      <div class="grid-2">
+        ${['Hello World 测试文本','https://github.com/very/long/url/path/that/breaks','const x = (a: string) => a.repeat(3);','带 emoji 的测试内容 🌟🌟🌟'].map((c,i) => `
+          <div class="card p-3 searchable-row">
+            <div class="flex justify-between mb-2"><span class="badge badge-info">${['文本','链接','代码','文本'][i]}</span><span class="text-xs text-secondary">${['10:32','10:28','10:25','10:20'][i]}</span></div>
+            <p class="text-sm" style="overflow:hidden;text-overflow:ellipsis;display:-webkit-box;-webkit-line-clamp:2;line-clamp:2;-webkit-box-orient:vertical">${c}</p>
+          </div>
+        `).join('')}
+      </div>
+    </div>
+  `;
+}
+
+function renderNotes(mc) {
+  mc.innerHTML = `
+    <div class="space-y-4">
+      <div class="flex justify-between"><div><h2 style="font-size:17px;font-weight:700">笔记</h2><p class="text-sm text-secondary">Markdown · 分类 · 全文搜索</p></div>
+        <button class="btn btn-primary" onclick="showToast('info','新建笔记')">＋ 新建</button>
+      </div>
+      <div class="grid-2">
+        <div class="card p-3 searchable-row">
+          <h3 style="font-size:14px;font-weight:600;margin-bottom:4px">会议记录 - 项目评审</h3>
+          <p class="text-sm text-secondary" style="overflow:hidden;text-overflow:ellipsis;display:-webkit-box;-webkit-line-clamp:3;line-clamp:3;-webkit-box-orient:vertical">讨论了第一季度项目进展、问题和下一步计划。重点讨论了架构优化方案和性能目标。</p>
+          <div class="flex gap-2 mt-2"><span class="badge badge-info">工作</span><span class="text-xs text-secondary">2026-07-24</span></div>
+        </div>
+        <div class="card p-3 searchable-row">
+          <h3 style="font-size:14px;font-weight:600;margin-bottom:4px">技术备忘 - React 性能优化</h3>
+          <p class="text-sm text-secondary" style="overflow:hidden;text-overflow:ellipsis;display:-webkit-box;-webkit-line-clamp:3;line-clamp:3;-webkit-box-orient:vertical">useMemo 和 useCallback 的正确使用方式、虚拟列表配置、动态行高测量方案……</p>
+          <div class="flex gap-2 mt-2"><span class="badge badge-info">技术</span><span class="text-xs text-secondary">2026-07-23</span></div>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function renderNetwork(mc) {
+  mc.innerHTML = `
+    <div class="space-y-4">
+      <h2 style="font-size:17px;font-weight:700">网络测速</h2>
+      <div class="tabs"><span class="tab active" onclick="selectTab(this,'netTest')">测速</span><span class="tab" onclick="selectTab(this,'netHistory')">历史趋势</span></div>
+      <div id="netTest">
+        <div class="metric-row">
+          <div class="metric-card"><div class="metric-label">延迟</div><div class="metric-value">12 ms</div><div class="metric-change up">优秀</div></div>
+          <div class="metric-card"><div class="metric-label">下载</div><div class="metric-value">98.5</div><div class="metric-change up">Mbps</div></div>
+          <div class="metric-card"><div class="metric-label">上传</div><div class="metric-value">45.2</div><div class="metric-change up">Mbps</div></div>
+          <div class="metric-card"><div class="metric-label">抖动</div><div class="metric-value">3.2 ms</div></div>
+        </div>
+        <div class="chart-container"><div class="chart-title">实时速度</div><svg viewBox="0 0 300 80" style="width:100%;height:80px"><polyline points="8,60 60,40 112,50 164,25 216,45 268,30 292,35" fill="none" stroke="var(--primary)" stroke-width="2"/></svg></div>
+      </div>
+      <div id="netHistory" style="display:none">
+        <div class="card"><div class="card-body"><div class="table-wrap"><table><thead><tr><th>日期</th><th>延迟</th><th>下载</th><th>上传</th></tr></thead>
+          <tbody><tr><td>07-24</td><td>12 ms</td><td>98.5 Mbps</td><td>45.2 Mbps</td></tr><tr><td>07-23</td><td>15 ms</td><td>85.2 Mbps</td><td>40.1 Mbps</td></tr></tbody></table></div></div></div>
+      </div>
+    </div>
+  `;
+}
+
+function renderDiagnostics(mc) {
+  mc.innerHTML = `
+    <div class="space-y-4">
+      <h2 style="font-size:17px;font-weight:700">诊断中心</h2>
+      <p class="text-sm text-secondary">系统运行状态和性能指标</p>
+      <div class="kpi-grid">
+        <div class="kpi-card"><div class="kpi-title">CPU 使用</div><div class="kpi-value">12%</div></div>
+        <div class="kpi-card"><div class="kpi-title">内存</div><div class="kpi-value">186 MB</div><div class="kpi-footer">峰值 312 MB</div></div>
+        <div class="kpi-card"><div class="kpi-title">缓存</div><div class="kpi-value">24 MB</div></div>
+        <div class="kpi-card"><div class="kpi-title">日志</div><div class="kpi-value">1.2 MB</div></div>
+      </div>
+      <div class="card">
+        <div class="card-header"><span class="card-title">启动耗时</span></div>
+        <div class="card-body">
+          <table>
+            <thead><tr><th>阶段</th><th>耗时</th></tr></thead>
+            <tbody>
+              <tr><td>Electron 进程</td><td>320 ms</td></tr>
+              <tr><td>Python 后端</td><td>450 ms</td></tr>
+              <tr><td>IMK 加载</td><td>25 ms</td></tr>
+              <tr><td>UI 渲染</td><td>180 ms</td></tr>
+              <tr><td><strong>总启动</strong></td><td><strong>975 ms</strong></td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function renderSettings(mc) {
+  mc.innerHTML = `
+    <div class="space-y-4" style="max-width:600px">
+      <h2 style="font-size:17px;font-weight:700">设置</h2>
+      <div class="card"><div class="card-header"><span class="card-title">账户安全</span></div>
+        <div class="card-body space-y-2">
+          <button class="btn w-full" onclick="showToast('info','修改密码')">🔑 修改密码</button>
+          <button class="btn w-full" onclick="showToast('info','重新绑定')">📱 重新绑定验证器</button>
+          <button class="btn w-full" onclick="showToast('info','更新邮箱')">📧 更新邮箱</button>
+        </div>
+      </div>
+      <div class="card"><div class="card-header"><span class="card-title">集成</span></div>
+        <div class="card-body"><label style="display:flex;align-items:center;gap:8px;font-size:13px;margin-bottom:8px"><input type="checkbox" checked> 开机自启</label>
+        <label style="display:flex;align-items:center;gap:8px;font-size:13px"><input type="checkbox"> 关联 .txt 文件</label></div>
+      </div>
+    </div>
+  `;
+}
+
+function selectTab(el, id) {
+  el.parentElement.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
+  el.classList.add('active');
+  if (id==='netTest') { document.getElementById('netTest').style.display=''; document.getElementById('netHistory').style.display='none'; }
+  else { document.getElementById('netTest').style.display='none'; document.getElementById('netHistory').style.display=''; }
+}
+
+renderContent('overview');
+</script>
+</body>
+</html>

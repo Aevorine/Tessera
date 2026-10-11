@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Tessera 键盘（输入法模式）。settingsActivity 指回主界面：系统输入法设置里
+     点「设置」就回到 Tessera，那里有输入法模式的开关说明与剪贴板时间线。 -->
+<input-method xmlns:android="http://schemas.android.com/apk/res/android"
+    android:settingsActivity="com.tessera.crossdevice.MainActivity"
+    android:supportsSwitchingToNextInputMethod="true">
+    <subtype
+        android:imeSubtypeLocale="en_US"
+        android:imeSubtypeMode="keyboard"
+        android:label="@string/ime_subtype" />
+</input-method>

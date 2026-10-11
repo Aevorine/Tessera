@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 只暴露 files/update 这一个目录，就是放下载好的 APK 的地方。
+     别图省事写成整个 files/ ——那等于把应用的私有数据目录整个开给外部。 -->
+<paths>
+    <files-path name="updates" path="update/" />
+    <!-- 收到的剪贴板图片。系统剪贴板放不下原始位图，只能放一个 content:// URI，
+         而别的应用要能读到它就必须走 FileProvider。同样只开这一个子目录。 -->
+    <files-path name="clipimg" path="clipimg/" />
+    <!-- 超出系统剪贴板单次传递上限的长文本，改以 content:// 形式放进剪贴板。 -->
+    <files-path name="cliptext" path="cliptext/" />
+</paths>

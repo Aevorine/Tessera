@@ -1,0 +1,441 @@
+{
+  "generatedBy": "scripts/gen-third-party-notices.mjs",
+  "count": 65,
+  "components": [
+    {
+      "name": "Electron",
+      "license": "MIT",
+      "url": "https://github.com/electron/electron",
+      "group": "platform"
+    },
+    {
+      "name": "Chromium",
+      "license": "BSD-3-Clause and others",
+      "url": "https://www.chromium.org/",
+      "group": "platform"
+    },
+    {
+      "name": "Node.js",
+      "license": "MIT",
+      "url": "https://nodejs.org/",
+      "group": "platform"
+    },
+    {
+      "name": "CPython",
+      "license": "PSF-2.0",
+      "url": "https://www.python.org/",
+      "group": "platform"
+    },
+    {
+      "name": "PyInstaller bootloader",
+      "license": "GPL-2.0-or-later WITH bootloader-exception",
+      "url": "https://pyinstaller.org/",
+      "group": "platform"
+    },
+    {
+      "name": "OpenSSL",
+      "license": "Apache-2.0",
+      "url": "https://www.openssl.org/",
+      "group": "crypto"
+    },
+    {
+      "name": "SQLCipher",
+      "license": "BSD-style (Zetetic LLC)",
+      "url": "https://www.zetetic.net/sqlcipher/",
+      "group": "crypto"
+    },
+    {
+      "name": "SQLite",
+      "license": "Public domain",
+      "url": "https://sqlite.org/",
+      "group": "crypto"
+    },
+    {
+      "name": "sqlcipher3",
+      "license": "Zlib",
+      "url": "https://github.com/coleifer/sqlcipher3",
+      "group": "crypto"
+    },
+    {
+      "name": "cryptography",
+      "license": "Apache-2.0 OR BSD-3-Clause",
+      "url": "https://github.com/pyca/cryptography",
+      "group": "crypto"
+    },
+    {
+      "name": "keyring",
+      "license": "MIT",
+      "url": "https://github.com/jaraco/keyring",
+      "group": "crypto"
+    },
+    {
+      "name": "pyotp",
+      "license": "MIT",
+      "url": "https://github.com/pyauth/pyotp",
+      "group": "crypto"
+    },
+    {
+      "name": "requests",
+      "license": "Apache-2.0",
+      "url": "https://requests.readthedocs.io/",
+      "group": "python"
+    },
+    {
+      "name": "qrcode (Python)",
+      "license": "BSD-3-Clause",
+      "url": "https://github.com/lincolnloop/python-qrcode",
+      "group": "python"
+    },
+    {
+      "name": "Pillow",
+      "license": "MIT-CMU (HPND)",
+      "url": "https://python-pillow.org/",
+      "group": "python"
+    },
+    {
+      "name": "psutil",
+      "license": "BSD-3-Clause",
+      "url": "https://github.com/giampaolo/psutil",
+      "group": "python"
+    },
+    {
+      "name": "pywin32",
+      "license": "PSF-2.0",
+      "url": "https://github.com/mhammond/pywin32",
+      "group": "python"
+    },
+    {
+      "name": "winrt-Windows.*",
+      "license": "MIT",
+      "url": "https://github.com/pywinrt/pywinrt",
+      "group": "python"
+    },
+    {
+      "name": "Tesseract OCR trained data",
+      "license": "Apache-2.0",
+      "url": "https://github.com/tesseract-ocr/tesseract",
+      "group": "content"
+    },
+    {
+      "name": "Go runtime and standard library",
+      "license": "BSD-3-Clause",
+      "url": "https://go.dev/",
+      "group": "go"
+    },
+    {
+      "name": "github.com/cenkalti/backoff",
+      "version": "v2.2.1+incompatible",
+      "license": "MIT",
+      "url": "https://github.com/cenkalti/backoff",
+      "group": "go"
+    },
+    {
+      "name": "github.com/flynn/noise",
+      "version": "v1.1.0",
+      "license": "BSD-3-Clause",
+      "url": "https://github.com/flynn/noise",
+      "group": "go"
+    },
+    {
+      "name": "github.com/fxamacker/cbor/v2",
+      "version": "v2.9.2",
+      "license": "MIT",
+      "url": "https://github.com/fxamacker/cbor",
+      "group": "go"
+    },
+    {
+      "name": "github.com/grandcat/zeroconf",
+      "version": "v1.0.0",
+      "license": "MIT",
+      "url": "https://github.com/grandcat/zeroconf",
+      "group": "go"
+    },
+    {
+      "name": "github.com/klauspost/cpuid/v2",
+      "version": "v2.0.9",
+      "license": "MIT",
+      "url": "https://github.com/klauspost/cpuid",
+      "group": "go"
+    },
+    {
+      "name": "github.com/miekg/dns",
+      "version": "v1.1.27",
+      "license": "BSD-3-Clause",
+      "url": "https://github.com/miekg/dns",
+      "group": "go"
+    },
+    {
+      "name": "github.com/quic-go/quic-go",
+      "version": "v0.61.0",
+      "license": "MIT",
+      "url": "https://github.com/quic-go/quic-go",
+      "group": "go"
+    },
+    {
+      "name": "github.com/x448/float16",
+      "version": "v0.8.4",
+      "license": "MIT",
+      "url": "https://github.com/x448/float16",
+      "group": "go"
+    },
+    {
+      "name": "golang.org/x/crypto",
+      "version": "v0.54.0",
+      "license": "BSD-3-Clause",
+      "url": "https://pkg.go.dev/golang.org/x/crypto",
+      "group": "go"
+    },
+    {
+      "name": "golang.org/x/mobile",
+      "version": "v0.0.0-20260709172247-6129f5bee9d5",
+      "license": "BSD-3-Clause",
+      "url": "https://pkg.go.dev/golang.org/x/mobile",
+      "group": "go"
+    },
+    {
+      "name": "golang.org/x/mod",
+      "version": "v0.38.0",
+      "license": "BSD-3-Clause",
+      "url": "https://pkg.go.dev/golang.org/x/mod",
+      "group": "go"
+    },
+    {
+      "name": "golang.org/x/net",
+      "version": "v0.57.0",
+      "license": "BSD-3-Clause",
+      "url": "https://pkg.go.dev/golang.org/x/net",
+      "group": "go"
+    },
+    {
+      "name": "golang.org/x/sync",
+      "version": "v0.22.0",
+      "license": "BSD-3-Clause",
+      "url": "https://pkg.go.dev/golang.org/x/sync",
+      "group": "go"
+    },
+    {
+      "name": "golang.org/x/sys",
+      "version": "v0.47.0",
+      "license": "BSD-3-Clause",
+      "url": "https://pkg.go.dev/golang.org/x/sys",
+      "group": "go"
+    },
+    {
+      "name": "golang.org/x/text",
+      "version": "v0.40.0",
+      "license": "BSD-3-Clause",
+      "url": "https://pkg.go.dev/golang.org/x/text",
+      "group": "go"
+    },
+    {
+      "name": "golang.org/x/tools",
+      "version": "v0.48.0",
+      "license": "BSD-3-Clause",
+      "url": "https://pkg.go.dev/golang.org/x/tools",
+      "group": "go"
+    },
+    {
+      "name": "lukechampine.com/blake3",
+      "version": "v1.4.1",
+      "license": "MIT",
+      "url": "https://pkg.go.dev/lukechampine.com/blake3",
+      "group": "go"
+    },
+    {
+      "name": "@codemirror/lang-markdown",
+      "version": "6.5.1",
+      "license": "MIT",
+      "url": "https://code.haverbeke.berlin/codemirror/lang-markdown",
+      "group": "ui"
+    },
+    {
+      "name": "@dnd-kit/core",
+      "version": "6.3.1",
+      "license": "MIT",
+      "url": "https://github.com/clauderic/dnd-kit",
+      "group": "ui"
+    },
+    {
+      "name": "@dnd-kit/modifiers",
+      "version": "7.0.0",
+      "license": "MIT",
+      "url": "https://github.com/clauderic/dnd-kit",
+      "group": "ui"
+    },
+    {
+      "name": "@dnd-kit/sortable",
+      "version": "8.0.0",
+      "license": "MIT",
+      "url": "https://github.com/clauderic/dnd-kit",
+      "group": "ui"
+    },
+    {
+      "name": "@dnd-kit/utilities",
+      "version": "3.2.2",
+      "license": "MIT",
+      "url": "https://github.com/clauderic/dnd-kit",
+      "group": "ui"
+    },
+    {
+      "name": "@fontsource-variable/geist",
+      "version": "5.2.9",
+      "license": "OFL-1.1",
+      "url": "https://fontsource.org/fonts/geist",
+      "group": "ui"
+    },
+    {
+      "name": "@tanstack/react-virtual",
+      "version": "3.14.6",
+      "license": "MIT",
+      "url": "https://tanstack.com/virtual",
+      "group": "ui"
+    },
+    {
+      "name": "@uiw/react-codemirror",
+      "version": "4.25.11",
+      "license": "MIT",
+      "url": "https://uiwjs.github.io/react-codemirror",
+      "group": "ui"
+    },
+    {
+      "name": "class-variance-authority",
+      "version": "0.7.1",
+      "license": "Apache-2.0",
+      "url": "https://github.com/joe-bell/cva#readme",
+      "group": "ui"
+    },
+    {
+      "name": "clsx",
+      "version": "2.1.1",
+      "license": "MIT",
+      "url": "https://github.com/lukeed/clsx",
+      "group": "ui"
+    },
+    {
+      "name": "cmdk",
+      "version": "1.1.1",
+      "license": "MIT",
+      "url": "https://github.com/pacocoursey/cmdk#readme",
+      "group": "ui"
+    },
+    {
+      "name": "codemirror",
+      "version": "6.0.2",
+      "license": "MIT",
+      "url": "https://github.com/codemirror/basic-setup",
+      "group": "ui"
+    },
+    {
+      "name": "docx",
+      "version": "9.7.1",
+      "license": "MIT",
+      "url": "https://docx.js.org",
+      "group": "ui"
+    },
+    {
+      "name": "dompurify",
+      "version": "3.4.13",
+      "license": "(MPL-2.0 OR Apache-2.0)",
+      "url": "https://github.com/cure53/DOMPurify",
+      "group": "ui"
+    },
+    {
+      "name": "i18next",
+      "version": "26.3.6",
+      "license": "MIT",
+      "url": "https://www.i18next.com",
+      "group": "ui"
+    },
+    {
+      "name": "katex",
+      "version": "0.18.4",
+      "license": "MIT",
+      "url": "https://katex.org",
+      "group": "ui"
+    },
+    {
+      "name": "lucide-react",
+      "version": "1.23.0",
+      "license": "ISC",
+      "url": "https://lucide.dev",
+      "group": "ui"
+    },
+    {
+      "name": "markdown-it",
+      "version": "14.3.0",
+      "license": "MIT",
+      "url": "https://github.com/markdown-it/markdown-it",
+      "group": "ui"
+    },
+    {
+      "name": "next-themes",
+      "version": "0.4.6",
+      "license": "MIT",
+      "url": "https://github.com/pacocoursey/next-themes",
+      "group": "ui"
+    },
+    {
+      "name": "qrcode",
+      "version": "1.5.4",
+      "license": "MIT",
+      "url": "http://github.com/soldair/node-qrcode",
+      "group": "ui"
+    },
+    {
+      "name": "radix-ui",
+      "version": "1.6.2",
+      "license": "MIT",
+      "url": "https://radix-ui.com/primitives",
+      "group": "ui"
+    },
+    {
+      "name": "react",
+      "version": "18.3.1",
+      "license": "MIT",
+      "url": "https://reactjs.org/",
+      "group": "ui"
+    },
+    {
+      "name": "react-dom",
+      "version": "18.3.1",
+      "license": "MIT",
+      "url": "https://reactjs.org/",
+      "group": "ui"
+    },
+    {
+      "name": "react-i18next",
+      "version": "17.0.9",
+      "license": "MIT",
+      "url": "https://github.com/i18next/react-i18next",
+      "group": "ui"
+    },
+    {
+      "name": "sonner",
+      "version": "2.0.7",
+      "license": "MIT",
+      "url": "https://sonner.emilkowal.ski/",
+      "group": "ui"
+    },
+    {
+      "name": "tailwind-merge",
+      "version": "3.6.0",
+      "license": "MIT",
+      "url": "https://github.com/dcastil/tailwind-merge",
+      "group": "ui"
+    },
+    {
+      "name": "tesseract.js",
+      "version": "7.0.0",
+      "license": "Apache-2.0",
+      "url": "https://github.com/naptha/tesseract.js",
+      "group": "ui"
+    },
+    {
+      "name": "tw-animate-css",
+      "version": "1.4.0",
+      "license": "MIT",
+      "url": "https://github.com/Wombosvideo/tw-animate-css#readme",
+      "group": "ui"
+    }
+  ]
+}

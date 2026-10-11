@@ -1,0 +1,157 @@
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+*.egg-info/
+build/
+dist/
+.pytest_cache/
+.mypy_cache/
+.env
+.env.*
+!.env.example
+
+# AI 助手的本地工作目录：settings.local.json 是本机的权限白名单，worktrees/ 下面
+# 是若干份完整的仓库副本。两者都只对这台机器有意义，且 worktrees 里的副本会把
+# 「本该被忽略的东西」以另一个路径重新带进版本控制——整个目录一律排除。
+# （注意：顶层的 `.worktrees/` 规则匹配不到 `.claude/worktrees/`，名字不一样。）
+.claude/
+# 另一款 AI 助手（Codex）落在仓库根的本机工作状态，性质同上。
+.codex/
+
+# lavish-axi（Claude Code 的浏览器反馈回路工具）在每个工作目录下落的本机会话页：
+# 里面写着本机绝对路径、本次对话的 jsonl 文件路径、一段系统提示原文，以及一个
+# 用于本机 localhost SSE/心跳鉴权的随机密钥。三样都只对这台机器这一次会话有意义，
+# 2026-09-05 发现它已经被 `dwf` 的自动检查点提交进过一次版本库，才补上这条规则。
+.lavish/
+
+# 编辑器的本机个人配置。extensions.json（推荐插件列表）是对协作者有用的，
+# 显式放行；settings.json 之类会带上本机路径/私人仓库引用的一律排除。
+.vscode/*
+!.vscode/extensions.json
+
+# JavaScript
+node_modules/
+npm-debug.log*
+
+# C build artifacts
+*.o
+*.obj
+*.exe
+*.out
+*.dll
+*.a
+*.lib
+
+# file_vault: 用户的实时金库——身份库（含包裹后的密钥材料）、密码库、笔记库、
+# 剪贴板历史、截图、附件。这一条是整个 .gitignore 里最要紧的：一旦漏掉，
+# push 上去的就是用户的全部私人数据，而且删不干净（会永久留在 git 历史里）。
+modules/file_vault/data/
+# 发布签名私钥。绝不能进仓库——签名之所以能挡住"仓库被接管"这类攻击，
+# 前提就是拿到仓库权限的人也签不出有效更新。
+*.private.pem
+*.pem
+!**/test*/**/*.pem
+
+# file_vault/ui: Electron build output (node_modules/, dist/ already covered above)
+modules/file_vault/ui/dist-electron/
+modules/file_vault/ui/release/
+
+# git worktrees used for isolated implementation work
+.worktrees/
+
+# 公开发布前那次「弃用旧历史、重新 init」留下的旧 .git 备份（274 个 commit，
+# 含发布前的个人路径/用户名）。留在本地是为了万一需要回查，**绝不能进新仓库**。
+# 确认新仓库推送无误之后可以直接删掉这个目录。
+.git-old-history-backup/
+
+# brainstorming visual companion session files
+.superpowers/
+
+# Playwright MCP session recordings (console logs / page snapshots) and
+# ad-hoc manual screenshots / scratch output dropped at the repo root
+.playwright-mcp/
+/output/
+/*.png
+
+# 代码签名私钥。构建脚本把自动备份放在 %LOCALAPPDATA% 下（仓库外），
+# npm run signing:export 导出的便携副本默认落在当前目录——所以这里兜一道底。
+# 私钥进了仓库，等于任何拿到仓库的人都能冒充你发版本，整套更新签名就白做了。
+*.pfx
+*.p12
+# .pfx 的密码（DPAPI 密文）。它离开这台机器就解不开，所以进了仓库也不能直接用——
+# 但它和 .pfx 是配套的两半，没有任何理由让它们中的任何一半进版本库。
+*.dpapi
+
+# ---- 安卓构建产物 ----
+# 这些都是可以从源码重新生成的，而且很大（APK 44 MB、.aar 13 MB）。
+# 发行版通过 GitHub Release 分发，不该也进版本库——把二进制塞进 git 之后
+# 每次重建都留下一个新副本，仓库会一路膨胀且再也瘦不回去。
+modules/file_vault/crossdevice/android/.gradle/
+modules/file_vault/crossdevice/android/build/
+modules/file_vault/crossdevice/android/app/build/
+modules/file_vault/crossdevice/android/local.properties
+# gomobile bind 的产出，由 `gomobile bind ... ./mobile` 重新生成
+modules/file_vault/crossdevice/android/app/libs/*.aar
+modules/file_vault/crossdevice/android/app/libs/*.jar
+# 已签名 APK 与它的签名摘要
+*.apk
+*.idsig
+
+# 安卓签名密钥库。跟 Windows 那边的 .pfx 同理：进了仓库，
+# 任何拿到仓库的人都能签出一个"看起来是你发的"的 APK。
+*.jks
+*.keystore
+# 安卓签名配置（storePassword/keyPassword 常以明文写在里面）与 Play 导出的加密私钥包。
+**/keystore*.properties
+**/android-keystore*.properties
+*.pepk
+
+# 本地运行台账与备份：发布前的 release 元数据快照、历次任务日志。它们是"这台机器上
+# 干过什么"的记录，不是项目内容；而且里面会顺手记下本机路径。一次 `git add -A` 就会
+# 把它们连人带货推上去。
+ai/logs/
+ai/
+
+# 临时工作目录。里面是排查时随手落的脚本、截图、备份，内容完全不受控——
+# 本轮就发现它里面躺着一张跟本项目无关的截图。它一直是 untracked 状态，
+# 一次 `git add -A` 就会连人带货进仓库，所以显式忽略掉。
+scratchpad/
+
+# 身份码 / 水印相关——埋点位置清单和使用台账绝不进仓库
+watermark-out/
+watermark-map.md
+.pv-usage.dat
+.claude/.pv-state.json
+.claude/.pv-prompts.json
+.claude/.pv-off
+
+# 任务台账：是干活时的工作文件，不是项目内容，而且会写进本机安装路径/数据目录
+# 这类只跟这台机器有关的东西。用户明确要求这些不上传，所以整个排除掉。
+task-progress.md
+# 归档的台账也要挡住。原来只写了 `task-progress.md`，而收工归档会生成
+# `task-progress.<日期><标题>.md` —— 那些文件是未跟踪状态，随手一个
+# `git add -A` 就会进仓库，而它们里面写着签名私钥的存放目录、本机 SDK 路径、
+# 以及你逐字提过的需求。**私有仓库也不该存这些**：仓库会被 clone、会被
+# 加协作者，而台账是我的工作笔记，不是这个项目的一部分。
+task-progress.*.md
+# Kotlin 增量编译的本地缓存，gradle 8.9+ 会生成。
+.kotlin/
+
+# 发布产物的暂存区：三个几十到一百多 MB 的二进制，只是等着上传到 release。
+# 它们**绝不能进 git** —— 一旦提交，仓库体积就再也降不回来了（git 保留全部历史）。
+.release-staging/
+
+# 逐按钮点检（tests/e2e/buttonAudit.mjs）与侦察脚本的产出。是"这台机器这一次
+# 跑出来的结果"，不是项目内容；而且截图里会带上本机的窗口标题和路径。
+modules/file_vault/ui/button-audit-report.json
+modules/file_vault/ui/recon.png
+
+# Claude Code 的 MCP 服务器配置。里面会写本机的 Python 路径、数据目录，
+# 以及指向主密码文件的路径——三样都只对这台机器有意义，且最后一样是
+# 隐私敏感的。docs/claude-code-接入.md 里有一份可以照抄的模板。
+.mcp.json
+
+# TypeScript 增量编译缓存（tsc -b / composite 生成）
+*.tsbuildinfo

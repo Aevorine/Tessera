@@ -1,0 +1,142 @@
+# 前端护栏：每个 PR 和每次进 main 都跑一遍。
+#
+# 为什么要单开一个工作流，而不是往现有的两个里塞：
+#
+#   * build-windows.yml 只在 `push tags: v*` 时触发。也就是说 tsc 类型检查和
+#     tests/ 下那 34 个守卫测试，**只在打发布 tag 的那一刻跑一次**——发现问题
+#     的时候版本号已经定了，改一行就得重新打 tag。而且它要装 Python、装 gcc、
+#     冻结 PyInstaller、跑 electron-builder，一轮 30~60 分钟，天生不适合当
+#     日常反馈。它是"发版流水线"，不是"护栏"，所以这里一个字都没动它。
+#
+#   * security.yml 管的是依赖漏洞（npm audit / pip-audit）和 Python 后端测试。
+#     它的 python-tests 那个 job 因为 scrypt N=2¹⁷ 要跑将近两小时，超时上限
+#     开到了 120 分钟。把秒级的前端检查挂在同一个工作流里，PR 页上就只剩一个
+#     要等两小时才出结果的红绿灯——真正需要快速反馈的那部分被慢的那部分绑住了。
+#
+# 所以：慢的归慢的，快的单独一个。这个工作流的目标是**几分钟内出结果**。
+#
+# 特别说明 `npm run lint`：它里面挂着 scripts/check-i18n-keys.mjs（i18n 断链
+# 检查器），这个脚本在本仓库里**从来没有进过 CI**，只能靠人记得在本地跑。
+
+name: CI
+
+on:
+  workflow_dispatch:
+    inputs:
+      run_tests:
+        description: 'Explicitly opt in to tests'
+        type: boolean
+        default: false
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+# 同一个分支上新推一次就把旧的那轮取消掉。PR 上连续改几次是常态，
+# 每一次都把前一轮跑完纯属烧额度，而且先跑完的那轮结论已经过期了。
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  frontend:
+    name: Lint / typecheck / guard tests
+    runs-on: ubuntu-latest
+    # 这四步在本地加起来不到 1 分钟，装依赖是大头。10 分钟还没完说明是卡住了，
+    # 不是慢。
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: modules/file_vault/ui
+
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020  # v4
+        with:
+          # 对齐本机开发环境（node v24.14.0）。package.json 里没有 engines 字段，
+          # 所以这里是唯一写下 Node 版本的地方之一。
+          # 注意 tests/*.test.mjs 用 --experimental-strip-types 直接加载 .ts，
+          # 需要 Node >= 22.6——往下调版本会整套挂掉。
+          node-version: '24'
+          cache: 'npm'
+          cache-dependency-path: modules/file_vault/ui/package-lock.json
+
+      # --ignore-scripts：这四步检查全是纯 JS/TS 的静态分析，不启动 Electron，
+      # 也不跑 vite 打包。不加这个开关的话，npm ci 会触发 electron 的
+      # postinstall 去下 100+ MB 的二进制——那份下载不在 npm 缓存里，每轮都要
+      # 重下一遍，比这个工作流本身还慢。security.yml 里已经在用同样的做法。
+      - name: Install dependencies
+        id: install
+        run: npm ci --ignore-scripts
+
+      # 下面三步都带 `steps.install.outcome == 'success'`，作用是：只要依赖装上了，
+      # 三项检查就**全部跑完**，一轮 CI 把问题一次报全，而不是修好 lint 再推一次
+      # 才发现 tsc 也挂了。装依赖失败时它们会被跳过（否则会喷一堆"找不到模块"的
+      # 假错误，把真正的根因埋掉）。
+      - name: Lint (ESLint + i18n key check)
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        run: npm run lint
+
+      - name: Type check
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        run: npx tsc --noEmit
+
+      - name: Guard tests
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.run_tests && !cancelled() && steps.install.outcome == 'success' }}
+        run: npm run test:update
+
+      # 行为测试（vitest + jsdom + Testing Library）。跟上面那套是两回事：
+      # 守卫测试读源码回答「那段代码还在不在」，这一套真的把组件渲染出来点它，
+      # 回答「用户这么操作会发生什么」。
+      #
+      # 这条以前**不在 CI 里**，而且当时 tests/unit 是空的、vitest 又开着
+      # passWithNoTests——那等于一条永远为绿、一个用例都不跑的空跑道。
+      # 用例进来了、开关关了，现在才值得接进来。
+      - name: Behaviour tests
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.run_tests && !cancelled() && steps.install.outcome == 'success' }}
+        run: npm run test:unit
+
+      # 这里**故意不跑** npm run build:standalone。它要签名证书（私钥只在开发机上）
+      # 又要冻结 PyInstaller，在 CI 上既慢又必然失败。构建链是否还通由
+      # build-windows.yml 负责（打 tag 或手动触发）。
+
+  # 跨设备核心（Go）。以前 CI 一个字都没碰它，而这一块恰恰是最容易**静默**失败
+  # 的：NAT 打洞、中继降级、重连退避这类逻辑写错了不会崩，只会"有时候连不上"，
+  # 而"有时候"在开发机上永远复现不了。
+  #
+  # 放在 ci.yml 而不是 security.yml：本机实测整套 -count=1 约 80 秒，属于"几分钟
+  # 内出结果"这一档，正是这个工作流的定位。security.yml 里那个 python-tests
+  # 要跑两小时，混进去就等于把快的绑在慢的身上。
+  #
+  # -count=1 是必须的：Go 默认会缓存测试结果，同样的代码第二次跑直接打印
+  # "ok (cached)" 而根本没有执行——CI 上那等于一条永远为绿的空跑道。
+  # 本机连跑 3 遍 -count=1 全过，没有飘的迹象，可以进 CI。
+  crossdevice:
+    name: Go tests (crossdevice core)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: modules/file_vault/crossdevice
+
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
+
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff  # v5
+        with:
+          go-version-file: modules/file_vault/crossdevice/go.mod
+          cache-dependency-path: modules/file_vault/crossdevice/go.sum
+
+      - name: Build check
+        run: go build ./...
+
+      # -race 只在 CI 上开：它让测试慢 2~10 倍，本地开发时不值得，但跨设备这块
+      # 全是并发（多条连接、后台重连、共享的会话表），数据竞争正是它最可能出的
+      # 那类 bug，而普通 go test 对此完全无感。
+      - name: Tests (race detector on)
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.run_tests }}
+        run: go test -count=1 -race ./...

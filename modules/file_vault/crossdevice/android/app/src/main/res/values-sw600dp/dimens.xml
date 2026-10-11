@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  平板（最小宽度 ≥ 600dp）的尺寸覆盖。
+
+  手机上内容占满宽度是对的；平板上同样做法会让每行文字拉到十几厘米长，
+  读起来要来回扫视。这里给内容加一个最大宽度并居中，两侧留白——
+  跟系统设置、Gmail 在大屏上的做法一致。
+-->
+<resources>
+    <dimen name="screen_padding">32dp</dimen>
+    <dimen name="content_max_width">720dp</dimen>
+    <dimen name="qr_size">280dp</dimen>
+    <dimen name="clip_timeline_height">520dp</dimen>
+</resources>

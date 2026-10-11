@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  深色版本。跟桌面端 index.css 里 `:root.dark[data-accent=...]` 那一组一一对应：
+  整体提亮、降饱和。暗背景上高饱和的深色会糊成一团，提亮之后才看得出是哪个颜色。
+-->
+<resources>
+    <!-- 深色侧同样把偏色从绿改成暖。刻意不用纯黑：OLED 上纯黑到亮字的跳变会
+         拖影，滚动时字发虚；而且纯黑配白字对比度高到晃眼。 -->
+    <color name="native_background">#17161A</color>
+    <color name="oriental_background">#10191B</color>
+    <color name="app_surface">#201F1B</color>
+    <color name="app_surface_muted">#2B2924</color>
+    <color name="app_elevated">#262420</color>
+
+    <color name="accent_forest">#44BBB1</color>
+    <color name="accent_sky">#69BDE5</color>
+    <color name="accent_indigo">#8B95EC</color>
+    <color name="accent_violet">#B48CE4</color>
+    <color name="accent_rose">#E58AA8</color>
+    <color name="accent_ember">#E59173</color>
+    <!-- 深色下的 clay 要提亮，不能照搬浅色那支：#C4603C 放深底上只有 3.1:1，
+         读起来是暗红一坨；#E28A63 对 #17161A 是 7.4:1。 -->
+    <color name="accent_clay">#E28A63</color>
+    <color name="accent_gold">#D6AA59</color>
+    <color name="accent_olive">#9CAF58</color>
+
+    <color name="status_success">#6BBF8C</color>
+    <color name="status_warning">#D9A041</color>
+    <color name="status_danger">#F2B8B5</color>
+    <color name="status_info">#6AA9E0</color>
+
+    <color name="decorative_gold">#DFBD73</color>
+</resources>

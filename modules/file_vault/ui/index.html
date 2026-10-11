@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <!--
+      内容安全策略由 vite.config.ts 的 cspPlugin 在这里注入：dev 一套（要放行
+      Vite 的 HMR），打包一套（收紧到只允许本地资源）。
+      刻意留成占位符而不是直接写死一份，是因为两套策略差别很大，写死哪一套都会
+      让另一边出问题——dev 写死严格策略会让 HMR 直接不工作，打包写死宽松策略则
+      等于没加。
+    -->
+    <!--#IDEAL1_CSP#-->
+    <link rel="icon" type="image/x-icon" href="/icon.ico" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Tessera</title>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

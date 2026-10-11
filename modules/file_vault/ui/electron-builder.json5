@@ -1,0 +1,268 @@
+// @see - https://www.electron.build/configuration/configuration
+{
+  "$schema": "https://raw.githubusercontent.com/electron-userland/electron-builder/master/packages/app-builder-lib/scheme.json",
+  // 改名为 Tessera 时一并换掉（原来是 com.ideal1.filevault）。
+  //
+  // appId 决定 NSIS 的卸载注册表项和默认安装目录，所以换掉它意味着旧版本不会被
+  // "原地升级"，而是并存两份。这里可以接受：改名发生在还没有真实安装量的时候，
+  // 而留着一个写着 ideal1 的 appId 会让"这到底是哪个应用"永远对不上。
+  "appId": "com.tessera.vault",
+  // 用 electron-builder 26 的**新签名工具集**，不要用默认的 legacy 那套。
+  //
+  // 不设这一项（或设成 "0.0.0"）时，electron-builder 会去下 `winCodeSign-2.6.0.7z`
+  // ——那个压缩包里带着 macOS 的 dylib 符号链接，在没开开发者模式/没有管理员权限
+  // 的 Windows 上**解压就会失败**（缺 SeCreateSymbolicLinkPrivilege），于是签名
+  // 这条路根本走不通。这台机器就是这个情况，仓库里之前一直靠"干脆不签名"绕开它。
+  //
+  // "1.1.0" 换成了按平台分开的普通 zip，Windows 上只取 windows-kits-bundle，
+  // 里面自带 signtool.exe，没有任何符号链接，解压不需要特权。
+  //
+  // 副作用（正好是我们要的）：这个 bundle 里的 signtool.exe 也可以拿来签 PyInstaller
+  // 产出的两个内层 exe——否则就得为了一个 signtool 去装几个 GB 的 Windows SDK。
+  // scripts/build-standalone.mjs 会自己把它找出来，见那里的 resolveSigntool()。
+  "toolsets": {
+    "winCodeSign": "1.1.0",
+  },
+  "asar": true,
+  // Electron「保险丝」（fuses）：构建时**烧进可执行文件本身**的开关，运行时改不了。
+  //
+  // 这是防篡改这件事上唯一真正有效的一层——asar 归档本身是可以随便解包重打的
+  // （`npx asar extract`，一条命令），所以"打成 asar"从来不构成任何保护。
+  //
+  // ## 逐条为什么
+  //
+  // onlyLoadAppFromAsar：只允许从 app.asar 加载应用代码。不开的话，攻击者只要在
+  //   resources/ 下放一个 `app/` 目录，Electron 会优先加载它——**连 asar 都不用碰**。
+  //
+  // enableEmbeddedAsarIntegrityValidation：启动时校验 app.asar 的哈希，跟烧进
+  //   可执行文件的那份比对。这条才是真正让"改一个字节就打不开"成立的东西；
+  //   跟上一条是配套的，只开一条等于没开。
+  //
+  // enableNodeCliInspectArguments：关掉 --inspect / --remote-debugging-port。
+  //   开着的话，任何人可以用调试器 attach 到运行中的进程，直接读内存里的主密钥——
+  //   而金库解锁之后主密钥就在内存里。这一条挡的是"应用已经在跑、攻击者有本机
+  //   访问权"这个场景，是这里最实际的一条。
+  //
+  // enableNodeOptionsEnvironmentVariable：关掉 NODE_OPTIONS。开着的话可以用环境
+  //   变量注入 `--require ./evil.js`，在应用自己的进程里执行任意代码。
+  //
+  // enableCookieEncryption：Chromium 的 cookie 存储加密。这个应用不用 cookie，
+  //   开着是零成本的纵深防御。
+  //
+  // ## runAsNode 为什么**不能**关（这里踩过一次）
+  //
+  // 直觉上它该关——它允许把这个 exe 当成一个普通的 node 用，是常见的加固建议。
+  // 但本项目的**自动更新依赖它**：updateInstaller.ts 用
+  // `spawn(process.execPath, [runnerPath], { env: { ELECTRON_RUN_AS_NODE: '1' } })`
+  // 拉起 update runner，因为 runner 必须在主进程退出之后继续活着。
+  //
+  // 关掉它的后果是：构建成功、应用正常、单元测试全绿，**只有"点更新"这一条路
+  // 会静默失效**——用户点了更新，应用退出，然后什么都不发生。而且这个故障只在
+  // 真的发一次版之后才会被发现。
+  //
+  // 所以它留在 true。这不是遗漏，是权衡：它带来的风险（有人拿这个 exe 当 node 跑）
+  // 需要攻击者已经能在本机执行任意命令，而那种情况下他有的是更简单的办法。
+  "electronFuses": {
+    "onlyLoadAppFromAsar": true,
+    "enableEmbeddedAsarIntegrityValidation": true,
+    "enableNodeCliInspectArguments": false,
+    "enableNodeOptionsEnvironmentVariable": false,
+    "enableCookieEncryption": true,
+    "runAsNode": true,
+  },
+  // tesseract.js's WASM core + worker are loaded by a Web Worker via its
+  // own fetch, which is unreliable reading straight out of an asar
+  // archive - unpacking them to a real file.asar.unpacked/ path sidesteps
+  // that entirely (electron-builder's documented fix for exactly this
+  // class of asset, same rationale as native modules).
+  "asarUnpack": [
+    "dist/tesseract/**"
+  ],
+  "productName": "Tessera",
+  "directories": {
+    "output": "release/${version}"
+  },
+  "files": [
+    "dist",
+    "dist-electron"
+  ],
+  // Python 后端现在是**冻结产物**，不再依赖目标机器上的系统 Python。
+  // 两个冻结目标**都是 one-dir**（见 packaging/*.spec 顶部的完整说明）：
+  //   - file_vault_backend/：曾经是 one-file。改掉了——one-file 每次冷启动都要
+  //     把几十 MB 解压到 %TEMP% 再执行，而这段时间正好卡在用户盯着白屏等登录页
+  //     的时候。它从来不是分发物（被裹在外层 EXE 里），所以 one-file 唯一的
+  //     好处在这里根本不存在。
+  //   - file_hook_worker/：被全局快捷键高频拉起，每次调用重新解压不可接受。
+  // 两者作为 extraResources 放进外层 EXE，用户下载的仍然只有一个 exe。
+  //
+  // 构建前必须先跑 `pyinstaller packaging/*.spec` 产出 dist/ 下的这两份东西，
+  // scripts/build-standalone.mjs 会按顺序做完这件事。
+  "extraResources": [
+    {
+      "from": "../../../dist/file_vault_backend",
+      "to": "backend/file_vault_backend"
+    },
+    {
+      "from": "../../../dist/file_hook_worker",
+      "to": "filehook/file_hook_worker"
+    },
+    // 跨设备守护进程（Go）。main.ts 里 CROSSDEVICE_COMMAND 按
+    // resourcesPath/crossdevice/tessera-crossdevice.exe 找它，两处路径必须对上。
+    {
+      "from": "../crossdevice/tessera-crossdevice.exe",
+      "to": "crossdevice/tessera-crossdevice.exe"
+    },
+    // update runner 单独放：它必须在主 EXE 退出之后**继续存活**，所以运行时会
+    // 被复制到 %LOCALAPPDATA%\Tessera\updates\runner-<digest>\ 再启动。
+    // 直接从 resourcesPath 跑它是不行的——portable 外层启动器在主进程退出后会
+    // 清理掉整个临时 resources 目录，runner 会连同自己的可执行文件一起被删掉。
+    {
+      "from": "dist-electron/updateRunner.js",
+      "to": "updater/updateRunner.js"
+    }
+  ],
+  "mac": {
+    "target": [
+      "dmg"
+    ],
+    "artifactName": "${productName}-Mac-${version}-Installer.${ext}"
+  },
+  "win": {
+    // 两种形态一起出，用户按习惯挑：
+    //   portable → Tessera.exe        免安装，放哪都行，U 盘也能跑
+    //   nsis     → Tessera Setup.exe  正规安装，可选安装位置、有卸载项
+    //
+    // 客户端更新时按自己的形态挑对应那个资产（electron/updateVersion.ts 的
+    // selectUpdateAsset 靠文件名里有没有 "Setup" 判断）。**下面两个 artifactName
+    // 改动必须同步改那边**，改了不同步的话，更新会报"找不到对应形态的构建"。
+    "target": [
+      {
+        "target": "portable",
+        "arch": [
+          "x64"
+        ]
+      },
+      {
+        "target": "nsis",
+        "arch": [
+          "x64"
+        ]
+      }
+    ],
+    // 文件名里**不带版本号**。更新是原地替换、保留原文件名，所以带版本号的名字
+    // 在第一次升级之后就永远是错的：文件叫 -0.1.0.exe，里面装的是 0.2.0。
+    // 稳定名字还有两个好处：桌面快捷方式和任务栏固定项不会因为升级而失效；
+    // 下载目录里重复下载会被浏览器加 (1)，但那远好过一个骗人的版本号。
+    //
+    // 这也意味着新旧文件同名，下载暂存必须放在**独立子目录**里——否则会在下载
+    // 过程中覆盖掉正在运行的那个 exe。见 electron/updateInstaller.ts 的
+    // stagingDirFor。
+    //
+    // 这里是**免安装版**的名字；安装包的名字在下面的 "nsis" 段里单独指定，
+    // 且必须带 "Setup" 一词。
+    "artifactName": "${productName}.${ext}",
+    // electron-builder's own default lookup path is build/icon.ico, but
+    // the repo's root .gitignore has a generic `build/` rule (for Python
+    // build artifacts) that would silently swallow anything placed there -
+    // pointing at public/icon.ico instead keeps it tracked, and doubles as
+    // the same file electron/main.ts loads for the BrowserWindow icon (via
+    // VITE_PUBLIC), so there's one committed source instead of two copies
+    // that could drift.
+    "icon": "public/icon.ico",
+    // 跳过代码签名，但**保留**图标和版本信息的写入。
+    //
+    // ## 这里踩过的坑（electron-builder 24 → 26 的行为变更）
+    //
+    // 原来这一行是 `"signAndEditExecutable": false`，旁边还写着一句
+    // "confirmed on 24.13.3：这个标志只跳过签名，不影响 rcedit 写图标"。
+    // 那句话在 24 上是对的，在 26 上**不再成立**——26 起这个标志会把
+    // 「签名」和「资源编辑」一起关掉。
+    //
+    // 后果是产出的 exe 完全没有自己的身份，实测（真机，41.10.3 + 26.15.3）：
+    //
+    //     ProductName : Electron          ← 应该是 Tessera
+    //     FileVersion : 41.10.3           ← 那是 Electron 的版本，不是 0.1.0
+    //     CompanyName : GitHub, Inc.
+    //     图标        : Electron 默认图标
+    //
+    // 对一个装密码的工具来说这不只是难看：用户在任务栏和「详细信息」里看到的是
+    // 别人的名字和一个对不上的版本号，而"我现在装的到底是哪一版"恰恰是更新出问题
+    // 时唯一能自查的线索。而且这一切**不会有任何报错**，构建照常成功。
+    //
+    // electron-builder 26 自己在日志里给了正确答案：
+    //   "To skip only code signing while keeping icon and metadata applied,
+    //    use signExecutable: false instead."
+    //
+    // 所以现在用 signExecutable，把 signAndEditExecutable 留在默认值 true。
+    //
+    // 发布构建要把签名打开：scripts/build-standalone.mjs 在拿到证书时会用
+    // --config.win.signExecutable=true 覆盖这里，同时带上 certificateSubjectName
+    // 和时间戳服务器。**改这个键名必须同步改那边**，两边对不上就会退回到
+    // "以为签了、其实没签"。
+    //
+    // 默认留 false 是为了让"没有证书的人也能构建出一个能跑的应用"——开发和自用
+    // 不需要证书，只是不能自动更新。
+    "signExecutable": false,
+    // **electron-builder 26 起，signtool 相关的选项全部搬进 win.signtoolOptions。**
+    // 老位置（win.signingHashAlgorithms / win.certificateSubjectName /
+    // win.rfc3161TimeStampServer）会被静默忽略——不报错，只是不生效，产出一个
+    // 你以为签好了、客户端却拒绝的包。build-standalone.mjs 注入这几项时用的也是
+    // 新路径，两边必须一致。
+    //
+    // 主体名和时间戳服务器不写死在这里：证书是每个发行版自己的东西，写进仓库
+    // 只会让 fork 的人拿到一个必然签不出来的配置。由 build-standalone.mjs 从
+    // IDEAL1_SIGN_SUBJECT / IDEAL1_TIMESTAMP_URL 注入。
+    "signtoolOptions": {
+      "signingHashAlgorithms": [
+        "sha256"
+      ]
+    }
+  },
+  "nsis": {
+    // 名字里必须有 "Setup"：客户端就是靠这个词把安装包和免安装版分开的
+    // （electron/updateVersion.ts 的 selectUpdateAsset）。
+    "artifactName": "${productName} Setup.${ext}",
+    // 自定义 NSIS 片段，提供「数据保存位置」那一页。完整理由在文件顶部。
+    //
+    // 路径是 nsis/ 而不是 electron-builder 默认查找的 build/：仓库根的
+    // .gitignore 有一条通配的 `build/`（给 Python 构建产物用的），放在那里的
+    // 文件会被静默忽略、提交不上去——构建在本机正常，在 CI 或别人 clone 出来
+    // 的仓库里这一页就凭空消失了。图标当初也是因为同一条规则改放 public/。
+    "include": "nsis/installer.nsh",
+    // 安装程序里展示 AGPL-3.0 全文并要求接受。
+    //
+    // 对社区版来说这是许可证的常规呈现方式；对**商业版**买家来说，看到这一页
+    // 恰恰是提醒——他拿到的这份是 AGPL 的那一份。双授权最容易出的事故是买方
+    // 以为自己拿的是商业版、实际装的是社区版，然后把它嵌进闭源产品里。
+    "license": "../../../LICENSE",
+    // 不做"一键安装"：oneClick 会跳过所有选项直接装到默认位置，而"能选安装位置"
+    // 正是安装版存在的理由之一。
+    "oneClick": false,
+    "allowToChangeInstallationDirectory": true,
+    // 装到当前用户目录，不要求管理员权限。
+    //
+    // 这一条同时解决了更新的一个大麻烦：装进 Program Files 的话，每次自动更新都
+    // 要弹 UAC 提权，否则写不进去。装在用户目录下，更新全程无需提权。
+    // 代价是同一台机器上别的 Windows 账户看不到这个应用——对一个存私人密码的
+    // 工具来说，这更像是特性而不是缺陷。
+    "perMachine": false,
+    // 卸载时**不删**用户数据。金库、笔记、密码全在里面，卸载一个应用不该顺手把
+    // 用户的数据也带走——想清空的人可以手动删，误卸载的人不该失去一切。
+    "deleteAppDataOnUninstall": false,
+    "createDesktopShortcut": true,
+    "createStartMenuShortcut": true,
+    // 装完提供"立即运行"的勾选（这是默认值，显式写出来是因为它跟更新流程有关）。
+    //
+    // **不要改成 false。** 静默安装（更新走的那条路）默认不启动应用，得靠
+    // `--force-run` 强制拉起；把这个关掉有让那个开关一起失效的风险，表现就是
+    // 用户点完"立即更新"之后应用退出、装完、然后什么都不发生——看起来像更新把
+    // 应用弄没了。见 electron/updateInstaller.ts 的 runInstallerAndQuit。
+    "runAfterFinish": true
+  },
+  "linux": {
+    "target": [
+      "AppImage"
+    ],
+    "artifactName": "${productName}-Linux-${version}.${ext}"
+  }
+}

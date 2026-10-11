@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  AndroidManifest 里 android:roundIcon 指向 @mipmap/ic_launcher_round，所以圆形
+  变体也得有 anydpi-v26 版本。内容与 ic_launcher.xml 完全一致：自适应图标的圆形
+  遮罩是启动器自己套的，这里**不需要**（也不应该）自己先裁一遍圆——裁了就会在
+  非圆形遮罩的启动器上出现"圆图套方框"。
+
+  真正的圆形位图在 mipmap-*dpi/ic_launcher_round.png，那是给 API 25 的。
+-->
+<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
+    <background android:drawable="@mipmap/ic_launcher_background" />
+    <foreground android:drawable="@mipmap/ic_launcher_foreground" />
+</adaptive-icon>

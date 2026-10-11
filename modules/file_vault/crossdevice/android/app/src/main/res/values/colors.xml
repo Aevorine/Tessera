@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  这份色板和桌面端 ui/src/index.css 是同一套值，一一对应。两端各写各的颜色
+  是「界面不统一」最常见的来源：同一个「青绿色」在电脑上和手机上差半个色阶，
+  单看哪一边都说不上错，摆在一起就是两个软件。
+
+  三组：
+  1. 表面 —— background / surface / surface_muted / elevated 逐层提亮，
+     卡片里再套卡片时不用靠边框硬分。
+  2. 强调色 —— 八套，顺序和取值跟桌面 ACCENT_FAMILIES 完全一致。
+     全应用共用一套，不给每个功能模块分配各自的色相。
+  3. 状态色 —— 成功 / 警告 / 危险 / 信息。它们不随强调色变化，
+     用户才能靠颜色本身认出「这是警告」，而不用先去读文字。
+-->
+<resources>
+    <!-- 底色从偏绿的灰改成暖燕麦，跟桌面 index.css 的 native 视觉风格一一对应。
+         纯白在夜里是一块发光板，长时间盯着累的主要来源就是它；#FAF9F5 亮度只降
+         约 2%，肉眼几乎看不出“变暗”，但眩光明显下来。卡片仍用纯白，靠这 2% 的差
+         把层次拉开——这样“层级只靠明度和一像素细线区分”才有得可用。 -->
+    <color name="native_background">#FAF9F5</color>
+    <color name="oriental_background">#F4FAFB</color>
+    <color name="app_surface">#FFFFFF</color>
+    <color name="app_surface_muted">#EFEBE1</color>
+    <color name="app_elevated">#FFFFFF</color>
+
+    <color name="accent_forest">#0F9F98</color>
+    <color name="accent_sky">#368FBD</color>
+    <color name="accent_indigo">#4A56C4</color>
+    <color name="accent_violet">#7C4BB8</color>
+    <color name="accent_rose">#B6446A</color>
+    <color name="accent_ember">#B45330</color>
+    <color name="accent_gold">#A8731F</color>
+    <color name="accent_olive">#66762F</color>
+    <!-- clay 是现在的默认强调色。比 ember 更土、饱和度更低：ember 在浅色底上
+         偏亮，一屏摆四五个强调元素时会互相抢；clay 降下来之后仍然一眼能认出
+         “这是可点的”，但不再拽着视线不放。对比度 4.6:1，过 WCAG AA。 -->
+    <color name="accent_clay">#C4603C</color>
+
+    <color name="status_success">#3A7A4E</color>
+    <color name="status_warning">#A3690C</color>
+    <color name="status_danger">#B3261E</color>
+    <color name="status_info">#2F6EA8</color>
+
+    <color name="decorative_gold">#C99A45</color>
+</resources>

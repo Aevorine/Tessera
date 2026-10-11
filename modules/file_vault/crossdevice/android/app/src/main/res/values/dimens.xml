@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 手机默认值。平板的覆盖见 values-sw600dp/dimens.xml。 -->
+<resources>
+    <dimen name="screen_padding">16dp</dimen>
+    <!-- 手机上不限宽：屏幕本来就窄，限宽只会浪费空间 -->
+    <dimen name="content_max_width">0dp</dimen>
+    <dimen name="qr_size">220dp</dimen>
+    <!-- 剪贴板时间线窗口的固定高度。条数再多也不撑高整页，在窗口里滑动看。 -->
+    <dimen name="clip_timeline_height">360dp</dimen>
+</resources>

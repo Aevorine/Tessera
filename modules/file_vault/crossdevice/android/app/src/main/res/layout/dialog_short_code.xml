@@ -1,0 +1,96 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  数字码配对对话框。
+
+  为什么要有这条路：二维码要摄像头，附近设备要组播（很多家用路由器直接丢掉），
+  手动地址要用户知道 IP 和端口。这条只要求「照着另一台设备的屏幕敲 6 个数字」，
+  在哪儿都成立。
+
+  上半屏显示本机的码，下半屏输入对方的码——两台设备谁显示谁输入都行。
+-->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:padding="20dp">
+
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="@string/short_code_show_title"
+        android:textAppearance="?attr/textAppearanceTitleSmall" />
+
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="4dp"
+        android:text="@string/short_code_show_hint"
+        android:textAppearance="?attr/textAppearanceBodySmall" />
+
+    <!-- 码本身要大：用户是隔着一段距离照着屏幕念给另一台设备的。
+         等宽 + 拉开字距，避免 6/8、0/O 看混。 -->
+    <TextView
+        android:id="@+id/textMyShortCode"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="12dp"
+        android:fontFamily="monospace"
+        android:gravity="center"
+        android:letterSpacing="0.35"
+        android:text="@string/short_code_placeholder"
+        android:textSize="34sp"
+        android:textStyle="bold" />
+
+    <TextView
+        android:id="@+id/textMyShortCodeExpiry"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:gravity="center"
+        android:textAppearance="?attr/textAppearanceBodySmall" />
+
+    <com.google.android.material.button.MaterialButton
+        android:id="@+id/btnGenerateShortCode"
+        style="?attr/materialButtonOutlinedStyle"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:text="@string/short_code_generate" />
+
+    <View
+        android:layout_width="match_parent"
+        android:layout_height="1dp"
+        android:layout_marginTop="20dp"
+        android:layout_marginBottom="16dp"
+        android:background="?android:attr/listDivider" />
+
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="@string/short_code_enter_title"
+        android:textAppearance="?attr/textAppearanceTitleSmall" />
+
+    <com.google.android.material.textfield.TextInputLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:hint="@string/short_code_placeholder">
+
+        <com.google.android.material.textfield.TextInputEditText
+            android:id="@+id/inputPeerShortCode"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:fontFamily="monospace"
+            android:gravity="center"
+            android:inputType="number"
+            android:letterSpacing="0.3"
+            android:maxLength="6"
+            android:textSize="28sp" />
+    </com.google.android.material.textfield.TextInputLayout>
+
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="12dp"
+        android:text="@string/short_code_safety_hint"
+        android:textAppearance="?attr/textAppearanceBodySmall" />
+</LinearLayout>

@@ -1,0 +1,183 @@
+# Build the standalone Windows portable EXE.
+#
+# 这个工作流**只构建，不签名**（`IDEAL1_SKIP_SIGNING=1`）。签名私钥只在你自己的
+# 机器上，CI 里没有也不该有——把签名能力放进 CI 等于把签名机制作废：任何能改
+# workflow 的人都能用它签任意东西。
+#
+# 因此产物上传到一个 **draft** Release。你在自己机器上跑
+# `npm run build:standalone`（证书由脚本自动准备），把**签好名的那一个 exe**
+# 替换上去，再发布。客户端只接受带我们签名的包，所以 CI 这份未签名产物即使被误
+# 发布也装不上——它只是"构建链还通不通"的证据。
+
+name: Build Windows EXE
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      run_tests:
+        description: 'Explicitly opt in to tests'
+        type: boolean
+        default: false
+
+permissions:
+  contents: write         # 建 draft release 需要
+
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 60
+
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
+
+      # 3.9 是项目声明的最低版本，也是冻结产物实际使用的解释器版本。
+      # PyInstaller 打进去的就是这里这个解释器，所以版本要和本地开发一致。
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065  # v5
+        with:
+          python-version: '3.9'
+          architecture: 'x64'
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020  # v4
+        with:
+          node-version: '22'   # tests/*.test.mjs 用 --experimental-strip-types 直接加载 .ts，需要 Node >= 22.6
+          cache: 'npm'
+          cache-dependency-path: modules/file_vault/ui/package-lock.json
+
+      # 两个 C 助手（hook_agent.exe / fingerprint_verify.exe）用 gcc 编译，
+      # 两个 spec 都把它们当 datas 打进去，缺了会在冻结那一步才炸。
+      - name: Ensure gcc is available
+        shell: pwsh
+        run: |
+          if (-not (Get-Command gcc -ErrorAction SilentlyContinue)) {
+            choco install mingw --no-progress -y
+            $env:PATH = "C:\ProgramData\chocolatey\bin;$env:PATH"
+          }
+          gcc --version
+
+      - name: Install Python dependencies
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade pip
+          # 运行时依赖现在**全部**在 pyproject 的 [project].dependencies 里，
+          # 包括 Pillow / psutil / pywin32 / sqlcipher3-wheels。以前它们只写在
+          # README 里，CI 靠这一步手工补装——那意味着"pyproject 装完能不能跑"
+          # 从来没有被验证过，而用户按 README 装的是另一套东西。
+          #
+          # [build] 这一组是冻结才需要的 pyinstaller。
+          pip install -e ".[build]"
+          # 装完立刻验一次真实 import。缺依赖在冻结那一步才炸的话，日志在几百行
+          # PyInstaller 输出的中间，很难看出根因。
+          python -c "import sqlcipher3, cryptography, keyring, pyotp, PIL, psutil, win32api; print('python deps ok')"
+
+      - name: Install UI dependencies
+        working-directory: modules/file_vault/ui
+        run: npm ci
+
+      # tag 和 package.json 的版本不一致是最容易犯又最难发现的错：客户端按 tag
+      # 判断"有没有新版本"，装完之后按 package.json 里的版本认自己是谁，两者错开
+      # 会得到一个"永远提示有更新但装完还是旧版本"的循环。在构建前就挡掉。
+      - name: Check tag matches package.json version
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: pwsh
+        # 表达式一律经环境变量传入，不直接拼进脚本：tag 名是推送方可控的字符串，
+        # 拼进双引号里会被 PowerShell 当成 $(...) 子表达式执行。
+        env:
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          $pkg = (Get-Content modules/file_vault/ui/package.json -Raw | ConvertFrom-Json).version
+          $tag = $env:REF_NAME.TrimStart('v')
+          if ($pkg -ne $tag) {
+            throw "tag v$tag does not match package.json version $pkg"
+          }
+          Write-Host "version ok: $pkg"
+
+      - name: Run update logic tests
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.run_tests }}
+        working-directory: modules/file_vault/ui
+        run: npm run test:update
+
+      # IDEAL1_SKIP_SIGNING=1 是必须的：不设的话构建脚本会在 runner 上自动造一张
+      # **没人钉过**的证书，签出一个所有客户端都拒绝的包——那比不签名更难排查，
+      # 因为产物看起来是签了名的。签名只在你自己的机器上发生。
+      - name: Build standalone EXE (unsigned)
+        working-directory: modules/file_vault/ui
+        env:
+          IDEAL1_SKIP_SIGNING: '1'
+        run: npm run build:standalone
+
+      # 构建产出**两个** exe（免安装版 + 安装包），发布时必须两个都在。
+      #
+      # 这一步以前是 `Sort-Object Length -Descending | Select-Object -First 1`
+      # ——只挑最大的那一个。加上 nsis 目标之后那就成了一个静默的发布事故：
+      # release 里只有一种形态，而客户端是按自己的形态找资产的
+      # （electron/updateVersion.ts 的 selectUpdateAsset 靠文件名里有没有
+      # "Setup" 区分）。少了哪一个，那一半用户的更新就会报"找不到对应形态的
+      # 构建"——而构建、上传、发布全程不会有任何报错。
+      #
+      # 所以这里改成显式核对：**必须恰好是两个，且恰好一个带 Setup**。
+      # 数量不对就让构建失败，而不是挑一个继续。
+      - name: Locate artifacts
+        id: artifact
+        shell: pwsh
+        run: |
+          # 只看 release/<版本>/ 这一层的两个成品。win-unpacked/ 里还有解包后的主程序和
+          # resources/ 下的一串辅助 exe，.cache/ 里还有便携版的壳；递归全收的话这一步
+          # 从 v0.1.0 起每次都因为"找到 9 个便携版"失败，这个工作流从没真正验证过构建链。
+          $exes = @(Get-ChildItem -Path modules/file_vault/ui/release -Recurse -Filter '*.exe' |
+            Where-Object { $_.Directory.Parent.Name -eq 'release' })
+          if ($exes.Count -eq 0) { throw "no exe produced under ui/release" }
+
+          $setup    = @($exes | Where-Object { $_.Name -like '*Setup*' })
+          $portable = @($exes | Where-Object { $_.Name -notlike '*Setup*' })
+
+          foreach ($e in $exes) {
+            Write-Host "found: $($e.Name) ($([math]::Round($e.Length/1MB,1)) MB)"
+          }
+
+          if ($setup.Count -ne 1) {
+            throw "expected exactly 1 installer (*Setup*.exe), found $($setup.Count)"
+          }
+          if ($portable.Count -ne 1) {
+            throw "expected exactly 1 portable exe, found $($portable.Count)"
+          }
+
+          "setup=$($setup[0].FullName)"       >> $env:GITHUB_OUTPUT
+          "portable=$($portable[0].FullName)" >> $env:GITHUB_OUTPUT
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4
+        with:
+          name: ideal1-file-vault-windows
+          path: |
+            ${{ steps.artifact.outputs.portable }}
+            ${{ steps.artifact.outputs.setup }}
+          if-no-files-found: error
+          retention-days: 14
+
+      # Draft，不是正式发布：客户端只接受非 draft、非 prerelease 的 release，
+      # 所以在你用签好名的 exe 替换掉这份未签名产物之前，它对任何用户都是不可见、
+      # 不可更新的。
+      - name: Create draft release
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REF_NAME: ${{ github.ref_name }}
+          PORTABLE: ${{ steps.artifact.outputs.portable }}
+          SETUP: ${{ steps.artifact.outputs.setup }}
+        run: |
+          # 签名机上已经发布过这个版本（带签名的正式包）时，不再建草稿：
+          # 同名 release 已存在会让 create 失败，而且未签名的包绝不能挨着签名包出现。
+          gh release view $env:REF_NAME *> $null
+          if ($LASTEXITCODE -eq 0) {
+            Write-Host "release $env:REF_NAME already exists; build chain verified, unsigned exes not uploaded"
+            exit 0
+          }
+          gh release create $env:REF_NAME `
+            $env:PORTABLE `
+            $env:SETUP `
+            --draft `
+            --title $env:REF_NAME `
+            --notes "Draft build from CI. Both exes are UNSIGNED and the updater will reject them. Replace both with the signed builds from the signing machine, then publish."

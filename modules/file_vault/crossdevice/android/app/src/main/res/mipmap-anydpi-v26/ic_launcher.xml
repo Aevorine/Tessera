@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  自适应图标（Adaptive Icon）。本工程 minSdk=26，所以**所有**目标设备都会走这里，
+  同名的 mipmap-*dpi/ic_launcher.png 只在 API 25 及以下才会被用到（本工程够不到），
+  留着是给 aapt 打包时的资源引用兜底，别删。
+
+  两个图层各占 108dp 画布，启动器只保证中心 72dp 可见——最多从每边裁掉 18dp。
+  前景已经按这个安全区内缩过（见 tools/make_launcher_icons.py 里的 FG_SCALE）。
+
+  没有 <monochrome>：Android 13+ 的"主题图标"要求一张纯单色剪影，而本图标是
+  盾牌 + 两台设备 + 三个文件的多元素构图，单色化之后会糊成一团认不出来。
+  宁可不提供（系统会回退到彩色图标），也不放一张糊的。
+-->
+<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
+    <background android:drawable="@mipmap/ic_launcher_background" />
+    <foreground android:drawable="@mipmap/ic_launcher_foreground" />
+</adaptive-icon>

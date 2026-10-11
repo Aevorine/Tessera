@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 设备列表的一行：名字在上、状态在下，一眼能分清哪台在线。
+
+     选择框平时是 gone 的，只有进入「选择」模式才出现。一直显示的话，
+     日常使用（绝大多数时候只是看看哪台在线）会被一排用不上的方框占掉视线，
+     而删除设备本身是个低频动作。 -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:background="?attr/selectableItemBackground"
+    android:gravity="center_vertical"
+    android:orientation="horizontal"
+    android:paddingHorizontal="14dp"
+    android:paddingVertical="12dp">
+
+    <com.google.android.material.checkbox.MaterialCheckBox
+        android:id="@+id/checkDevice"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginEnd="8dp"
+        android:clickable="false"
+        android:focusable="false"
+        android:visibility="gone" />
+
+    <ImageView
+        android:id="@+id/iconDevice"
+        android:layout_width="24dp"
+        android:layout_height="24dp"
+        android:layout_marginEnd="12dp"
+        android:importantForAccessibility="no"
+        android:src="@drawable/ic_devices"
+        android:tag="sectionIcon" />
+
+    <LinearLayout
+        android:layout_width="0dp"
+        android:layout_weight="1"
+        android:layout_height="wrap_content"
+        android:orientation="vertical">
+
+        <TextView
+            android:id="@+id/textName"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:singleLine="true"
+            android:ellipsize="end"
+            android:textAppearance="?attr/textAppearanceBodyLarge" />
+
+        <TextView
+            android:id="@+id/textState"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:textAppearance="?attr/textAppearanceBodySmall"
+            android:textColor="?attr/colorOnSurfaceVariant" />
+    </LinearLayout>
+
+    <!-- 剪贴板同步耗时的迷你曲线：少于两个样本时自己隐藏。 -->
+    <com.tessera.crossdevice.SparklineView
+        android:id="@+id/sparkLatency"
+        android:layout_width="64dp"
+        android:layout_height="22dp"
+        android:layout_marginStart="8dp"
+        android:visibility="gone" />
+</LinearLayout>

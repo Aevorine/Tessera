@@ -1,0 +1,13 @@
+<!-- 分区展开/折叠的指示箭头。
+     只画「向下」这一个方向，展开态由代码把它旋转 180°——两张图标各画一份的话，
+     切换时是硬跳，而旋转能做出连续的动画，视觉上跟桌面端的折叠区一致。 -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24"
+    android:tint="?attr/colorOnSurfaceVariant">
+    <path
+        android:fillColor="@android:color/white"
+        android:pathData="M7.41,8.59L12,13.17l4.59,-4.58L18,10l-6,6 -6,-6z" />
+</vector>

@@ -1,0 +1,112 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  排版档位。桌面端的同一套规则在这里的对应实现。
+
+  **字体族：为什么是 serif 而不是写 "SimSun" 或 "Times New Roman"。**
+  安卓的 fontFamily 只接受一个族名，没有 CSS 那种「按字形逐字符回退」——
+  桌面端能把 Times New Roman 排在宋体前面、让拉丁字母走前者而汉字自动落到
+  后者，这边做不到。而系统的 serif 族本身就带 CJK 回退链：拉丁字形解析到
+  Noto Serif（Times 同类的衬线体），汉字解析到系统的宋体类衬线字形。所以
+  serif 是不打包字体文件的前提下最接近要求的那一个。
+  另一条路是把 simsun.ttc / times.ttf 打进 APK——那两个字体都不允许再分发，
+  而且 simsun.ttc 有十几 MB，为一个字体把安装包翻倍不划算。
+
+  **字号：两档，跟桌面端同源。**
+  正文 = 小四（12pt）、功能名称 = 四号（14pt）。桌面端把这两档折成 16px 和
+  18.67px；安卓这边用 16sp 和 19sp（sp 会跟随系统字体缩放，所以只能取整）。
+  Material3 的基线里 BodySmall 是 12sp、TitleSmall 是 14sp，都低于小四下限，
+  所以这里逐个抬上来——不抬的话「正文不低于小四」这条只在桌面端成立。
+
+  行高按桌面端的比例给：正文 1.6、标题 1.55。只放大字号不放大行高，
+  中文会挤成一坨（汉字是满字身的，比拉丁字母更吃行距）。
+
+  纯装饰性的小标签（徽章）允许低于小四，对应桌面端那个同名的 text-2xs 档。
+  （这里不写它在 CSS 里的变量名：XML 注释不允许出现两个连着的连字符。）
+-->
+<resources xmlns:tools="http://schemas.android.com/tools">
+
+    <!-- ============ 正文：小四 = 16sp ============ -->
+    <style name="TextAppearance.Tessera.BodySmall" parent="TextAppearance.Material3.BodySmall">
+        <item name="fontFamily">serif</item>
+        <item name="android:fontFamily">serif</item>
+        <item name="android:textSize">16sp</item>
+        <item name="android:lineHeight" tools:targetApi="28">26sp</item>
+    </style>
+
+    <style name="TextAppearance.Tessera.BodyMedium" parent="TextAppearance.Material3.BodyMedium">
+        <item name="fontFamily">serif</item>
+        <item name="android:fontFamily">serif</item>
+        <item name="android:textSize">16sp</item>
+        <item name="android:lineHeight" tools:targetApi="28">26sp</item>
+    </style>
+
+    <style name="TextAppearance.Tessera.BodyLarge" parent="TextAppearance.Material3.BodyLarge">
+        <item name="fontFamily">serif</item>
+        <item name="android:fontFamily">serif</item>
+        <item name="android:textSize">16sp</item>
+        <item name="android:lineHeight" tools:targetApi="28">26sp</item>
+    </style>
+
+    <!-- ============ 功能名称：四号 = 19sp ============ -->
+    <!-- 布局里所有分区标题（快捷操作 / 进行中的传输 / 已配对设备 / 附近设备 /
+         本机 / 更新 / 连接诊断 / 锁定 / 保存到 / 使用指南）都用 TitleSmall，
+         它就是桌面端 PageSection 标题的对应角色。 -->
+    <style name="TextAppearance.Tessera.TitleSmall" parent="TextAppearance.Material3.TitleSmall">
+        <item name="fontFamily">serif</item>
+        <item name="android:fontFamily">serif</item>
+        <item name="android:textSize">19sp</item>
+        <item name="android:lineHeight" tools:targetApi="28">30sp</item>
+        <item name="android:textStyle">bold</item>
+    </style>
+
+    <style name="TextAppearance.Tessera.TitleMedium" parent="TextAppearance.Material3.TitleMedium">
+        <item name="fontFamily">serif</item>
+        <item name="android:fontFamily">serif</item>
+        <item name="android:textSize">19sp</item>
+        <item name="android:lineHeight" tools:targetApi="28">30sp</item>
+    </style>
+
+    <!-- 工具栏标题 = 页面主标题，对应桌面端 PageHeader 的 text-2xl，再大一档。 -->
+    <style name="TextAppearance.Tessera.TitleLarge" parent="TextAppearance.Material3.TitleLarge">
+        <item name="fontFamily">serif</item>
+        <item name="android:fontFamily">serif</item>
+        <item name="android:textSize">22sp</item>
+        <item name="android:lineHeight" tools:targetApi="28">30sp</item>
+    </style>
+
+    <style name="TextAppearance.Tessera.HeadlineSmall" parent="TextAppearance.Material3.HeadlineSmall">
+        <item name="fontFamily">serif</item>
+        <item name="android:fontFamily">serif</item>
+        <item name="android:textSize">22sp</item>
+    </style>
+
+    <!-- ============ 控件标签 ============ -->
+    <!-- 按钮文字属于正文级，不能缩：按钮是主要操作入口。 -->
+    <style name="TextAppearance.Tessera.LabelLarge" parent="TextAppearance.Material3.LabelLarge">
+        <item name="fontFamily">serif</item>
+        <item name="android:fontFamily">serif</item>
+        <item name="android:textSize">16sp</item>
+    </style>
+
+    <!-- 徽章一类的纯装饰标签，允许低于小四（桌面端的 text-2xs 是同一个例外）。 -->
+    <style name="TextAppearance.Tessera.LabelMedium" parent="TextAppearance.Material3.LabelMedium">
+        <item name="fontFamily">serif</item>
+        <item name="android:fontFamily">serif</item>
+        <item name="android:textSize">14sp</item>
+    </style>
+
+    <style name="TextAppearance.Tessera.LabelSmall" parent="TextAppearance.Material3.LabelSmall">
+        <item name="fontFamily">serif</item>
+        <item name="android:fontFamily">serif</item>
+        <item name="android:textSize">14sp</item>
+    </style>
+
+    <!-- 布局里直接写 <TextView> 而没给 textAppearance 的那些（以及第三方控件
+         内部创建的 TextView）走这条默认样式，否则它们会留在系统默认无衬线体上，
+         界面里就会出现「大部分宋体、个别黑体」的不统一。 -->
+    <style name="Widget.Tessera.TextView" parent="Widget.AppCompat.TextView">
+        <item name="android:fontFamily">serif</item>
+        <item name="android:textSize">16sp</item>
+    </style>
+
+</resources>

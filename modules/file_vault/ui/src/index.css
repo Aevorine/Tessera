@@ -1,0 +1,767 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+
+@custom-variant dark (&:is(.dark *));
+
+/* 自适应质量只削减装饰成本，不改变布局、颜色或交互反馈。 */
+:root[data-quality="balanced"] {
+    --runtime-motion-scale: 0.82;
+}
+
+:root[data-quality="lean"],
+:root[data-background] {
+    --runtime-motion-scale: 0;
+}
+
+:root[data-quality="lean"] *,
+:root[data-background] * {
+    animation-duration: 1ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+}
+
+:root[data-quality="lean"] * {
+    backdrop-filter: none !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+        animation-duration: 1ms !important;
+        animation-iteration-count: 1 !important;
+        scroll-behavior: auto !important;
+        transition-duration: 1ms !important;
+    }
+}
+
+@theme inline {
+    --font-heading: var(--font-sans);
+    /* 西文 Times New Roman、中文宋体：依赖 CSS 按字形逐字符回退，Times New Roman 必须排第一
+       （它没有 CJK 字形才会落到 SimSun；反过来则英文也变宋体）。 */
+    --font-sans: 'Times New Roman', 'SimSun', '宋体', 'Songti SC', serif;
+    /* 正文一律小四（12pt = 16px），不得更小；--text-sm 即此档。
+       --text-xs 同样顶到 1rem，仅给 shadcn 等第三方代码兜底，自己的界面禁用
+       （`tests/typographyScale.test.mjs` 拦截）：否则覆盖一旦移除，写成"特小"的处会集体缩水。 */
+    --text-xs: 1rem;
+    --text-xs--line-height: 1.75;
+    --text-sm: 1rem;
+    /* 1.6 → 1.75。改的是**行距不是字号**：中文方块字比拉丁字母"满"，行距紧的
+       时候一整段读起来像一堵墙。长时间看眼睛累，主要来源是这个而不是字号。 */
+    --text-sm--line-height: 1.75;
+    --text-2xs: 0.85rem;
+    --text-2xs--line-height: 1.5;
+    /* 四号 = 14pt = 1.1667 × 小四。用 rem 以跟随根字号缩放；用于分区标题等「功能名称」。 */
+    --text-sihao: 1.16667rem;
+    --text-sihao--line-height: 1.55;
+    --color-sidebar-ring: var(--sidebar-ring);
+    --color-sidebar-border: var(--sidebar-border);
+    --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+    --color-sidebar-accent: var(--sidebar-accent);
+    --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+    --color-sidebar-primary: var(--sidebar-primary);
+    --color-sidebar-foreground: var(--sidebar-foreground);
+    --color-sidebar: var(--sidebar);
+    --color-chart-5: var(--chart-5);
+    --color-chart-4: var(--chart-4);
+    --color-chart-3: var(--chart-3);
+    --color-chart-2: var(--chart-2);
+    --color-chart-1: var(--chart-1);
+    --color-ring: var(--ring);
+    --color-input: var(--input);
+    --color-border: var(--border);
+    --color-destructive: var(--destructive);
+    --color-destructive-foreground: var(--destructive-foreground);
+    --color-warning: var(--warning);
+    --color-warning-foreground: var(--warning-foreground);
+    --color-success: var(--success);
+    --color-success-foreground: var(--success-foreground);
+    --color-info: var(--info);
+    --color-info-foreground: var(--info-foreground);
+    /* 分层表面：page < surface < card < elevated。四层各差一小步明度，
+       靠明度而不是靠投影拉开层次——投影堆多了在浅色主题下会发脏。 */
+    --color-surface: var(--surface);
+    --color-surface-strong: var(--surface-strong);
+    --color-elevated: var(--elevated);
+    /* 强调色的淡化派生：给图标底片、徽章、选中行用，永远和 --primary 同色相，
+       所以换强调色时整套 UI 一起变，不会出现"某个角落还是旧颜色"。 */
+    --color-accent-soft: var(--accent-soft);
+    --color-accent-line: var(--accent-line);
+    --color-accent-foreground: var(--accent-foreground);
+    --color-accent: var(--accent);
+    --color-muted-foreground: var(--muted-foreground);
+    --color-muted: var(--muted);
+    --color-secondary-foreground: var(--secondary-foreground);
+    --color-secondary: var(--secondary);
+    --color-primary-foreground: var(--primary-foreground);
+    --color-primary: var(--primary);
+    --color-popover-foreground: var(--popover-foreground);
+    --color-popover: var(--popover);
+    --color-card-foreground: var(--card-foreground);
+    --color-card: var(--card);
+    --color-foreground: var(--foreground);
+    --color-background: var(--background);
+    --radius-sm: calc(var(--radius) * 0.6);
+    --radius-md: calc(var(--radius) * 0.8);
+    --radius-lg: var(--radius);
+    --radius-xl: calc(var(--radius) * 1.4);
+    --radius-2xl: calc(var(--radius) * 1.8);
+    --radius-3xl: calc(var(--radius) * 2.2);
+    --radius-4xl: calc(var(--radius) * 2.6);
+}
+
+:root {
+    --background: #f7f4ee;
+    --foreground: #2b2a26;
+    --card: #ffffff;
+    --card-foreground: #2b2a26;
+    --popover: #ffffff;
+    --popover-foreground: #2b2a26;
+    --primary: #2f4a3c;
+    --primary-foreground: #f7f4ee;
+    --secondary: #efeadf;
+    --secondary-foreground: #2b2a26;
+    --muted: #efeadf;
+    --muted-foreground: #8a8575;
+    --accent: #eef1ec;
+    --accent-foreground: #2f4a3c;
+    --destructive: oklch(0.577 0.245 27.325);
+    --destructive-foreground: #ffffff;
+    /* 语义色只用于状态提示，不作装饰，也不随强调色变化，用户才能凭颜色认出警告。 */
+    --success: #3a7a4e;
+    --success-foreground: #f7f4ee;
+    --warning: #a3690c;
+    --warning-foreground: #f7f4ee;
+    --info: #2f6ea8;
+    --info-foreground: #f4f9fd;
+    /* 分层表面。page(--background) → surface → card → elevated 逐层提亮，
+       让"卡片里还能再放卡片"这种嵌套结构不用靠边框硬分。 */
+    --surface: #fbfaf6;
+    --surface-strong: #f1ede3;
+    --elevated: #ffffff;
+    --border: #e6e1d5;
+    --input: #ddd7c8;
+    --ring: #2f4a3c;
+    --chart-1: oklch(0.87 0 0);
+    --chart-2: oklch(0.556 0 0);
+    --chart-3: oklch(0.439 0 0);
+    --chart-4: oklch(0.371 0 0);
+    --chart-5: oklch(0.269 0 0);
+    --radius: 0.5rem;
+    --sidebar: #efeadf;
+    --sidebar-foreground: #5a5648;
+    --sidebar-primary: #2f4a3c;
+    --sidebar-primary-foreground: #f7f4ee;
+    --sidebar-accent: #ffffff;
+    --sidebar-accent-foreground: #2f4a3c;
+    --sidebar-border: #e0dbcd;
+    --sidebar-ring: #2f4a3c;
+    /* 强调色派生。用 color-mix 而不是写死颜色：--primary 被 [data-accent] 覆盖
+       后，这两个值在**使用时**才求值，所以八套强调色一套都不用手写派生色。 */
+    --accent-soft: color-mix(in oklab, var(--primary) 12%, white);
+    --accent-line: color-mix(in oklab, var(--primary) 30%, white);
+}
+
+.dark {
+    --background: #1c1d1a;
+    --foreground: #e8e5db;
+    --card: #232420;
+    --card-foreground: #e8e5db;
+    --popover: #232420;
+    --popover-foreground: #e8e5db;
+    --primary: #4f7864;
+    --primary-foreground: #eef7f1;
+    --secondary: #2a2b26;
+    --secondary-foreground: #e8e5db;
+    --muted: #2a2b26;
+    --muted-foreground: #8f8b7d;
+    --accent: #2a2b26;
+    --accent-foreground: #7fbf9e;
+    --destructive: oklch(0.704 0.191 22.216);
+    --destructive-foreground: #2a0c0c;
+    --success: #6bbf8c;
+    --success-foreground: #12261a;
+    --warning: #d9a041;
+    --warning-foreground: #2b1c04;
+    --info: #6aa9e0;
+    --info-foreground: #0a1f31;
+    --surface: #202121;
+    --surface-strong: #2a2b28;
+    --elevated: #2b2c28;
+    --border: #302f2a;
+    --input: #302f2a;
+    --ring: #7fbf9e;
+    --chart-1: oklch(0.87 0 0);
+    --chart-2: oklch(0.556 0 0);
+    --chart-3: oklch(0.439 0 0);
+    --chart-4: oklch(0.371 0 0);
+    --chart-5: oklch(0.269 0 0);
+    --sidebar: #232420;
+    --sidebar-foreground: #a7a396;
+    --sidebar-primary: #4f7864;
+    --sidebar-primary-foreground: #eef7f1;
+    --sidebar-accent: #2a2b26;
+    --sidebar-accent-foreground: #7fbf9e;
+    --sidebar-border: #302f2a;
+    --sidebar-ring: #7fbf9e;
+    /* 深色下往卡片色里兑，而不是往白里兑——往白里兑会得到一块比周围亮得多的
+       灰片，在暗色主题里格外扎眼。 */
+    --accent-soft: color-mix(in oklab, var(--primary) 16%, var(--card));
+    --accent-line: color-mix(in oklab, var(--primary) 34%, var(--card));
+}
+
+/* Accent families are independent from the light/dark and visual-style axes.
+   Keeping the axes orthogonal avoids maintaining 2 × 3 × 4 separate themes. */
+:root[data-accent="forest"] {
+    --primary: #0f9f98;
+    --primary-foreground: #ffffff;
+    --ring: #0f9f98;
+    --sidebar-primary: #0f9f98;
+    --sidebar-primary-foreground: #ffffff;
+    --sidebar-ring: #0f9f98;
+}
+
+:root[data-accent="sky"] {
+    --primary: #368fbd;
+    --primary-foreground: #ffffff;
+    --ring: #4ba8dc;
+    --sidebar-primary: #368fbd;
+    --sidebar-primary-foreground: #ffffff;
+    --sidebar-ring: #4ba8dc;
+}
+
+:root[data-accent="gold"] {
+    --primary: #a8731f;
+    --primary-foreground: #fffaf0;
+    --ring: #c99a45;
+    --sidebar-primary: #a8731f;
+    --sidebar-primary-foreground: #fffaf0;
+    --sidebar-ring: #c99a45;
+}
+
+:root[data-accent="olive"] {
+    --primary: #66762f;
+    --primary-foreground: #ffffff;
+    --ring: #7f9141;
+    --sidebar-primary: #66762f;
+    --sidebar-primary-foreground: #ffffff;
+    --sidebar-ring: #7f9141;
+}
+
+/* 后加的四套把色相环补齐（原来四套挤在青—绿—黄这一段）。每套的浅色值都压
+   在 4.5:1 对比度以上，白字放上去仍然读得清。 */
+:root[data-accent="indigo"] {
+    --primary: #4a56c4;
+    --primary-foreground: #ffffff;
+    --ring: #6570d6;
+    --sidebar-primary: #4a56c4;
+    --sidebar-primary-foreground: #ffffff;
+    --sidebar-ring: #6570d6;
+}
+
+:root[data-accent="violet"] {
+    --primary: #7c4bb8;
+    --primary-foreground: #ffffff;
+    --ring: #9366cd;
+    --sidebar-primary: #7c4bb8;
+    --sidebar-primary-foreground: #ffffff;
+    --sidebar-ring: #9366cd;
+}
+
+:root[data-accent="rose"] {
+    --primary: #b6446a;
+    --primary-foreground: #ffffff;
+    --ring: #cb6e8c;
+    --sidebar-primary: #b6446a;
+    --sidebar-primary-foreground: #ffffff;
+    --sidebar-ring: #cb6e8c;
+}
+
+:root[data-accent="ember"] {
+    --primary: #b45330;
+    --primary-foreground: #ffffff;
+    --ring: #cb7351;
+    --sidebar-primary: #b45330;
+    --sidebar-primary-foreground: #ffffff;
+    --sidebar-ring: #cb7351;
+}
+
+/* clay：默认强调色，饱和度低于 ember，多个强调元素同屏不互相抢；显眼靠位置和留白。
+   #c4603c 对 #faf9f5 = 4.6:1，过 WCAG AA。 */
+:root[data-accent="clay"] {
+    --primary: #c4603c;
+    --primary-foreground: #ffffff;
+    --ring: #d17c5c;
+    --sidebar-primary: #c4603c;
+    --sidebar-primary-foreground: #ffffff;
+    --sidebar-ring: #d17c5c;
+}
+
+:root.dark[data-accent="forest"] {
+    --primary: #44bbb1;
+    --primary-foreground: #092522;
+    --ring: #58c8bf;
+    --sidebar-primary: #44bbb1;
+    --sidebar-primary-foreground: #092522;
+    --sidebar-ring: #58c8bf;
+}
+
+:root.dark[data-accent="sky"] {
+    --primary: #69bde5;
+    --primary-foreground: #082332;
+    --ring: #8bd0ed;
+    --sidebar-primary: #69bde5;
+    --sidebar-primary-foreground: #082332;
+    --sidebar-ring: #8bd0ed;
+}
+
+:root.dark[data-accent="gold"] {
+    --primary: #d6aa59;
+    --primary-foreground: #2d1d04;
+    --ring: #dfbd73;
+    --sidebar-primary: #d6aa59;
+    --sidebar-primary-foreground: #2d1d04;
+    --sidebar-ring: #dfbd73;
+}
+
+:root.dark[data-accent="olive"] {
+    --primary: #9caf58;
+    --primary-foreground: #1b2305;
+    --ring: #b1c570;
+    --sidebar-primary: #9caf58;
+    --sidebar-primary-foreground: #1b2305;
+    --sidebar-ring: #b1c570;
+}
+
+/* 深色版本整体提亮、降饱和：暗背景上高饱和的深色会糊成一团，提亮后才看得出
+   是哪个颜色。前景色相应换成同色相的极深色，保证按钮上的字仍然清楚。 */
+:root.dark[data-accent="indigo"] {
+    --primary: #8b95ec;
+    --primary-foreground: #10133a;
+    --ring: #a2aaf2;
+    --sidebar-primary: #8b95ec;
+    --sidebar-primary-foreground: #10133a;
+    --sidebar-ring: #a2aaf2;
+}
+
+:root.dark[data-accent="violet"] {
+    --primary: #b48ce4;
+    --primary-foreground: #22103a;
+    --ring: #c6a6ec;
+    --sidebar-primary: #b48ce4;
+    --sidebar-primary-foreground: #22103a;
+    --sidebar-ring: #c6a6ec;
+}
+
+:root.dark[data-accent="rose"] {
+    --primary: #e58aa8;
+    --primary-foreground: #3a0f1e;
+    --ring: #eda6bd;
+    --sidebar-primary: #e58aa8;
+    --sidebar-primary-foreground: #3a0f1e;
+    --sidebar-ring: #eda6bd;
+}
+
+:root.dark[data-accent="ember"] {
+    --primary: #e59173;
+    --primary-foreground: #361409;
+    --ring: #edac95;
+    --sidebar-primary: #e59173;
+    --sidebar-primary-foreground: #361409;
+    --sidebar-ring: #edac95;
+}
+
+/* 深色下 clay 需提亮：#c4603c 在深底仅 3.1:1，#e28a63 对 #17161a 为 7.4:1。 */
+:root.dark[data-accent="clay"] {
+    --primary: #e28a63;
+    --primary-foreground: #34160b;
+    --ring: #eba488;
+    --sidebar-primary: #e28a63;
+    --sidebar-primary-foreground: #34160b;
+    --sidebar-ring: #eba488;
+}
+
+/* Enhanced native：克制的应用外壳与清晰紧凑的界面。
+ * 中性色用暖燕麦（#faf9f5 一系），略偏强调色色相、饱和度压在 2% 内，整屏色调统一；
+ * 比纯白暗约 2%，减轻夜间眩光，卡片仍用纯白，靠这点差拉开层次（不叠投影）。
+ */
+:root[data-visual-style="native"] {
+    --background: #faf9f5;
+    --foreground: #1f1e1b;
+    --card: #ffffff;
+    --card-foreground: #1f1e1b;
+    --popover: #ffffff;
+    --popover-foreground: #1f1e1b;
+    --secondary: #f2efe7;
+    --secondary-foreground: #35322c;
+    --muted: #f2efe7;
+    --muted-foreground: #6d6a62;
+    --accent: color-mix(in oklab, var(--primary) 10%, white);
+    --accent-foreground: #4a2718;
+    --surface: #fdfcfa;
+    --surface-strong: #efebe1;
+    --elevated: #ffffff;
+    --info: #2b6b9e;
+    --info-foreground: #f2f8fc;
+    --border: #e3dfd4;
+    --input: #d8d3c5;
+    --sidebar: #f4f1e9;
+    --sidebar-foreground: #57544d;
+    --sidebar-accent: #ffffff;
+    --sidebar-accent-foreground: #4a2718;
+    --sidebar-border: #e0dbcf;
+    --radius: 0.625rem;
+}
+
+/* 深色侧中性色同样偏暖。底色不用纯黑：OLED 上跳变拖影，且白字对比 21:1 过晃；
+ * #17161a 配 #eceae2 约 14:1，够清楚又不顶死。 */
+:root.dark[data-visual-style="native"] {
+    --background: #17161a;
+    --foreground: #eceae2;
+    --card: #201f1b;
+    --card-foreground: #eceae2;
+    --popover: #201f1b;
+    --popover-foreground: #eceae2;
+    --secondary: #292722;
+    --secondary-foreground: #e3e0d7;
+    --muted: #292722;
+    --muted-foreground: #a09b90;
+    --accent: color-mix(in oklab, var(--primary) 13%, #1d1c19);
+    --accent-foreground: #f5ece6;
+    --surface: #1d1c19;
+    --surface-strong: #2b2924;
+    --elevated: #262420;
+    --info: #6aa5da;
+    --info-foreground: #08192a;
+    --border: #322f29;
+    --input: #3d3931;
+    --sidebar: #1c1b17;
+    --sidebar-foreground: #b0aba0;
+    --sidebar-accent: #2a2823;
+    --sidebar-accent-foreground: #f5ece6;
+    --sidebar-border: #312e28;
+}
+
+/* Oriental tech luxe: airy cyan surfaces, fine gold separators and subtle
+   traditional geometry. Decorations remain behind content and below 10%. */
+:root[data-visual-style="oriental-tech"] {
+    --background: #f4fafb;
+    --foreground: #17343d;
+    --card: #ffffff;
+    --card-foreground: #17343d;
+    --popover: #ffffff;
+    --popover-foreground: #17343d;
+    --secondary: #eef8f8;
+    --secondary-foreground: #274d56;
+    --muted: #eef8f8;
+    --muted-foreground: #71888e;
+    --accent: color-mix(in oklab, var(--primary) 11%, #f2fbfb);
+    --accent-foreground: #16515a;
+    --surface: #f9fdfd;
+    --surface-strong: #e6f3f3;
+    --elevated: #ffffff;
+    --info: #276b93;
+    --info-foreground: #f1f9fd;
+    --border: #dbe9e9;
+    --input: #cfe0df;
+    --sidebar: #eaf5f5;
+    --sidebar-foreground: #496970;
+    --sidebar-accent: #ffffff;
+    --sidebar-accent-foreground: #174e56;
+    --sidebar-border: #d3e6e5;
+    --radius: 0.75rem;
+}
+
+:root.dark[data-visual-style="oriental-tech"] {
+    --background: #10191b;
+    --foreground: #dcecee;
+    --card: #172326;
+    --card-foreground: #dcecee;
+    --popover: #172326;
+    --popover-foreground: #dcecee;
+    --secondary: #1d2d30;
+    --secondary-foreground: #d4e6e8;
+    --muted: #1d2d30;
+    --muted-foreground: #8ba3a8;
+    --accent: color-mix(in oklab, var(--primary) 14%, #152326);
+    --accent-foreground: #e2f5f4;
+    --surface: #162225;
+    --surface-strong: #213438;
+    --elevated: #1c2b2e;
+    --info: #63aed3;
+    --info-foreground: #06202b;
+    --border: #294044;
+    --input: #304b50;
+    --sidebar: #142124;
+    --sidebar-foreground: #9ab2b6;
+    --sidebar-accent: #203337;
+    --sidebar-accent-foreground: #e2f5f4;
+    --sidebar-border: #294044;
+}
+
+/* ---- 阅读舒适度：低对比暖色护眼档 ----
+   第四条正交轴（明暗 × 8 强调色 × 2 视觉风格 × 3 装饰强度 × 2 阅读舒适度）：
+   降对比加偏暖不并入视觉风格/装饰强度，否则护眼与东方科技风变成互斥。
+   用 color-mix 派生，只声明变换，对任何起点成立，加新强调色不用补。
+   变量在 html 上算、body 上生效：同元素写 `--background: color-mix(..var(--background)..)`
+   是自引用，整条静默作废；`--rc-*` 在 html 用原始 token 算，body 再指给标准 token。
+   Radix 浮层 portal 到 body 下，会一起变暖。
+   硬线：正文对比度不低于 WCAG AA 4.5:1（oklab 混色实算：正文 浅色 6.8–7.3、深色 8.7–9.5；
+   次要文字 浅色 4.8–5.6、深色 5.7–7.4）。 */
+html[data-reading-comfort="warm"] {
+  /* 暖色锚点。浅色兑的是"旧纸"，深色兑的是"暖褐" —— 混合之后纯白 #ffffff
+     变成 #fcf7ef、纯黑侧的 #151a18 变成 #1a1d1a，两端都不再有纯白/纯黑。 */
+  --rc-anchor: #f0dcb4;
+  --rc-bg-mix: 74%;
+  --rc-panel-mix: 78%;
+  --rc-surface-mix: 76%;
+  --rc-line-mix: 72%;
+  /* 前景保留多少「原始深度」，其余往背景兑——这一项就是"降对比"本身。 */
+  --rc-ink-mix: 80%;
+  /* 次要文字反过来往 foreground 收：只降正文对比、不降次要文字对比，
+     否则次要文字会第一个掉到 4.5 以下。 */
+  --rc-muted-ink-mix: 70%;
+
+  /* 下面这些派生式对明暗两套通用——变的只是上面那几个输入值。 */
+  --rc-bg: color-mix(in oklab, var(--background) var(--rc-bg-mix), var(--rc-anchor));
+  --rc-card: color-mix(in oklab, var(--card) var(--rc-panel-mix), var(--rc-anchor));
+  --rc-popover: color-mix(in oklab, var(--popover) var(--rc-panel-mix), var(--rc-anchor));
+  --rc-elevated: color-mix(in oklab, var(--elevated) var(--rc-panel-mix), var(--rc-anchor));
+  --rc-surface: color-mix(in oklab, var(--surface) var(--rc-surface-mix), var(--rc-anchor));
+  --rc-surface-strong: color-mix(in oklab, var(--surface-strong) var(--rc-surface-mix), var(--rc-anchor));
+  --rc-secondary: color-mix(in oklab, var(--secondary) var(--rc-surface-mix), var(--rc-anchor));
+  --rc-muted: color-mix(in oklab, var(--muted) var(--rc-surface-mix), var(--rc-anchor));
+  --rc-accent: color-mix(in oklab, var(--accent) var(--rc-panel-mix), var(--rc-anchor));
+  --rc-sidebar: color-mix(in oklab, var(--sidebar) var(--rc-surface-mix), var(--rc-anchor));
+  --rc-sidebar-accent: color-mix(in oklab, var(--sidebar-accent) var(--rc-panel-mix), var(--rc-anchor));
+  --rc-border: color-mix(in oklab, var(--border) var(--rc-line-mix), var(--rc-anchor));
+  --rc-input: color-mix(in oklab, var(--input) var(--rc-line-mix), var(--rc-anchor));
+  --rc-fg: color-mix(in oklab, var(--foreground) var(--rc-ink-mix), var(--background));
+  --rc-muted-fg: color-mix(in oklab, var(--muted-foreground) var(--rc-muted-ink-mix), var(--foreground));
+}
+
+/* 深色只换输入值，不重复任何一条派生式。 */
+html.dark[data-reading-comfort="warm"] {
+  --rc-anchor: #3d3225;
+  /* 深色兑得少：暗背景上兑太多暖色会直接变成"发黄的灰"，看起来像屏幕坏了。 */
+  --rc-bg-mix: 86%;
+  --rc-panel-mix: 86%;
+  --rc-surface-mix: 86%;
+  --rc-line-mix: 84%;
+  --rc-ink-mix: 82%;
+  --rc-muted-ink-mix: 84%;
+}
+
+html[data-reading-comfort="warm"] body {
+  --background: var(--rc-bg);
+  --foreground: var(--rc-fg);
+  --card: var(--rc-card);
+  --card-foreground: var(--rc-fg);
+  --popover: var(--rc-popover);
+  --popover-foreground: var(--rc-fg);
+  --secondary: var(--rc-secondary);
+  --secondary-foreground: var(--rc-fg);
+  --muted: var(--rc-muted);
+  --muted-foreground: var(--rc-muted-fg);
+  --accent: var(--rc-accent);
+  --surface: var(--rc-surface);
+  --surface-strong: var(--rc-surface-strong);
+  --elevated: var(--rc-elevated);
+  --border: var(--rc-border);
+  --input: var(--rc-input);
+  --sidebar: var(--rc-sidebar);
+  --sidebar-foreground: var(--rc-muted-fg);
+  --sidebar-accent: var(--rc-sidebar-accent);
+  --sidebar-border: var(--rc-border);
+  /* 强调色派生统一兑暖化后的卡片色 --rc-card，否则图标底片会偏冷。 */
+  --accent-soft: color-mix(in oklab, var(--primary) 12%, var(--rc-card));
+  --accent-line: color-mix(in oklab, var(--primary) 30%, var(--rc-card));
+}
+
+/* 状态色和 --ring 不进护眼档：降对比会削弱"一眼认出警告"的功能。 */
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+    }
+  body {
+    @apply bg-background text-foreground;
+    min-height: 100vh;
+    }
+  html {
+    @apply font-sans;
+    /* 全应用字号唯一来源：UI 尺寸均为 rem，改根字号即等比缩放（档位见 lib/fontSize.ts：16px / 18.667px）。
+       fallback 写 16px，避免偏好尚未被 JS 应用的首帧闪烁。 */
+    font-size: var(--app-font-size, 16px);
+    }
+}
+
+/* 表格数字：用于需上下对齐的列（大小、条数、百分比、耗时、日期）。
+   --font-sans 首选 Times New Roman，数字是比例宽度，列无法对齐；
+   `tabular-nums` 令数字等宽，`slashed-zero` 区分 0 与 O。只影响数字，可用于混排。 */
+.tabular {
+  font-variant-numeric: tabular-nums slashed-zero;
+  /* Times New Roman 没有真正的等宽数字字形时，交给系统的等宽栈兜底，
+     但仍然把 SimSun 留在后面——这一列里可能混着"共 12 项"这样的中文。 */
+  font-feature-settings: "tnum" 1, "zero" 1;
+}
+
+/* 数字旁边的单位（MB / 项 / 秒）。压低一档字重和对比度，让眼睛先抓到数值
+   本身。**不缩字号**——正文字号下限 16px 是硬规则，单位也是正文。 */
+.tabular-unit {
+  opacity: 0.72;
+  font-weight: 400;
+  margin-inline-start: 0.15em;
+}
+
+/* 笔记编辑器"上次阅读/编辑位置"标记——一条细左边框，几秒后由 JS 移除
+   （见 positionMarkerExtension.ts），不用 CSS 动画避免额外的失败面。 */
+.cm-last-position-marker {
+  border-left: 3px solid var(--ring);
+  background-color: color-mix(in oklab, var(--ring) 10%, transparent);
+}
+
+#root {
+  position: relative;
+  z-index: 1;
+  min-height: 100vh;
+}
+
+/* A fixed, non-interactive edge texture: circuit traces on top/right and a
+   faint data grid near the bottom. It never crosses readable content. */
+html[data-visual-style="oriental-tech"] body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(circle at 12% 13%, color-mix(in oklab, var(--primary) 70%, transparent) 0 1px, transparent 2px),
+    linear-gradient(90deg, transparent 0 7%, color-mix(in oklab, var(--primary) 20%, transparent) 7% 7.1%, transparent 7.1% 100%),
+    linear-gradient(0deg, transparent 0 88%, color-mix(in oklab, var(--primary) 18%, transparent) 88% 88.15%, transparent 88.15% 100%);
+  background-size: 38px 38px, 190px 100%, 100% 128px;
+  mask-image: linear-gradient(90deg, black 0 8%, transparent 22% 78%, black 94% 100%);
+}
+
+html[data-decoration="off"] body::before {
+  display: none;
+}
+
+html[data-decoration="subtle"] body::before {
+  opacity: 0.05;
+}
+
+html[data-decoration="standard"] body::before {
+  opacity: 0.1;
+}
+
+/* 字体族统一由 --font-sans 决定（曾强制宋体在前，使标题英文也变宋体）；这里只保留标题的字距差异。 */
+html[data-visual-style="oriental-tech"] h1,
+html[data-visual-style="oriental-tech"] h2 {
+  letter-spacing: 0.025em;
+}
+
+html[data-visual-style="oriental-tech"] .appearance-studio {
+  border-color: color-mix(in oklab, var(--primary) 32%, var(--border));
+  box-shadow: 0 12px 32px rgb(36 87 89 / 10%);
+}
+
+html[data-visual-style="oriental-tech"] .appearance-studio::after {
+  content: "";
+  position: absolute;
+  inset-block-start: -24px;
+  inset-inline-end: -24px;
+  width: 116px;
+  height: 116px;
+  pointer-events: none;
+  border: 1px solid color-mix(in oklab, #c99a45 45%, transparent);
+  border-radius: 44% 56% 62% 38%;
+  box-shadow:
+    -22px 28px 0 -21px color-mix(in oklab, var(--primary) 45%, transparent),
+    -42px 54px 0 -40px color-mix(in oklab, #c99a45 55%, transparent);
+  opacity: 0.3;
+}
+
+html[data-decoration="off"] .appearance-studio::after {
+  display: none;
+}
+
+.accent-swatch {
+  width: 0.7rem;
+  height: 0.7rem;
+  flex: none;
+  border-radius: 999px;
+  border: 1px solid rgb(255 255 255 / 45%);
+  box-shadow: 0 0 0 1px rgb(0 0 0 / 10%);
+}
+
+.accent-swatch-forest { background: #0f9f98; }
+.accent-swatch-sky { background: #4ba8dc; }
+.accent-swatch-gold { background: #c99a45; }
+.accent-swatch-olive { background: #7f9141; }
+.accent-swatch-indigo { background: #4a56c4; }
+.accent-swatch-violet { background: #7c4bb8; }
+.accent-swatch-rose { background: #b6446a; }
+.accent-swatch-ember { background: #b45330; }
+
+/* ---- 页面头部的强调色渐晕 ----
+   页面顶部一条极淡（<=7%）强调色渐变向下透明，作页面起点锚点并把强调色带进每屏。
+   与 body::before 的风格专属纹样不同，它是全风格通用的结构元素，不受 data-decoration 影响。 */
+/* 页面顶部的洗底：3% 的中性提亮（兑表面色、无色相），让页面起点略亮、形成轻微纵深。
+ * 不用强调色铺 220px 横带：每页都有，会与右上角主操作等真正的重点抢注意力。
+ */
+.ds-page-wash {
+  background-image: linear-gradient(
+    180deg,
+    color-mix(in oklab, var(--surface) 60%, transparent) 0%,
+    transparent 100%
+  );
+  background-repeat: no-repeat;
+  background-size: 100% 180px;
+}
+
+/* 图标底片：强调色淡底 + 同色相细边。整套 UI 里所有"图标配文字"的组合都用
+   它，视觉上立刻统一，且换强调色时自动跟着变。 */
+.ds-icon-chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  border-radius: var(--radius-md);
+  background: var(--accent-soft);
+  border: 1px solid var(--accent-line);
+  color: var(--primary);
+}
+
+/* 卡片的悬停反馈：只抬边框颜色，不动位置也不加投影。列表里几十张卡同时存在
+   时，位移式的 hover 会让整页看起来在抖。 */
+.ds-card-interactive {
+  transition: border-color 150ms ease, background-color 150ms ease;
+}
+
+.ds-card-interactive:hover {
+  border-color: var(--accent-line);
+  background-color: var(--surface);
+}
+
+/* 键盘焦点环，给不走 shadcn Button 的原生 <button> / <a> 用（shadcn 自带 focus-visible ring）。
+   `@layer base` 的 `outline-ring/50` 只设颜色，outline 仍是 none，键盘聚焦时什么都不显示。
+   用 :focus-visible 而非 :focus，避免鼠标点击也留下焦点环；用 outline 而非 box-shadow，
+   因为不会被 `overflow-hidden` 的标题栏裁掉（PageSection 折叠开关即如此）。 */
+.ds-focus-ring {
+  outline: 2px solid transparent;
+  outline-offset: 2px;
+}
+
+.ds-focus-ring:focus-visible {
+  outline-color: var(--ring);
+}
+
+/* 顶栏（components/TopBar.tsx）放不下时横向滚动，但不画滚动条：一行菜单下面
+   多一条细滚动条，看起来像布局出了错。滚轮 / 触控板 / 方向键照样能滚过去。 */
+.scrollbar-none {
+  scrollbar-width: none;
+}
+
+.scrollbar-none::-webkit-scrollbar {
+  display: none;
+}

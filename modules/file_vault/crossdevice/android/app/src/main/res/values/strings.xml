@@ -1,0 +1,482 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Tessera 跨设备</string>
+    <string name="channel_name">跨设备同步</string>
+    <string name="notif_title">跨设备同步正在运行</string>
+    <string name="notif_text">保持与已配对设备的连接 · 点一下同步剪贴板</string>
+    <!-- 安卓限制了后台读剪贴板（见 clip_auto_foreground_note），这个通知按钮是
+         退出界面后想同步新复制内容时最快的一条路：点一下，不用真的打开应用。 -->
+    <string name="notif_action_sync_clip">同步剪贴板</string>
+
+    <!-- 电池优化豁免：前台服务本身杀不掉进程，真正把"退出界面后台同步"杀掉的
+         是厂商省电策略。不解释清楚原因，用户会觉得这是又一个索要权限的弹窗随手关掉。 -->
+    <string name="battery_opt_title">后台同步可能被系统省电策略打断</string>
+    <string name="battery_opt_message">退出界面后，手机的省电策略可能会暂停同步，导致新复制的内容和收到的文件延迟到你重新打开本应用才更新。允许 Tessera 忽略电池优化，可以让后台同步保持连接、更快收到对方发来的内容。</string>
+    <string name="battery_opt_allow">去设置</string>
+    <string name="battery_opt_later">以后再说</string>
+
+    <!-- 设置区：系统权限与后台运行。通知权限被关、电池优化没豁免，这两条都
+         不报错、App 也照样显示"运行中"——用户看不出问题在哪，只会觉得"同步
+         时好时坏"。这张卡片把两条状态摆出来，随时能查、随时能改，不用等
+         第一次启动时那个只弹一次的系统对话框。 -->
+    <string name="system_permissions_title">系统权限与后台运行</string>
+    <string name="notif_perm_status_on">通知权限：已开启。通知栏能看到同步状态，也有「同步剪贴板」按钮。</string>
+    <string name="notif_perm_status_off">通知权限：未开启。你看不到同步状态，通知栏也不会出现「同步剪贴板」按钮——退出界面后没法手动同步新复制的内容。</string>
+    <!-- 按钮常驻显示，不再按"权限开没开"隐藏——荣耀这类厂商系统还有一批不算
+         在"开/关"这个二元状态里的细节（通知折不折叠、锁屏显不显示、横幅要不要
+         弹），只有进这个系统页面才调得了，权限明明已经开着的时候用户也可能
+         要点进去看。 -->
+    <string name="notif_perm_fix_button">打开通知设置</string>
+    <string name="battery_opt_status_on">电池优化：已豁免。退出界面后台同步更不容易被系统打断。</string>
+    <string name="battery_opt_status_off">电池优化：未豁免。手机的省电策略可能在退出界面后暂停同步。</string>
+    <string name="battery_opt_fix_button">打开电池优化设置</string>
+    <string name="battery_opt_settings_unreachable">打不开系统设置页面，这台手机可能不支持这个入口</string>
+    <!-- 小米/华为/荣耀/OPPO/vivo 这类系统的"应用启动管理"是厂商自己加的一层，
+         不在标准安卓 API 范围内，没有稳定公开的方式能从代码里直接跳转过去
+         （荣耀独立后连华为那套专属跳转方式都不再适用）。只能把路写清楚，
+         让用户自己按图找过去。 -->
+    <string name="launch_mgmt_hint">部分手机（小米 / 华为 / 荣耀 / OPPO / vivo）还有一个额外的「应用启动管理」开关，是厂商自己加的，不在上面两项范围内，程序没法直接跳转过去。请手动进入：手机设置 → 应用 → 应用启动管理，找到 Tessera，关掉「自动管理」，打开「允许自启动」「允许关联启动」「允许后台活动」这三项。</string>
+
+    <!-- 首页 -->
+    <string name="this_device">本机</string>
+    <string name="starting">正在启动同步服务…</string>
+    <string name="quick_actions">快捷操作</string>
+    <string name="send_clipboard">发送剪贴板</string>
+    <string name="send_files">发送文件</string>
+    <string name="scan_to_pair">扫码配对</string>
+    <string name="show_my_code">出示我的码</string>
+    <string name="paired_devices">已配对设备</string>
+    <string name="no_devices">还没有配对设备。点「扫码配对」，扫电脑上显示的那张码。</string>
+    <string name="no_online_devices">当前没有在线设备</string>
+
+    <!-- 系统分享菜单进来之后的流程。每一步都必须有话说：
+         "点了分享却什么都没发生"是这条路上最常见、也最让人以为功能不存在的表现。 -->
+    <string name="share_preparing">正在连接设备…</string>
+    <string name="share_pick_targets">发给哪些设备？</string>
+    <string name="share_send">发送</string>
+    <string name="share_to_all">全部发送</string>
+    <string name="share_all_label">%1$d 台设备</string>
+    <string name="share_pick_at_least_one">请至少选一台设备</string>
+    <string name="share_text_sent">已发送到 %1$s</string>
+    <string name="share_staging">正在准备 %1$d 个文件…</string>
+    <string name="share_files_sent">%1$d 个文件已发往 %2$s</string>
+    <string name="share_stage_failed">读取分享内容失败，换个文件再试一次</string>
+    <string name="share_no_devices">还没有已连接的设备。先在应用里配对一台，再用分享。</string>
+    <string name="files_queued">%1$d 个文件已开始发送</string>
+    <string name="clipboard_empty">剪贴板是空的</string>
+    <string name="clip_sent">剪贴板内容已同步到已配对设备</string>
+
+    <string name="save_to">收到的文件存到</string>
+    <string name="change">更改</string>
+    <string name="save_to_default">应用内部目录（默认）</string>
+    <string name="save_to_changed">收到的文件将保存到你选的位置</string>
+
+    <!-- 界面与专业指标 -->
+    <string name="appearance_button">界面与指标</string>
+    <string name="appearance_title">界面与专业模式</string>
+    <string name="appearance_apply">应用</string>
+    <string name="appearance_interface_mode">界面模式</string>
+    <string name="appearance_default_mode">默认界面</string>
+    <string name="appearance_professional_mode">专业诊断</string>
+    <string name="appearance_theme_mode">明暗模式</string>
+    <string name="appearance_system">跟随系统</string>
+    <string name="appearance_light">浅色</string>
+    <string name="appearance_dark">深色</string>
+    <string name="appearance_visual_style">视觉风格</string>
+    <string name="appearance_native">Tessera 原生增强</string>
+    <string name="appearance_oriental">东方科技轻奢</string>
+    <string name="appearance_accent">强调色</string>
+    <string name="appearance_forest">青绿色</string>
+    <string name="appearance_sky">天青色</string>
+    <string name="appearance_indigo">靛蓝色</string>
+    <string name="appearance_violet">紫罗兰</string>
+    <string name="appearance_rose">玫瑰红</string>
+    <string name="appearance_ember">赤陶橙</string>
+    <string name="appearance_clay">黏土橙</string>
+    <string name="appearance_gold">金色</string>
+    <string name="appearance_olive">橄榄绿</string>
+    <string name="appearance_decoration">纹样强度</string>
+    <string name="appearance_decoration_off">关闭</string>
+    <string name="appearance_decoration_subtle">轻</string>
+    <string name="appearance_decoration_standard">标准</string>
+    <string name="appearance_metrics">专业指标</string>
+    <string name="appearance_metrics_hint">选择专业模式中显示的指标；至少保留一项。</string>
+    <string name="metrics_live_title">实时运行指标 · 每 2.5 秒刷新</string>
+    <string name="metrics_loading">正在读取指标…</string>
+    <string name="metric_app_heap">应用堆内存</string>
+    <string name="metric_device_memory">设备内存占用</string>
+    <string name="metric_storage_free">应用存储可用</string>
+    <string name="metric_battery">电量</string>
+    <string name="metric_uptime">本次运行时间</string>
+    <string name="metric_refresh_latency">指标刷新耗时</string>
+    <string name="metric_unavailable">不可用</string>
+    <string name="metric_value_app_heap">应用堆内存    %1$s</string>
+    <string name="metric_value_device_memory">设备内存      %1$.1f%% · %2$s</string>
+    <string name="metric_value_storage_free">存储可用      %1$s</string>
+    <string name="metric_value_battery">电量          %1$s</string>
+    <string name="metric_value_uptime">运行时间      %1$s</string>
+    <string name="metric_value_refresh_latency">刷新耗时      %1$.2f ms</string>
+
+    <!-- 扫码 -->
+    <string name="scan_hint">把对方屏幕上的二维码放进框里</string>
+    <string name="scan_need_camera">需要相机权限才能扫码。也可以改用「出示我的码」，让对方来扫你。</string>
+
+    <!-- 配对确认 -->
+    <string name="confirm_pair_title">确认这次配对</string>
+    <string name="confirm_pair_hint">两台设备上的数字和表情必须完全一致。不一致说明连接可能被人从中截获，请选「不一致」。</string>
+    <string name="matches">一致</string>
+    <string name="mismatch">不一致</string>
+
+    <!-- 收文件 -->
+    <string name="incoming_files">收到文件</string>
+    <string name="accept">接收</string>
+    <string name="reject">拒绝</string>
+
+    <!-- 服务状态 -->
+    <string name="service_failed">同步服务启动失败</string>
+    <string name="service_retry">重试</string>
+
+    <!-- 应用锁 -->
+    <string name="lock_title">打开应用时验证</string>
+    <string name="lock_none">不验证，直接使用</string>
+    <string name="lock_password">密码</string>
+    <string name="lock_biometric">指纹 / 面容</string>
+    <string name="lock_prompt_title">验证身份</string>
+    <string name="lock_prompt_subtitle">解锁 Tessera 跨设备</string>
+    <string name="lock_set_password">设置密码</string>
+    <string name="lock_enter_password">输入密码</string>
+    <string name="lock_wrong_password">密码不对</string>
+    <string name="lock_unlock">解锁</string>
+    <string name="lock_biometric_unavailable">这台设备没有可用的指纹或面容识别</string>
+
+    <!-- 信任等级 -->
+    <string name="trust_title">这台设备算</string>
+    <string name="trust_long">长期设备（我自己的）</string>
+    <string name="trust_temp">临时设备（别人的）</string>
+    <string name="trust_long_hint">会自动重连，剪贴板互通</string>
+    <string name="trust_temp_hint">到期即失效，不自动重连，凭据不落盘</string>
+    <string name="trust_ttl_30m">30 分钟</string>
+    <string name="trust_ttl_1h">1 小时</string>
+    <string name="trust_ttl_1d">1 天</string>
+
+    <!-- 传输目标 -->
+    <string name="send_to_all">发给全部在线设备</string>
+    <string name="send_to_selected">发给选中的 %1$d 台</string>
+    <string name="select_targets">选择接收设备</string>
+
+    <!-- 故障日志 -->
+    <string name="diag_title">故障日志</string>
+    <string name="diag_hint">只记录出问题的地方，绝不记录你的内容。默认关闭。</string>
+    <string name="diag_empty_on">还没有记录——开启之后还没有出过问题。</string>
+    <string name="diag_empty_off">先打开它，再复现一次问题，然后回到这里查看。</string>
+    <string name="diag_select_all">全选</string>
+    <string name="diag_clear">删除</string>
+    <string name="diag_cleared">已删除 %1$d 条</string>
+    <string name="diag_share">导出日志</string>
+
+    <!-- 本机改名 -->
+    <string name="rename_device">改名</string>
+    <string name="rename_device_title">给这台设备起个名字</string>
+    <string name="rename_device_hint">已配对的设备约十秒内会看到新名字</string>
+    <string name="rename_device_done">已改名为 %1$s</string>
+    <string name="policy_clip_title">剪贴板</string>
+    <string name="policy_clip_all">全部同步</string>
+    <string name="policy_clip_text">只同步文字</string>
+    <string name="policy_clip_off">不同步剪贴板</string>
+    <string name="policy_file_title">收文件</string>
+    <string name="policy_file_inherit">跟随全局设置</string>
+    <string name="policy_file_ask">每次询问</string>
+    <string name="policy_file_auto">自动接收</string>
+    <string name="offline_reason_line">连不上的原因：%1$s</string>
+    <string name="offline_not_found">局域网里找不到它，也没配置跨网</string>
+    <string name="offline_not_found_crossnet">局域网和中转点都没看到它</string>
+    <string name="offline_metered">按流量计费的网络，按设置跳过了中转</string>
+    <string name="offline_refused">地址通，但对方没开 Tessera</string>
+    <string name="offline_timeout">没有回应，多半不在同一个网络</string>
+    <string name="offline_unreachable">网络不可达</string>
+    <string name="offline_auth">连上了但身份校验没过，可能要重新配对</string>
+    <string name="offline_revoked">已撤销或授权到期</string>
+    <string name="offline_other">其他网络错误</string>
+
+    <!-- 传输进度 -->
+    <string name="transfer_in_progress">正在传输</string>
+    <string name="transfer_progress_detail">%1$s / %2$s  ·  %3$s</string>
+    <string name="nearby_devices">附近的设备</string>
+    <string name="nearby_empty">没有发现设备。两台设备要在同一个网络里，并且都开着 Tessera。</string>
+    <string name="nearby_unverified">名称未验证——确认前请核对安全码</string>
+    <string name="nearby_already_paired">已配对 · 当前在线</string>
+    <string name="pair_now">配对</string>
+    <string name="refresh">刷新</string>
+
+    <!-- 兜底的三条路：主动扫描、手动地址、连接诊断。
+         「刷新」只把已经被动听到的读一遍，路由器丢组播时永远是空的；
+         下面这三个才是真正解决"列表一直没东西"的手段。 -->
+    <string name="scan_lan">扫描局域网</string>
+    <string name="scanning">正在扫描局域网…</string>
+    <string name="scan_done">扫描完成，找到 %1$d 台设备</string>
+    <string name="nearby_empty_hint">点「扫描局域网」主动找一遍。有些路由器会丢掉自动发现用的组播包，这时只有主动扫描才找得到。</string>
+    <string name="manual_address">手动输入地址</string>
+    <!-- 数字码配对：其它三条路（扫码 / 附近设备 / 手动地址）各有前提，这条没有 -->
+    <string name="short_code">数字码配对</string>
+    <string name="short_code_title">用数字码配对</string>
+    <string name="short_code_show_title">在这台设备上显示配对码</string>
+    <string name="short_code_show_hint">把这 6 位数字念给另一台设备输进去。不需要摄像头，也不依赖组播。</string>
+    <string name="short_code_generate">显示配对码</string>
+    <string name="short_code_enter_title">输入对方设备的配对码</string>
+    <string name="short_code_placeholder">000000</string>
+    <string name="short_code_expires_in">%1$d 分 %2$d 秒后过期</string>
+    <string name="short_code_searching">正在局域网里找显示这个码的设备…</string>
+    <string name="short_code_needs_six">请输入 6 位数字</string>
+    <string name="short_code_safety_hint">这几位数字只决定「跟哪台设备说话」。对方仍然要在自己屏幕上点同意，然后两边会各显示同一组安全码供你核对——挡住冒充者的是那次核对，不是数字有多长。</string>
+    <string name="manual_address_title">手动输入地址配对</string>
+    <string name="manual_address_hint">两台设备之间只要 IP 能通就能配上，不要求在同一个网段，组播被屏蔽也不影响。</string>
+    <string name="my_address_label">本机地址（念给对方）</string>
+    <string name="my_address_loading">正在获取本机地址…</string>
+    <string name="my_address_unknown">暂时拿不到本机地址，请检查网络连接。</string>
+    <string name="peer_address_label">对方设备的地址</string>
+    <string name="address_copied">地址已复制</string>
+    <string name="copy">复制</string>
+    <string name="cancel">取消</string>
+    <string name="diag_run">连不上？跑一次连接诊断</string>
+    <string name="diag_running">正在诊断…</string>
+
+    <!-- 诊断结论。守护进程只给机器可读的 id 和数值，人话在这里拼——
+         它不知道界面是什么语言，让它产出句子等于把文案写死在协议层。 -->
+    <string name="diag_listening_ok">✓ 监听已启动（%1$s）</string>
+    <string name="diag_listening_fail">✗ 监听没有启动，任何设备都连不进来。退出应用重新打开试试。</string>
+    <string name="diag_endpoints_ok">✓ 本机有 %1$s 个可用地址</string>
+    <string name="diag_endpoints_fail">✗ 找不到任何可用的网络地址。检查 Wi-Fi 是否已连接——只开着流量的话局域网互传用不了。</string>
+    <string name="diag_mdns_publish_ok">✓ 已在局域网里公布本机</string>
+    <string name="diag_mdns_publish_warn">! 没能在局域网里公布本机，别的设备不会自动看到你。用扫描或手动地址都能绕开。</string>
+    <string name="diag_beacon_ok">✓ 应答端口 %1$s 已就绪</string>
+    <string name="diag_beacon_warn">! 应答端口 %1$s 没占上，别人扫描时扫不到这台设备。你主动扫描别人仍然有效。</string>
+    <string name="diag_mdns_peers_ok">✓ 自动发现到 %1$s 台设备</string>
+    <string name="diag_mdns_peers_warn">! 自动发现没有找到任何设备。点「扫描局域网」主动找一遍。</string>
+    <string name="diag_lan_scan_ok">✓ 主动扫描找到 %1$s 台设备</string>
+    <string name="diag_lan_scan_warn">! 主动扫描探测了 %1$s 个地址（%2$s），一台也没找到。确认对方开着 Tessera 且连的是同一个 Wi-Fi，仍然不行就用手动输入地址。</string>
+    <string name="diag_lan_scan_fail">✗ 主动扫描没能执行。</string>
+    <!-- 跨网络连接。
+         这里的措辞刻意全部避开"NAT""打洞""中继服务器"这类词：用户要判断的是
+         "我要不要用这个功能、我的东西会经过谁"，不是"它怎么实现的"。 -->
+    <string name="crossnet_section">跨网络连接</string>
+    <string name="crossnet_explain">两台设备在同一个 Wi-Fi 下时不需要这个功能，直接就能连。只有在外面（比如手机用流量、电脑在家里）才需要一个双方都能连上的"中转点"来互相找到对方。\n\n你的文件始终是加密的，中转点只负责帮你们接上头，看不到任何内容。</string>
+    <string name="crossnet_status_off">当前：只在同一个 Wi-Fi 下互传</string>
+    <string name="crossnet_status_on">当前：已开启跨网络，中转点 %1$s</string>
+    <string name="crossnet_addr_hint">中转点地址</string>
+    <string name="crossnet_addr_helper">形如 example.com:47820 或 1.2.3.4:47820。留空就是不用跨网络。</string>
+    <string name="crossnet_secret_hint">中转点口令（可留空）</string>
+    <string name="crossnet_secret_helper">如果那台中转点设了口令，填一样的。已保存的口令不会显示出来。</string>
+    <string name="crossnet_save">保存并启用</string>
+    <string name="crossnet_disable">关闭跨网络</string>
+    <string name="crossnet_saved">已启用跨网络，中转点 %1$s</string>
+    <string name="crossnet_disabled">已关闭跨网络，现在只在同一个 Wi-Fi 下互传</string>
+    <string name="crossnet_need_addr">先填中转点地址</string>
+    <string name="crossnet_metered_label">用手机流量时也允许中转</string>
+    <string name="crossnet_metered_now">当前正在用按流量计费的网络，已自动跳过中转以省流量。接上 Wi-Fi 即可正常跨网络连接。</string>
+    <string name="crossnet_metered_now_allowed">当前正在用按流量计费的网络，中转已按你的设置开启——传大文件会走手机流量。</string>
+    <string name="crossnet_metered_on">已允许用手机流量中转。中转会把整个文件过一遍网络，传大文件时比较费流量。</string>
+    <string name="crossnet_metered_off">已关闭手机流量中转。用流量时只能直连，连不上就等接上 Wi-Fi 再传。</string>
+
+    <string name="update_section">应用更新</string>
+    <string name="update_check">检查更新</string>
+    <string name="update_checking">正在检查…</string>
+    <string name="update_auto_label">自动检查更新</string>
+    <string name="update_auto_hint">打开时自动查一次，有新版才提示你。关掉就只在你按「检查更新」时才查。无论哪种，最后都由系统弹框、你确认后才真的安装。</string>
+    <string name="update_current">当前版本 %1$s</string>
+    <string name="update_none">已经是最新版本（%1$s）</string>
+    <string name="update_found_title">发现新版本 %1$s</string>
+    <string name="update_found_msg">当前 %1$s，可更新到 %2$s（%3$s）。
+
+下载完成后系统会弹出安装确认框，你再点一次「安装」才会真的安装。</string>
+    <string name="update_now">更新</string>
+    <string name="update_later">以后再说</string>
+    <string name="update_downloading">正在下载 %1$d%% · %2$s/s</string>
+    <string name="update_install_perm_title">需要允许安装</string>
+    <string name="update_install_perm_msg">系统要求先在设置里允许本应用安装应用，否则装不上。现在去开吗？</string>
+    <string name="update_go_settings">去设置</string>
+    <string name="update_err_source">更新源不可公开访问——这个仓库是私有的，匿名检查拿不到版本信息。</string>
+    <string name="update_err_rate">GitHub 暂时限流了，过一会儿再试。</string>
+    <string name="update_err_asset">这个版本里没有安卓安装包。</string>
+    <string name="update_err_host">下载地址不是 github.com，已拒绝。</string>
+    <string name="update_err_download">下载失败，请检查网络后重试。</string>
+    <string name="update_err_generic">检查更新失败：%1$s</string>
+
+    <!-- ==================== 传输控制 ====================
+         暂停 / 继续 / 取消。协议里 XFER_STATUS 一直声明着，但两端都没人收发，
+         界面上因此只有"眼睁睁看着它传完"这一种选择。 -->
+    <string name="transfer_pause">暂停</string>
+    <string name="transfer_resume">继续</string>
+    <string name="transfer_cancel">取消传输</string>
+    <string name="transfer_paused_hint">已暂停</string>
+    <string name="transfer_canceled">已取消：%1$s</string>
+    <!-- 进度详情：已传 / 总量 · 速度 · 剩余时间 · 对方设备名 -->
+    <string name="transfer_detail_running">%1$s / %2$s · %3$s/秒 · 剩余 %4$s · %5$s</string>
+    <string name="transfer_detail_starting">%1$s / %2$s · %3$s</string>
+    <string name="transfer_detail_paused">%1$s / %2$s · 已暂停 · %3$s</string>
+    <string name="transfer_dir_send">发往 %1$s</string>
+    <string name="transfer_dir_recv">来自 %1$s</string>
+
+    <!-- ==================== 一对一 / 一对多 ==================== -->
+    <string name="fanout_one">发给一台</string>
+    <string name="fanout_many">发给多台</string>
+    <string name="fanout_hint_one">选中一台设备后发送。没选的话按下发送时会让你选。</string>
+    <string name="fanout_hint_many">发给全部 %1$d 台在线设备。按下发送时可以再挑。</string>
+    <string name="fanout_pick_one">发给哪台设备？</string>
+    <string name="fanout_pick_many">发给哪几台设备？</string>
+    <string name="fanout_no_online">还没有设备在线，先配对一台。</string>
+    <string name="fanout_pick_at_least_one">至少选一台设备。</string>
+
+    <!-- ==================== 已配对设备的多选删除 ==================== -->
+    <string name="devices_select">选择</string>
+    <string name="devices_select_done">完成</string>
+    <string name="devices_select_all">全选</string>
+    <string name="devices_delete">删除</string>
+    <string name="devices_delete_confirm_title">删除 %1$d 台设备？</string>
+    <string name="devices_delete_confirm_msg">删除后这些设备会立刻断开，正在进行的传输也会取消。要再连回来需要重新配对一次。</string>
+    <string name="devices_deleted">已删除 %1$d 台设备</string>
+    <string name="devices_delete_partial">已删除 %1$d 台，%2$d 台失败</string>
+    <string name="devices_long_press_hint">长按任意一台设备也能进入选择</string>
+
+    <!-- ==================== 剪贴板自动同步 ==================== -->
+    <string name="clip_auto_title">剪贴板自动同步</string>
+    <string name="clip_plain_only_title">仅同步纯文本</string>
+    <string name="clip_plain_only_desc">不带网页、Word 里的富格式，只同步文字与图片：更快，也不会把隐藏样式和链接带过去。</string>
+    <string name="clip_latency_short">剪贴板 %1$dms</string>
+    <string name="clip_auto_on_desc">复制什么，配对的设备立刻就能粘贴。只同步最新一次复制的内容。</string>
+    <string name="clip_auto_off_desc">关闭时只有按「发送剪贴板」才会同步。</string>
+    <!-- 安卓 10 起，只有前台应用读得到剪贴板。这不是本应用的限制，是系统的——
+         说清楚，否则用户会以为功能坏了。 -->
+    <string name="clip_auto_foreground_note">安卓限制：只有前台应用和当前默认输入法读得到系统剪贴板。想在别的应用里复制即同步，请在下方打开「输入法模式」并选用 Tessera 键盘；否则需要回到这里同步一次。收到的内容不受影响，随时都会写进剪贴板。</string>
+    <string name="clip_synced_out">已同步这次复制的内容</string>
+
+    <!-- ==================== 设备状态 ====================
+         原先这几句写死在 MainActivity 里，翻译不到、也没法跟桌面端对齐。 -->
+    <string name="dev_state_connected">已连接</string>
+    <string name="dev_state_degraded">链路较差</string>
+    <string name="dev_state_connecting">连接中</string>
+    <string name="dev_state_reconnecting">重连中</string>
+    <string name="dev_state_revoked">已撤销</string>
+    <string name="dev_state_offline">离线</string>
+
+    <!-- 不在线的设备不再空着不显示延迟——那看着像卡住了。改成老实说"上次连上
+         是什么时候"，数据来自 Go 侧真实记录的 last_seen，不是瞎猜的。 -->
+    <string name="last_seen_just_now">最后在线于刚刚</string>
+    <string name="last_seen_minutes">最后在线于 %1$d 分钟前</string>
+    <string name="last_seen_hours">最后在线于 %1$d 小时前</string>
+    <string name="last_seen_days">最后在线于 %1$d 天前</string>
+
+    <!-- 诊断里的"只是观测结果，没有好坏"那一档。措辞刻意不带"请检查"：
+         它说的是"本机一切正常，只是对面不在"，一个再正常不过的结果。 -->
+    <string name="diag_mdns_peers_info">当前局域网里还没有别的 Tessera 设备在广播。</string>
+    <string name="diag_lan_scan_info">扫描了 %1$s 个地址（%2$s），当前没有别的设备在线。</string>
+
+    <string name="code_expires_in">%1$d 秒后过期</string>
+    <string name="files_skipped">有 %1$d 项发不出去：%2$s（空文件夹或读不到）</string>
+
+    <!-- 可展开 / 折叠的分区。标题上的箭头是全应用统一的折叠指示。 -->
+    <string name="my_code_section">我的配对码</string>
+    <string name="section_expand">展开 %1$s</string>
+    <string name="section_collapse">收起 %1$s</string>
+
+    <!-- 网卡清单。安卓 11 起 Go 拿不到网卡（golang/go#40569），要由这边灌进去；
+         灌不到就等于四条设备发现路径全断，所以要在诊断里单列一条。 -->
+    <string name="diag_interfaces_ok">网卡正常：%1$s 张可用，其中 %2$s 张支持组播。</string>
+    <string name="diag_interfaces_warn">%1$s 张网卡都不支持组播（通常是只连着 VPN）。自动发现会失效，请用「扫描局域网」或「手动输入地址」。</string>
+    <string name="diag_interfaces_fail">没有可用的网卡。请确认已连上 Wi-Fi，或关掉飞行模式后重试。</string>
+
+    <!-- 换网之后的自动重来。不说一句的话，用户会以为列表是自己乱跳的。 -->
+    <string name="network_changed_rescan">网络变了，正在重新查找设备…</string>
+
+    <!-- 实时指标（专业模式）。前六项已有，这一批是新增的。 -->
+    <string name="metric_value_online_devices">在线设备　%1$d / %2$d</string>
+    <string name="metric_value_link_rtt">链路延迟　%1$s</string>
+    <string name="metric_value_throughput">当前速度　↑ %1$s/s　↓ %2$s/s</string>
+    <string name="metric_value_session_total">本次累计　↑ %1$s　↓ %2$s</string>
+    <string name="metric_value_listen_port">监听端口　%1$s</string>
+    <string name="metric_value_local_addresses">本机地址　%1$d 个（%2$s）</string>
+    <string name="metric_value_interfaces">可用网卡　%1$d 张（组播 %2$d）</string>
+    <string name="metric_value_discovered">已发现　%1$d 台</string>
+    <string name="metric_value_battery_temp">电池温度　%1$s</string>
+    <string name="metric_value_cpu_cores">CPU 核心　%1$d</string>
+    <string name="metric_value_display_refresh">屏幕刷新率　%1$s Hz</string>
+
+    <string name="metric_online_devices">在线设备数</string>
+    <string name="metric_link_rtt">链路延迟</string>
+    <string name="metric_throughput">实时收发速度</string>
+    <string name="metric_session_total">本次累计传输量</string>
+    <string name="metric_listen_port">监听端口</string>
+    <string name="metric_local_addresses">本机地址数</string>
+    <string name="metric_interfaces">可用网卡</string>
+    <string name="metric_discovered">已发现设备数</string>
+    <string name="metric_battery_temp">电池温度</string>
+    <string name="metric_cpu_cores">CPU 核心数</string>
+    <string name="metric_display_refresh">屏幕刷新率</string>
+    <!-- 首次打开的操作引导（FirstRunGuide.kt）。四步按真实使用顺序排，
+         不按功能重要性排——第一次用的人需要的是"接下来点哪里"。 -->
+    <string name="guide_button">使用指南</string>
+    <string name="guide_title">三分钟学会用它</string>
+    <string name="guide_got_it">知道了</string>
+    <string name="guide_step1_title">%1$d. 先让两台设备在同一个 Wi-Fi 下</string>
+    <string name="guide_step1_body">手机和电脑连同一个路由器就行，不需要网线，也不经过任何服务器。两台设备不在一个网络时也能用，但要先在电脑端的「跨设备」里打开跨网络开关。</string>
+    <string name="guide_step2_title">%1$d. 只在一台设备上生成配对码</string>
+    <string name="guide_step2_body">展开「我的配对码」，点生成。屏幕上会出现一串数字和一个二维码。注意：两台设备都点生成的话谁也连不上谁——一台出码，另一台去输，这是最容易走错的一步。</string>
+    <string name="guide_step3_title">%1$d. 另一台扫码或输码</string>
+    <string name="guide_step3_body">在另一台设备上展开「附近设备」，扫二维码，或者手动输入那串数字。配对成功后两台设备会互相记住，以后打开就自动连上，不用再配一次。</string>
+    <string name="guide_step4_title">%1$d. 传东西</string>
+    <string name="guide_step4_body">在设备列表里点一台设备就能发文件；复制的文字会自动同步过去。传输全程加密，中途的服务器（如果走了跨网络）只能看到密文和文件大小，看不到内容。</string>
+
+    <!-- 「接着刚才」跨设备续做 -->
+    <string name="continuity_note">%1$s 上还在看：%2$s</string>
+    <string name="continuity_transfer">%1$s 上还在传：%2$s</string>
+    <string name="continuity_generic">%1$s 上还有一件没做完：%2$s</string>
+    <string name="continuity_untitled">（没有标题）</string>
+    <string name="continuity_more">，还有 %1$d 件</string>
+    <string name="continuity_dismiss">知道了</string>
+
+    <!-- 安装包完整性（见 AppIntegrity.kt）。不通过时不退出、只如实说明：
+         自己编译的版本也会走到这一档，而那是 AGPL 明确允许的正当使用。 -->
+    <string name="integrity_official">这份安装包是官方密钥签的</string>
+    <string name="integrity_unofficial">这份安装包不是官方密钥签的。可能是你自己编译的，也可能是被重新打包过的——如果是从第三方市场装的，建议去官方发布页重新下载。</string>
+    <string name="integrity_unknown">读不到签名信息</string>
+    <string name="integrity_fingerprint">证书指纹：%1$s</string>
+
+    <!-- 输入法模式 · 剪贴板时间线 · 延迟曲线 -->
+    <string name="ime_name">Tessera 剪贴板键盘</string>
+    <string name="ime_subtype">Tessera 键盘（英文 + 剪贴板时间线）</string>
+    <string name="ime_mode_title">输入法模式（后台自动同步）</string>
+    <string name="ime_status_off">未启用。启用并选用 Tessera 键盘后，在任何应用里复制都会自动同步。</string>
+    <string name="ime_status_enabled">已启用，但当前用的是别的键盘：后台读不到剪贴板。</string>
+    <string name="ime_status_active">正在使用：复制即自动同步，不用切回本应用。</string>
+    <string name="ime_enable">启用</string>
+    <string name="ime_choose">选用</string>
+    <string name="ime_switch">切换键盘</string>
+    <string name="ime_enable_hint">在列表里打开「Tessera 剪贴板键盘」。系统会提示输入法能看到输入内容：本键盘不记录、不上传任何按键。</string>
+    <string name="ime_send_clipboard">把当前剪贴板发给所有设备</string>
+    <string name="ime_timeline_empty">其他设备复制的内容会出现在这里，点一下直接输入</string>
+    <string name="ime_chip_desc">%1$s：%2$s。点按输入，长按放进剪贴板</string>
+    <string name="ime_key_symbols">切换字母/符号</string>
+    <string name="ime_key_shift">大写（双击锁定）</string>
+    <string name="ime_key_delete">删除（按住连删）</string>
+    <string name="ime_key_space">空格</string>
+    <string name="ime_key_switch">切换输入法（打中文时用；长按选择）</string>
+    <string name="ime_key_enter">回车</string>
+    <string name="this_device_short">本机</string>
+    <string name="clip_timeline_title">剪贴板时间线</string>
+    <string name="clip_timeline_refresh">刷新（向在线设备重新获取）</string>
+    <string name="clip_timeline_clear">清空时间线</string>
+    <string name="clip_timeline_fullscreen">全屏查看</string>
+    <string name="clip_timeline_exit_fullscreen">退出全屏（Esc / 返回键）</string>
+    <string name="clip_timeline_empty">还没有记录。在任一设备上复制内容后会出现在这里；只保存在内存里，退出即清空，密码管理器标记的敏感内容不会进来。</string>
+    <string name="clip_timeline_copy">复制</string>
+    <string name="clip_timeline_send_all">发给所有</string>
+    <string name="clip_timeline_remove">从时间线移除</string>
+    <string name="clip_timeline_copied">已放进本机剪贴板</string>
+    <string name="clip_timeline_sent">已发给所有在线设备，并放进本机剪贴板</string>
+    <string name="clip_timeline_offline">%1$s 不在线，正文还没取到</string>
+    <string name="clip_timeline_failed">取不到这条内容</string>
+    <string name="clip_timeline_pulled">断线期间复制</string>
+    <string name="clip_timeline_image">图片</string>
+    <string name="clip_timeline_no_preview">（无文本预览）</string>
+    <string name="clip_latency_stats">剪贴板耗时，最近 %1$d 次：最低 %2$d ms，平均 %3$d ms，最高 %4$d ms</string>
+    <string name="clip_latency_worse">比平时慢</string>
+</resources>

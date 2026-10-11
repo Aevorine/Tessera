@@ -1,0 +1,104 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ideal1"
+version = "0.1.35"
+description = "Personal automation / agent hub"
+requires-python = ">=3.9"
+
+# 双授权：社区版 AGPL-3.0，商业版单独付费授权。SPDX 表达式里用 `OR` 是标准写法，
+# 表示"取用者二选一"，不是"两个都要满足"。详见 LICENSING.md。
+#
+# 这里仍然用 `{ text = ... }` 这种老式写法而不是 PEP 639 的裸字符串形式：裸字符串
+# 需要 setuptools>=77，而本项目声明支持 Python 3.9，那个年代的环境里装的 setuptools
+# 往往达不到。老写法在 61~80 全区间都能用，代价只是被标记为 deprecated。
+license = { text = "AGPL-3.0-only OR LicenseRef-Ideal1-Commercial" }
+
+classifiers = [
+    "License :: OSI Approved :: GNU Affero General Public License v3",
+    "Operating System :: Microsoft :: Windows",
+    "Programming Language :: Python :: 3",
+    "Topic :: Security :: Cryptography",
+    "Private :: Do Not Upload",  # 这不是一个发到 PyPI 的库
+]
+
+# 跨平台的核心依赖。
+dependencies = [
+    "cryptography>=49.0.0",
+    "pyotp>=2.10.0",
+    "qrcode>=8.2",
+    "keyring>=25.7.0",
+    "requests>=2.32.0",
+    # 以下四项之前只写在 README 的安装说明里，没进 pyproject——结果是
+    # `pip install -e .` 装完之后应用照样起不来，缺的模块要等到运行时才报。
+    # 依赖声明的意义就是让"装完就能跑"，写在文档里不算声明。
+    "Pillow>=10.0.0",
+    "psutil>=5.9.0",
+    # 整库加密的 SQLite。用 -wheels 变体而不是 `sqlcipher3` 源码包：后者要在本机
+    # 编译 SQLCipher 的 C 扩展，需要 MSVC 构建工具链，普通用户装不上。
+    # -wheels 提供 cp38~cp314 的 win_amd64 预编译轮子，pip 直接下就能用。
+    "sqlcipher3-wheels>=0.5.7",
+    # Windows 专有。marker 让它们在 Linux/macOS 上被跳过，这样 CI 和开发机上
+    # `pip install -e .[dev]` 仍然能装完并跑测试。
+    "pywin32>=306; sys_platform == 'win32'",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0"]
+
+# Windows Hello 解锁。单独拆出来是因为它是**可选解锁因子**——没有 Hello 硬件、
+# 或者不想用这个因子的人，装不上这两个包也不影响应用的其余部分。
+# 代码里对它们是 try-import 的（modules/file_vault/fingerprint.py）。
+hello = [
+    "winrt-Windows.Security.Credentials.UI>=2.0; sys_platform == 'win32'",
+    "winrt-Windows.Foundation>=2.0; sys_platform == 'win32'",
+]
+
+# 冻结成独立 EXE 所需。只有做发布构建的人需要。
+build = ["pyinstaller>=6.0"]
+
+[project.urls]
+Homepage = "https://github.com/Aevorine/Tessera"
+Source = "https://github.com/Aevorine/Tessera"
+Issues = "https://github.com/Aevorine/Tessera/issues"
+Security = "https://github.com/Aevorine/Tessera/security/policy"
+
+# 顶层有 core/ 和 modules/ 两个包，setuptools 的 flat-layout 自动发现遇到多个
+# 顶层包会直接报错并拒绝构建，所以这里显式声明。`find` 只会认带 __init__.py 的
+# 目录，因此 modules/file_vault/ui/（node_modules、构建产物）不会被卷进来。
+# 两个命令行入口。`pip install -e .` 之后就能直接敲 `tessera` 和 `tessera-mcp`。
+# 前者是给人用的终端命令，后者是给 Claude Code 之类的 MCP 客户端用的服务器，
+# 两个共用 modules/file_vault/agent/session.py 那一套跟后端说话的代码。
+[project.scripts]
+tessera = "modules.file_vault.agent.cli:main"
+tessera-mcp = "modules.file_vault.agent.mcp_server:main"
+
+[tool.setuptools.packages.find]
+include = ["core*", "modules*"]
+
+[tool.pytest.ini_options]
+# 默认只跑仓库自己的测试。不加限定的话 pytest 会从仓库根开始递归，
+# 一头扎进 modules/file_vault/ui/node_modules/ —— 几万个文件，收集阶段就要几分钟。
+testpaths = ["tests", "core", "modules"]
+norecursedirs = [
+    "node_modules",
+    "dist",
+    "dist-electron",
+    "release",
+    "build",
+    ".worktrees",
+    ".git",
+    "*.egg-info",
+    # modules/file_vault/data/ —— 用户的**实时金库**（gitignore 里也排除了它）。
+    # 它不是源码树的一部分，里面永远不会有本项目的测试。
+    #
+    # 不排除的后果不是"多跑几个文件"，而是**整个测试套件在开发机上跑不起来**：
+    # 那里面有 VS Code 配置模板，模板里带着一堆第三方示例脚本，其中若干个正好
+    # 叫 *_test.py，pytest 会把它们当测试收集，然后在 import 阶段直接报错退出
+    # （8 errors during collection，一条自己的测试都没跑）。CI 上看不到这个问题
+    # ——data/ 不在仓库里——所以它只坑本地开发，而且报错信息指向的是别人的示例
+    # 代码，很难联想到根因。
+    "data",
+]

@@ -1,0 +1,1284 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>File Vault UI 方案 A · 现代简洁型</title>
+<style>
+/* ===== Design Tokens ===== */
+:root {
+  --primary: #2f4a3c;
+  --primary-hover: #3a5f4e;
+  --primary-light: #eef1ec;
+  --success: #3a7a4e;
+  --warning: #a3690c;
+  --danger: #c0392b;
+  --info: #2c7da0;
+  --bg: #f7f4ee;
+  --bg-card: #ffffff;
+  --bg-sidebar: #efeadf;
+  --bg-input: #ffffff;
+  --text: #2b2a26;
+  --text-secondary: #8a8575;
+  --text-muted: #a69f8e;
+  --border: #e6e1d5;
+  --border-input: #ddd7c8;
+  --radius: 8px;
+  --shadow: 0 1px 3px rgba(0,0,0,0.08);
+  --shadow-hover: 0 2px 8px rgba(0,0,0,0.12);
+  --font: system-ui, -apple-system, 'PingFang SC', 'Microsoft YaHei', 'Helvetica Neue', sans-serif;
+  --sidebar-w: 200px;
+  --topbar-h: 48px;
+  --detail-w: 0px;
+  --font-size: 14px;
+  --density: 0;
+  --mode: simple;
+}
+.dark {
+  --bg: #1c1d1a;
+  --bg-card: #232420;
+  --bg-sidebar: #232420;
+  --bg-input: #1c1d1a;
+  --text: #e8e5db;
+  --text-secondary: #8f8b7d;
+  --text-muted: #6b675c;
+  --border: #302f2a;
+  --border-input: #302f2a;
+  --primary: #4f7864;
+  --primary-light: #2a2b26;
+  --shadow: 0 1px 3px rgba(0,0,0,0.3);
+  --shadow-hover: 0 2px 8px rgba(0,0,0,0.4);
+}
+.professional {
+  --density: 1;
+}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  font-family: var(--font);
+  font-size: var(--font-size);
+  background: var(--bg);
+  color: var(--text);
+  line-height: 1.6;
+  overflow: hidden;
+  min-width: 0;
+  min-height: 0;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+/* ===== Layout ===== */
+.app { display: flex; height: 100vh; width: 100vw; }
+/* ===== Sidebar ===== */
+.sidebar {
+  width: var(--sidebar-w);
+  background: var(--bg-sidebar);
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  transition: width 0.2s ease;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+.sidebar.collapsed {
+  --sidebar-w: 52px;
+}
+.sidebar-header {
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border);
+  min-height: 0;
+}
+.sidebar-header h1 {
+  font-size: 15px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.sidebar-nav {
+  flex: 1;
+  overflow-y: auto;
+  padding: 8px 0;
+  min-height: 0;
+}
+.nav-group-label {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--text-secondary);
+  padding: 12px 16px 4px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.sidebar.collapsed .nav-group-label { display: none; }
+.nav-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 16px;
+  cursor: pointer;
+  color: var(--text-secondary);
+  border-radius: 0;
+  transition: background 0.15s, color 0.15s;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+  position: relative;
+}
+.nav-item:hover { background: var(--primary-light); color: var(--text); }
+.nav-item.active {
+  background: var(--primary-light);
+  color: var(--primary);
+  font-weight: 500;
+}
+.nav-item.active::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 3px;
+  height: 16px;
+  background: var(--primary);
+  border-radius: 0 3px 3px 0;
+}
+.nav-item .icon {
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+}
+.nav-item .label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.sidebar.collapsed .nav-item { justify-content: center; padding: 8px 0; }
+.sidebar.collapsed .nav-item .label { display: none; }
+.sidebar-footer {
+  border-top: 1px solid var(--border);
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.mode-toggle {
+  display: flex;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  overflow: hidden;
+  background: var(--bg-card);
+}
+.mode-toggle button {
+  flex: 1;
+  border: none;
+  background: transparent;
+  padding: 5px 8px;
+  font-size: 11px;
+  cursor: pointer;
+  color: var(--text-secondary);
+  transition: all 0.15s;
+}
+.mode-toggle button.active {
+  background: var(--primary);
+  color: white;
+  font-weight: 500;
+}
+.sidebar.collapsed .mode-toggle { display: none; }
+.collapse-btn {
+  border: none;
+  background: transparent;
+  color: var(--text-secondary);
+  padding: 6px;
+  cursor: pointer;
+  text-align: center;
+  font-size: 13px;
+  border-radius: 4px;
+  transition: background 0.15s;
+}
+.collapse-btn:hover { background: var(--primary-light); }
+/* ===== Main Area ===== */
+.main-area {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  min-width: 0;
+}
+/* ===== Top Bar ===== */
+.topbar {
+  height: var(--topbar-h);
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  padding: 0 16px;
+  gap: 12px;
+  background: var(--bg);
+  flex-shrink: 0;
+  min-width: 0;
+}
+.topbar-title {
+  font-size: 15px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.topbar-breadcrumb {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.topbar-spacer { flex: 1; min-width: 0; }
+.topbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+/* ===== Content ===== */
+.content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 20px;
+  min-height: 0;
+}
+/* ===== Right Detail Panel ===== */
+.detail-panel {
+  width: 320px;
+  background: var(--bg-card);
+  border-left: 1px solid var(--border);
+  display: none;
+  flex-direction: column;
+  overflow-y: auto;
+  flex-shrink: 0;
+}
+.detail-panel.open { display: flex; }
+.detail-panel-header {
+  padding: 16px;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.detail-panel-header h3 { font-size: 14px; font-weight: 600; }
+.detail-panel-body { padding: 16px; }
+.detail-panel-close {
+  border: none; background: transparent; cursor: pointer; font-size: 18px; color: var(--text-secondary);
+  width: 28px; height: 28px; border-radius: 4px; display: flex; align-items: center; justify-content: center;
+}
+.detail-panel-close:hover { background: var(--primary-light); }
+/* ===== Status Bar ===== */
+.statusbar {
+  height: 28px;
+  border-top: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  padding: 0 12px;
+  font-size: 11px;
+  color: var(--text-secondary);
+  background: var(--bg-sidebar);
+  flex-shrink: 0;
+  gap: 16px;
+  min-width: 0;
+}
+.statusbar-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
+}
+.statusbar-spacer { flex: 1; min-width: 0; }
+/* ===== Components ===== */
+/* Buttons */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--bg-card);
+  color: var(--text);
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.15s;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+  min-width: 0;
+}
+.btn:hover { border-color: var(--primary); color: var(--primary); }
+.btn:active { transform: scale(0.97); }
+.btn:disabled { opacity: 0.4; cursor: not-allowed; transform: none; }
+.btn-primary { background: var(--primary); color: white; border-color: var(--primary); }
+.btn-primary:hover { background: var(--primary-hover); color: white; }
+.btn-danger { background: var(--danger); color: white; border-color: var(--danger); }
+.btn-danger:hover { opacity: 0.9; color: white; }
+.btn-sm { padding: 3px 10px; font-size: 12px; }
+.btn-icon {
+  width: 32px; height: 32px; padding: 0;
+  display: inline-flex; align-items: center; justify-content: center;
+}
+/* Cards */
+.card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  transition: box-shadow 0.2s;
+  min-width: 0;
+  min-height: 0;
+}
+.card:hover { box-shadow: var(--shadow-hover); }
+.card-header {
+  padding: 14px 16px 0;
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 8px;
+}
+.card-title { font-size: 14px; font-weight: 600; min-width: 0; }
+.card-body { padding: 14px 16px; min-width: 0; min-height: 0; }
+/* Inputs */
+.input {
+  border: 1px solid var(--border-input);
+  border-radius: 6px;
+  padding: 6px 10px;
+  font-size: 13px;
+  background: var(--bg-input);
+  color: var(--text);
+  outline: none;
+  transition: border-color 0.15s;
+  min-width: 0;
+  width: 100%;
+  max-width: 100%;
+}
+.input:focus { border-color: var(--primary); }
+/* Select */
+.select {
+  border: 1px solid var(--border-input);
+  border-radius: 6px;
+  padding: 6px 10px;
+  font-size: 13px;
+  background: var(--bg-input);
+  color: var(--text);
+  outline: none;
+  min-width: 0;
+}
+/* Tabs */
+.tabs { display: flex; gap: 0; border-bottom: 1px solid var(--border); margin-bottom: 16px; }
+.tab {
+  padding: 8px 16px;
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--text-secondary);
+  border-bottom: 2px solid transparent;
+  transition: all 0.15s;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.tab:hover { color: var(--text); }
+.tab.active { color: var(--primary); border-bottom-color: var(--primary); font-weight: 500; }
+/* Alerts */
+.alert {
+  padding: 10px 14px;
+  border-radius: 6px;
+  font-size: 13px;
+  border: 1px solid transparent;
+}
+.alert-error { background: #fdecea; border-color: #f5c6cb; color: var(--danger); }
+.alert-success { background: #e8f5e9; border-color: #c8e6c9; color: var(--success); }
+.alert-warning { background: #fff8e1; border-color: #ffe082; color: var(--warning); }
+.alert-info { background: #e3f2fd; border-color: #bbdefb; color: var(--info); }
+.dark .alert-error { background: #3d1a1a; border-color: #5c2a2a; }
+.dark .alert-success { background: #1a3d1a; border-color: #2a5c2a; }
+.dark .alert-warning { background: #3d2a1a; border-color: #5c442a; }
+.dark .alert-info { background: #1a2a3d; border-color: #2a445c; }
+/* Progress */
+.progress { width: 100%; height: 6px; background: var(--border); border-radius: 3px; overflow: hidden; }
+.progress-bar { height: 100%; background: var(--primary); border-radius: 3px; transition: width 0.3s; }
+/* Badge */
+.badge {
+  display: inline-block;
+  padding: 1px 7px;
+  border-radius: 10px;
+  font-size: 11px;
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 150px;
+}
+.badge-success { background: #e8f5e9; color: var(--success); }
+.badge-warning { background: #fff8e1; color: var(--warning); }
+.badge-danger { background: #fdecea; color: var(--danger); }
+.badge-info { background: #e3f2fd; color: var(--info); }
+.dark .badge-success { background: #1a3d1a; color: #6bbf8c; }
+.dark .badge-warning { background: #3d2a1a; color: #d9a041; }
+.dark .badge-danger { background: #3d1a1a; color: #e57373; }
+.dark .badge-info { background: #1a2a3d; color: #64b5f6; }
+/* Checkbox */
+.checkbox-group { display: flex; flex-direction: column; gap: 8px; }
+.checkbox-label {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  font-size: 13px;
+  cursor: pointer;
+  line-height: 1.5;
+}
+.checkbox-label input[type="checkbox"] { margin-top: 3px; flex-shrink: 0; }
+/* Table */
+.table-wrap { overflow-x: auto; min-width: 0; }
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+  min-width: 0;
+}
+th, td {
+  text-align: left;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  line-height: 1.5;
+  vertical-align: top;
+}
+th {
+  font-weight: 600;
+  color: var(--text-secondary);
+  font-size: 12px;
+  white-space: nowrap;
+}
+tr:hover td { background: var(--primary-light); }
+.density-compact td, .density-compact th { padding: 4px 8px; font-size: 12px; }
+.density-relaxed td, .density-relaxed th { padding: 12px 16px; }
+/* Grid */
+.grid-2 { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 16px; }
+.grid-3 { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px; }
+.grid-4 { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 12px; }
+.stat-tile {
+  padding: 14px;
+  text-align: center;
+}
+.stat-value { font-size: 24px; font-weight: 700; line-height: 1.2; }
+.stat-label { font-size: 12px; color: var(--text-secondary); margin-top: 4px; }
+/* Modal */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.4);
+  display: none;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+}
+.modal-overlay.open { display: flex; }
+.modal {
+  background: var(--bg-card);
+  border-radius: 10px;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.2);
+  width: 90%;
+  max-width: 480px;
+  max-height: 85vh;
+  overflow-y: auto;
+  min-width: 0;
+}
+.modal-header {
+  padding: 16px 20px 0;
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 8px;
+}
+.modal-title { font-size: 16px; font-weight: 600; }
+.modal-body { padding: 16px 20px; }
+.modal-footer { padding: 0 20px 16px; display: flex; gap: 8px; justify-content: flex-end; }
+/* Toast */
+.toast-container {
+  position: fixed;
+  top: 12px;
+  right: 12px;
+  z-index: 200;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  pointer-events: none;
+}
+.toast {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.15);
+  padding: 12px 16px;
+  font-size: 13px;
+  min-width: 240px;
+  max-width: 360px;
+  pointer-events: auto;
+  animation: slideIn 0.25s ease;
+}
+.toast-success { border-left: 3px solid var(--success); }
+.toast-error { border-left: 3px solid var(--danger); }
+.toast-warning { border-left: 3px solid var(--warning); }
+@keyframes slideIn {
+  from { transform: translateX(100%); opacity: 0; }
+  to { transform: translateX(0); opacity: 1; }
+}
+/* Tooltip */
+[data-tooltip] {
+  position: relative;
+}
+[data-tooltip]:hover::after {
+  content: attr(data-tooltip);
+  position: absolute;
+  bottom: calc(100% + 6px);
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--text);
+  color: var(--bg);
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 11px;
+  white-space: nowrap;
+  z-index: 50;
+  pointer-events: none;
+}
+/* Empty State */
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 40px 20px;
+  text-align: center;
+  color: var(--text-secondary);
+}
+.empty-state .icon { font-size: 36px; margin-bottom: 12px; opacity: 0.3; }
+.empty-state h3 { font-size: 15px; margin-bottom: 6px; color: var(--text); }
+.empty-state p { font-size: 13px; max-width: 300px; }
+/* Loading */
+.loading-dots::after {
+  content: '';
+  animation: dots 1.5s infinite;
+}
+@keyframes dots {
+  0% { content: ''; }
+  33% { content: '.'; }
+  66% { content: '..'; }
+  100% { content: '...'; }
+}
+/* Long text test area */
+.long-text-test {
+  border: 1px dashed var(--border);
+  padding: 12px;
+  margin: 8px 0;
+  border-radius: 6px;
+  font-size: 13px;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  min-width: 0;
+  width: 100%;
+  max-width: 100%;
+}
+.filter-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 12px;
+}
+.filter-bar .input { width: auto; max-width: 200px; }
+.flex { display: flex; }
+.flex-1 { flex: 1; min-width: 0; }
+.gap-2 { gap: 8px; }
+.gap-3 { gap: 12px; }
+.gap-4 { gap: 16px; }
+.items-center { align-items: center; }
+.justify-between { justify-content: space-between; }
+.mb-2 { margin-bottom: 8px; }
+.mb-3 { margin-bottom: 12px; }
+.mb-4 { margin-bottom: 16px; }
+.mt-2 { margin-top: 8px; }
+.mt-3 { margin-top: 12px; }
+.mt-4 { margin-top: 16px; }
+.space-y-2 > * + * { margin-top: 8px; }
+.space-y-3 > * + * { margin-top: 12px; }
+.space-y-4 > * + * { margin-top: 16px; }
+.p-4 { padding: 16px; }
+.p-3 { padding: 12px; }
+.text-sm { font-size: 13px; }
+.text-xs { font-size: 11px; }
+.text-center { text-align: center; }
+.text-right { text-align: right; }
+.text-secondary { color: var(--text-secondary); }
+.text-muted { color: var(--text-muted); }
+.truncate { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.w-full { width: 100%; }
+.hidden { display: none; }
+/* Responsive */
+@media (max-width: 768px) {
+  .sidebar { --sidebar-w: 52px; }
+  .sidebar .nav-item .label { display: none; }
+  .sidebar .nav-group-label { display: none; }
+  .sidebar .mode-toggle { display: none; }
+  .detail-panel { width: 100% !important; position: fixed; inset: 0; z-index: 50; }
+  .grid-2, .grid-3 { grid-template-columns: 1fr; }
+}
+</style>
+</head>
+<body>
+
+<div class="app" id="app">
+
+  <!-- Sidebar -->
+  <aside class="sidebar" id="sidebar">
+    <div class="sidebar-header">
+      <h1>🔐 File Vault</h1>
+    </div>
+    <nav class="sidebar-nav" id="sidebarNav">
+      <div class="nav-group-label">概览</div>
+      <div class="nav-item active" data-pane="overview" onclick="switchPane('overview',this)">
+        <span class="icon">📊</span><span class="label">首页概览</span>
+      </div>
+      <div class="nav-item" data-pane="tasks" onclick="switchPane('tasks',this)">
+        <span class="icon">📋</span><span class="label">待处理</span>
+      </div>
+      <div class="nav-group-label">工作</div>
+      <div class="nav-item" data-pane="files" onclick="switchPane('files',this)">
+        <span class="icon">📁</span><span class="label">文件加密</span>
+      </div>
+      <div class="nav-item" data-pane="clipboard" onclick="switchPane('clipboard',this)">
+        <span class="icon">📋</span><span class="label">剪贴板</span>
+      </div>
+      <div class="nav-item" data-pane="passwords" onclick="switchPane('passwords',this)">
+        <span class="icon">🔑</span><span class="label">密码管理</span>
+      </div>
+      <div class="nav-item" data-pane="notes" onclick="switchPane('notes',this)">
+        <span class="icon">📝</span><span class="label">笔记</span>
+      </div>
+      <div class="nav-item" data-pane="network" onclick="switchPane('network',this)">
+        <span class="icon">🌐</span><span class="label">网络测速</span>
+      </div>
+      <div class="nav-group-label">系统</div>
+      <div class="nav-item" data-pane="settings" onclick="switchPane('settings',this)">
+        <span class="icon">⚙️</span><span class="label">设置</span>
+      </div>
+      <div class="nav-item" data-pane="help" onclick="switchPane('help',this)">
+        <span class="icon">❓</span><span class="label">帮助</span>
+      </div>
+    </nav>
+    <div class="sidebar-footer">
+      <div class="mode-toggle">
+        <button class="active" data-mode="simple" onclick="setMode('simple')">简洁</button>
+        <button data-mode="professional" onclick="setMode('professional')">专业</button>
+      </div>
+      <button class="collapse-btn" onclick="toggleSidebar()" data-tooltip="折叠侧栏">◀</button>
+    </div>
+  </aside>
+
+  <!-- Main Area -->
+  <div class="main-area">
+
+    <!-- Top Bar -->
+    <header class="topbar">
+      <span class="topbar-title" id="pageTitle">首页概览</span>
+      <span class="topbar-breadcrumb" id="breadcrumb">首页 / 概览</span>
+      <div class="topbar-spacer"></div>
+      <div class="topbar-actions">
+        <input class="input" style="width:180px" placeholder="搜索…" id="globalSearch" oninput="onGlobalSearch(this.value)">
+        <button class="btn btn-primary btn-sm" onclick="showToast('success','操作成功')">新建</button>
+        <button class="btn btn-sm" onclick="importAction()">导入</button>
+        <button class="btn btn-sm" onclick="showToast('success','已导出')">导出</button>
+        <button class="btn btn-sm btn-icon" onclick="toggleTheme()" data-tooltip="切换主题" style="font-size:16px">🌓</button>
+        <button class="btn btn-sm btn-icon" onclick="toggleMode(document.querySelector('.mode-toggle button:not(.active)')?.dataset?.mode)" data-tooltip="切换模式" style="font-size:16px" id="modeToggleBtn">📐</button>
+      </div>
+    </header>
+
+    <!-- Content -->
+    <main class="content" id="mainContent">
+      <!-- Loaded by JS -->
+    </main>
+
+    <!-- Status Bar -->
+    <footer class="statusbar">
+      <span class="statusbar-item">🟢 已解锁</span>
+      <span class="statusbar-item">📦 0 个后台任务</span>
+      <span class="statusbar-spacer"></span>
+      <span class="statusbar-item">v0.1.0</span>
+    </footer>
+  </div>
+
+  <!-- Right Detail Panel -->
+  <aside class="detail-panel" id="detailPanel">
+    <div class="detail-panel-header">
+      <h3 id="detailTitle">详情</h3>
+      <button class="detail-panel-close" onclick="closeDetail()">✕</button>
+    </div>
+    <div class="detail-panel-body" id="detailBody">
+      <p class="text-sm text-secondary">选择一个项目查看详情</p>
+    </div>
+  </aside>
+</div>
+
+<!-- Modals -->
+<div class="modal-overlay" id="modalOverlay">
+  <div class="modal">
+    <div class="modal-header">
+      <h2 class="modal-title" id="modalTitle">弹窗标题</h2>
+      <button class="detail-panel-close" onclick="closeModal()">✕</button>
+    </div>
+    <div class="modal-body" id="modalBody"></div>
+    <div class="modal-footer" id="modalFooter"></div>
+  </div>
+</div>
+
+<!-- Toast -->
+<div class="toast-container" id="toastContainer"></div>
+
+<script>
+// ===== State =====
+let currentPane = 'overview';
+let isDark = false;
+let displayMode = 'simple';
+let sidebarCollapsed = false;
+let detailOpen = false;
+let dataCount = 'medium'; // small, medium, large
+
+// ===== Data =====
+const mockData = {
+  small: {
+    files: [
+      { name: '报告.docx', size: '2.3 MB', status: '加密', date: '2026-07-24' },
+      { name: '照片.zip', size: '15 MB', status: '待处理', date: '2026-07-23' },
+    ],
+    passwords: [
+      { site: 'github.com', username: 'user1', password: 'p@ss1234', strength: 'strong' },
+    ],
+    clipboard: [
+      { content: 'Hello World', type: '文本', time: '10:32', app: 'VS Code' },
+    ],
+    speedtests: [
+      { date: '07-24', ping: 12, download: 98.5, upload: 45.2 },
+    ],
+  },
+  medium: [
+    { name: '年终总结报告_v7_final_真的最终版.docx', size: '12.8 MB', status: '已加密', date: '2026-07-24', tags: ['工作', '重要'] },
+    { name: '全家福照片合集（2026春节）.zip', size: '256 MB', status: '已加密', date: '2026-07-23', tags: ['照片'] },
+    { name: '项目源代码备份_前端_后端_数据库_fullstack.tar.gz', size: '89.5 MB', status: '待处理', date: '2026-07-22', tags: [] },
+    { name: '毕业论文_基于深度学习的情感分析_final_submit.docx', size: '3.2 MB', status: '已加密', date: '2026-07-21', tags: ['重要', '论文'] },
+    { name: '音乐收藏_Classic_Rock_Collection_2026.flac', size: '1.2 GB', status: '加密中…', date: '2026-07-20', tags: ['音乐'] },
+    { name: '密码管理器导出的超级无敌长文件名备份_包含所有历史版本_2026-07-19_old_old_old.csv', size: '45 KB', status: '已加密', date: '2026-07-19', tags: [] },
+    { name: '设计稿_UI_UX_最新修改稿_v3_用这个.pdf', size: '8.6 MB', status: '待处理', date: '2026-07-18', tags: ['设计'] },
+    { name: '财务报表_2026_Q2_审计备份.xlsx', size: '1.5 MB', status: '已加密', date: '2026-07-17', tags: ['工作', '财务'] },
+  ],
+  large: Array.from({length: 50}, (_, i) => ({
+    name: `文件_${i+1}_${'长文件名测试_'.repeat(3)}${Date.now()}.${['docx','zip','pdf','txt','jpg','png','mp4','tar.gz'][i%8]}`,
+    size: `${(Math.random()*1000).toFixed(1)} MB`,
+    status: ['已加密','待处理','加密中…','已加密','已加密'][i%5],
+    date: `2026-07-${String(24-(i%20)).padStart(2,'0')}`,
+    tags: i%3===0 ? ['重要'] : i%3===1 ? ['工作','紧急'] : [],
+  })),
+};
+
+function getData() {
+  const datasets = { small: mockData.small, medium: mockData.medium, large: mockData.large };
+  return dataCount === 'small' ? datasets.small : dataCount === 'medium' ? datasets.medium : datasets.large;
+}
+
+// ===== Navigation =====
+function switchPane(pane, el) {
+  currentPane = pane;
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+  if (el) el.classList.add('active');
+  else document.querySelector(`[data-pane="${pane}"]`)?.classList.add('active');
+  updateBreadcrumb(pane);
+  renderContent(pane);
+}
+
+function updateBreadcrumb(pane) {
+  const titles = {
+    overview: ['首页概览', '首页 / 概览'],
+    tasks: ['待处理事项', '首页 / 待处理'],
+    files: ['文件加密', '工作 / 文件加密'],
+    clipboard: ['剪贴板历史', '工作 / 剪贴板'],
+    passwords: ['密码管理', '工作 / 密码管理'],
+    notes: ['笔记', '工作 / 笔记'],
+    network: ['网络测速', '工作 / 网络测速'],
+    settings: ['设置', '系统 / 设置'],
+    help: ['帮助', '系统 / 帮助'],
+  };
+  const [title, bread] = titles[pane] || ['页面', '未知'];
+  document.getElementById('pageTitle').textContent = title;
+  document.getElementById('breadcrumb').textContent = bread;
+}
+
+// ===== Theme =====
+function toggleTheme() {
+  isDark = !isDark;
+  document.body.classList.toggle('dark', isDark);
+}
+
+// ===== Mode =====
+function setMode(mode) {
+  displayMode = mode;
+  document.body.classList.toggle('professional', mode === 'professional');
+  document.querySelectorAll('.mode-toggle button').forEach(b => {
+    b.classList.toggle('active', b.dataset.mode === mode);
+  });
+}
+
+function toggleMode(mode) {
+  if (mode === 'simple' || mode === 'professional') setMode(mode);
+}
+
+// ===== Sidebar =====
+function toggleSidebar() {
+  sidebarCollapsed = !sidebarCollapsed;
+  document.getElementById('sidebar').classList.toggle('collapsed', sidebarCollapsed);
+}
+
+// ===== Detail =====
+function openDetail(title, content) {
+  detailOpen = true;
+  document.getElementById('detailPanel').classList.add('open');
+  document.getElementById('detailTitle').textContent = title || '详情';
+  document.getElementById('detailBody').innerHTML = content || '<p class="text-sm text-secondary">无内容</p>';
+}
+function closeDetail() {
+  detailOpen = false;
+  document.getElementById('detailPanel').classList.remove('open');
+}
+
+// ===== Modal =====
+function openModal(title, body, footer) {
+  document.getElementById('modalOverlay').classList.add('open');
+  document.getElementById('modalTitle').textContent = title || '弹窗';
+  document.getElementById('modalBody').innerHTML = body || '';
+  document.getElementById('modalFooter').innerHTML = footer || '<button class="btn" onclick="closeModal()">关闭</button>';
+}
+function closeModal() {
+  document.getElementById('modalOverlay').classList.remove('open');
+}
+
+// ===== Toast =====
+function showToast(type, title, desc) {
+  const c = document.getElementById('toastContainer');
+  const t = document.createElement('div');
+  t.className = `toast toast-${type}`;
+  t.innerHTML = `<strong>${title}</strong>${desc ? `<br><span class="text-secondary">${desc}</span>` : ''}`;
+  c.appendChild(t);
+  setTimeout(() => { t.style.opacity = '0'; t.style.transition = 'opacity 0.3s'; setTimeout(() => t.remove(), 300); }, 3000);
+}
+
+// ===== Search =====
+let searchTimer;
+function onGlobalSearch(val) {
+  clearTimeout(searchTimer);
+  searchTimer = setTimeout(() => {
+    document.querySelectorAll('.searchable-row').forEach(r => {
+      r.style.display = r.textContent.toLowerCase().includes(val.toLowerCase()) ? '' : 'none';
+    });
+  }, 150);
+}
+
+// ===== Data Count =====
+function setDataCount(count) {
+  dataCount = count;
+  renderContent(currentPane);
+}
+
+// ===== Content Renderers =====
+function renderContent(pane) {
+  const mc = document.getElementById('mainContent');
+  mc.innerHTML = '';
+  const renderers = {
+    overview: renderOverview,
+    tasks: renderTasks,
+    files: renderFiles,
+    clipboard: renderClipboard,
+    passwords: renderPasswords,
+    notes: renderNotes,
+    network: renderNetworkSpeedtest,
+    settings: renderSettings,
+    help: renderHelp,
+  };
+  (renderers[pane] || renderOverview)(mc);
+  // Apply search effect
+  const sq = document.getElementById('globalSearch');
+  if (sq && sq.value) onGlobalSearch(sq.value);
+}
+
+function renderOverview(mc) {
+  const data = getData();
+  mc.innerHTML = `
+    <div class="space-y-4">
+      <div class="flex justify-between items-center mb-2">
+        <p class="text-sm text-secondary">快速了解当前状态和关键指标</p>
+        <div class="flex gap-2">
+          <button class="btn btn-sm ${dataCount==='small'?'btn-primary':''}" onclick="setDataCount('small')">少量数据</button>
+          <button class="btn btn-sm ${dataCount==='medium'?'btn-primary':''}" onclick="setDataCount('medium')">中等数据</button>
+          <button class="btn btn-sm ${dataCount==='large'?'btn-primary':''}" onclick="setDataCount('large')">大量数据</button>
+        </div>
+      </div>
+      <div class="grid-4">
+        <div class="card stat-tile"><div class="stat-value">${data.length||12}</div><div class="stat-label">总文件数</div></div>
+        <div class="card stat-tile"><div class="stat-value">${data.filter(f=>f.status==='已加密').length||3}</div><div class="stat-label">已加密</div></div>
+        <div class="card stat-tile"><div class="stat-value">${data.filter(f=>f.status!=='已加密').length||5}</div><div class="stat-label">待处理</div></div>
+        <div class="card stat-tile"><div class="stat-value">${(Math.random()*100+900).toFixed(0)} MB</div><div class="stat-label">已保护数据</div></div>
+      </div>
+      <div class="card">
+        <div class="card-header"><span class="card-title">最近操作</span></div>
+        <div class="card-body">
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>文件名</th><th>状态</th><th>大小</th><th>日期</th></tr></thead>
+              <tbody>
+                ${Array.isArray(data) ? data.slice(0,6).map(f => `<tr class="searchable-row" onclick="openDetail('${f.name.replace(/'/g,"\\'")}','<p class=\\\\'text-sm\\\\'>状态：${f.status}<br>大小：${f.size}<br>日期：${f.date}</p>')"><td style="max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${f.name}</td><td><span class="badge badge-${f.status==='已加密'?'success':f.status==='待处理'?'warning':'info'}">${f.status}</span></td><td>${f.size}</td><td>${f.date}</td></tr>`).join('') : '<tr><td colspan="4" class="text-center text-secondary">暂无数据</td></tr>'}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-header"><span class="card-title">数据健康</span></div>
+        <div class="card-body">
+          <div class="grid-3">
+            <div class="card p-3 text-center"><div class="stat-value" style="font-size:18px">✅ 健康</div><div class="stat-label">数据完整性</div></div>
+            <div class="card p-3 text-center"><div class="stat-value" style="font-size:18px">0</div><div class="stat-label">重复文件</div></div>
+            <div class="card p-3 text-center"><div class="stat-value" style="font-size:18px">${(Math.random()*50+10).toFixed(0)} MB</div><div class="stat-label">缓存大小</div></div>
+          </div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-header"><span class="card-title">长文字测试</span></div>
+        <div class="card-body">
+          <div class="long-text-test">
+            <p><strong>超长中文：</strong>中华人民共和国万岁世界人民大团结万岁这是一个非常非常非常非常非常非常非常非常非常非常非常非常非常非常非常非常非常非常非常非常非常非常非常非常长的测试句子用于验证文字换行行高和布局稳定性防止出现文字重叠或内容被截断的问题。</p>
+            <p class="mt-2"><strong>超长英文+无空格字符串：</strong>SupercalifragilisticexpialidociousPneumonoultramicroscopicsilicovolcanoconiosisAntidisestablishmentarismFloccinaucinihilipilification</p>
+            <p class="mt-2"><strong>文件路径/URL：</strong>https://github.com/username/project/src/components/very/long/nested/directory/structure/modules/submodule/features/renderer.tsx</p>
+            <p class="mt-2"><strong>中英文混排+emoji+特殊符号：</strong>🌟 Hello 世界！这是 @#$%^&*()_+ 测试 │ ═════ 分隔符 ──── → ← ↑ ↓ ※ ～ ∞ ≈ ≠ ≤ ≥ √ π</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function renderTasks(mc) {
+  mc.innerHTML = `
+    <div class="space-y-4">
+      <div class="card">
+        <div class="card-header"><span class="card-title">任务中心</span><span class="text-sm text-secondary">2 个进行中</span></div>
+        <div class="card-body">
+          <div class="space-y-3">
+            <div class="card p-3">
+              <div class="flex justify-between mb-2"><span class="text-sm font-medium">批量加密 12 个文件</span><span class="badge badge-info">进行中</span></div>
+              <div class="progress mb-2"><div class="progress-bar" style="width:65%"></div></div>
+              <div class="flex justify-between text-xs text-secondary"><span>已完成 8/12</span><span>约 30 秒后完成</span></div>
+              <div class="flex gap-2 mt-2">
+                <button class="btn btn-sm" onclick="showToast('info','已暂停')">⏸ 暂停</button>
+                <button class="btn btn-sm btn-danger" onclick="showToast('warning','已取消','将清理未完成的文件')">✕ 取消</button>
+              </div>
+            </div>
+            <div class="card p-3">
+              <div class="flex justify-between mb-2"><span class="text-sm font-medium">导入密码 CSV</span><span class="badge badge-warning">等待中</span></div>
+              <div class="flex gap-2"><button class="btn btn-sm" onclick="showToast('info','已开始')">▶ 继续</button><button class="btn btn-sm" onclick="showToast('warning','已取消')">✕ 取消</button></div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-header"><span class="card-title">操作影响预览</span></div>
+        <div class="card-body">
+          <div class="alert alert-info mb-3">即将批量加密 5 个文件，以下是预览：</div>
+          <table>
+            <thead><tr><th>文件</th><th>大小</th><th>操作</th><th>是否可撤销</th></tr></thead>
+            <tbody>
+              <tr><td>工作报告.docx</td><td>2.3 MB</td><td>加密 + 安全删除原文件</td><td>❌ 不可撤销</td></tr>
+              <tr><td>财务表.xlsx</td><td>1.5 MB</td><td>加密 + 安全删除原文件</td><td>❌ 不可撤销</td></tr>
+              <tr><td>演示文稿.pptx</td><td>5.2 MB</td><td>仅加密</td><td>✅ 可解密</td></tr>
+            </tbody>
+          </table>
+          <div class="flex gap-2 mt-3">
+            <button class="btn btn-primary" onclick="showToast('success','开始处理','原文件将被安全删除')">确认执行</button>
+            <button class="btn" onclick="showToast('info','已取消')">取消</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function renderFiles(mc) {
+  const data = getData();
+  mc.innerHTML = `
+    <div class="space-y-4">
+      <p class="text-sm text-secondary">加密或解密文件，支持批量操作</p>
+      <div class="flex flex-wrap gap-2 mb-3">
+        <button class="btn btn-primary" onclick="openModal('选择文件','<p class=\\\\'text-sm text-secondary\\\\'>将打开文件选择对话框，可多选</p><div class=\\\\'mt-3 checkbox-group\\\\'><label class=\\\\'checkbox-label\\\\'><input type=\\\\'checkbox\\\\' checked> 加密后安全删除原始文件</label></div>','<button class=\\\\'btn btn-primary\\\\' onclick=\\\\'closeModal();showToast(\\\'success\\\',\\\'加密任务已提交\\\',\\\'3 个文件正在加密\\\')'>选择文件并加密</button><button class=\\\\'btn\\\\' onclick=\\\\'closeModal()\\\'>取消</button>')">选择文件加密</button>
+        <button class="btn" onclick="showToast('info','正在扫描…','扫描明文残留位置')">扫描明文残留</button>
+      </div>
+      <div class="card">
+        <div class="card-header"><span class="card-title">最近文件</span></div>
+        <div class="card-body">
+          <div class="filter-bar">
+            <input class="input" placeholder="筛选文件名…" style="width:180px" oninput="onGlobalSearch(this.value)">
+            <select class="select"><option>全部状态</option><option>已加密</option><option>待处理</option></select>
+            <button class="btn btn-sm" onclick="showToast('success','已重置')">清除</button>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th style="width:40px"><input type="checkbox"></th><th>文件名</th><th>大小</th><th>状态</th><th>标签</th><th>日期</th></tr></thead>
+              <tbody>
+                ${Array.isArray(data) ? data.map(f => `<tr class="searchable-row" onclick="openDetail('${f.name.replace(/'/g,"\\'")}','<p class=\\\\'text-sm\\\\'><strong>文件：</strong>${f.name}<br><strong>大小：</strong>${f.size}<br><strong>状态：</strong>${f.status}<br><strong>日期：</strong>${f.date}<br><strong>安全删除：</strong>${f.status==='已加密'?'✅ 已执行':'—'}</p><div class=\\\\'mt-3\\\\'><button class=\\\\'btn btn-sm\\\\' onclick=\\\\'closeDetail();showToast(\\\'info\\\',\\\'正在解密…\\\')'>🔓 解密</button></div>')"><td style="width:40px" onclick="event.stopPropagation()"><input type="checkbox"></td><td style="max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"><span data-tooltip="${f.name.replace(/"/g,'&quot;')}">${f.name}</span></td><td>${f.size}</td><td><span class="badge badge-${f.status==='已加密'?'success':f.status==='待处理'?'warning':'info'}">${f.status}</span></td><td>${(f.tags||[]).map(t => `<span class="badge badge-info" style="margin-right:4px">${t}</span>`).join('')||'—'}</td><td>${f.date}</td></tr>`) : '<tr><td colspan="6" class="text-center text-secondary">暂无数据</td></tr>'}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function renderClipboard(mc) {
+  mc.innerHTML = `
+    <div class="space-y-4">
+      <p class="text-sm text-secondary">剪贴板历史记录，自动分类，可搜索</p>
+      <div class="filter-bar">
+        <input class="input" placeholder="搜索内容…" style="width:200px">
+        <select class="select"><option>全部分类</option><option>文本</option><option>链接</option><option>邮箱</option><option>代码</option><option>图片</option></select>
+        <button class="btn btn-sm btn-primary" onclick="showToast('success','已复制')">复制选中</button>
+        <button class="btn btn-sm" onclick="showToast('info','已清除','回收站保留 7 天')">清空</button>
+      </div>
+      <div class="grid-2">
+        ${['Hello World，这是一段测试文本', 'https://github.com/very/long/nested/url/path/that/should/not/break/layout', 'user@example.com', 'const x = (a: string) => a.repeat(3);', '📋 带 emoji 的剪贴板内容 🌟🌟🌟', '这是一条超长中文剪贴板内容，用于测试文字换行和行高是否正常，确保不会出现文字重叠或者被截断的情况发生。'].map((c,i) => `
+          <div class="card p-3 searchable-row" onclick="openDetail('剪贴板条目','<p class=\\\\'text-sm\\\\'>${c}</p>')">
+            <div class="flex justify-between mb-2"><span class="badge badge-info">${['文本','链接','邮箱','代码','文本','文本'][i]}</span><span class="text-xs text-secondary">${['10:32','10:28','10:25','10:20','10:15','10:10'][i]}</span></div>
+            <p class="text-sm" style="overflow:hidden;text-overflow:ellipsis;display:-webkit box;-webkit-line-clamp:2;-webkit-box-orient:vertical;line-clamp:2">${c}</p>
+            <div class="flex gap-2 mt-2 text-xs text-secondary">来自：${['VS Code','Chrome','Outlook','VS Code','Explorer','Slack'][i]}</div>
+          </div>
+        `).join('')}
+      </div>
+    </div>
+  `;
+}
+
+function renderPasswords(mc) {
+  mc.innerHTML = `
+    <div class="space-y-4">
+      <p class="text-sm text-secondary">管理已保存的密码条目</p>
+      <div class="flex gap-2 flex-wrap mb-3">
+        <button class="btn btn-primary" onclick="openModal('新增密码','<div class=\\\\'space-y-3\\\\'><label class=\\\\'text-sm\\\\'>网站</label><input class=\\\\'input\\\\' value=\\\\'\\\' placeholder=\\\\'example.com\\\'><label class=\\\\'text-sm mt-2\\\\'>用户名</label><input class=\\\\'input\\\\'><label class=\\\\'text-sm mt-2\\\\'>密码</label><input class=\\\\'input\\\\' type=\\\\'password\\\\'></div>','<button class=\\\\'btn btn-primary\\\\' onclick=\\\\'closeModal();showToast(\\\'success\\\',\\\'已保存密码\\\')'>保存</button><button class=\\\\'btn\\\\' onclick=\\\\'closeModal()\\\'>取消</button>')">新增密码</button>
+        <button class="btn" onclick="showToast('info','正在导入…')">导入 CSV</button>
+        <button class="btn" onclick="showToast('success','已导出')">导出 CSV</button>
+      </div>
+      <div class="card">
+        <div class="card-body">
+          <div class="filter-bar">
+            <input class="input" placeholder="搜索网站或用户名…" style="width:200px">
+            <select class="select"><option>全部</option><option>高强度</option><option>弱密码</option></select>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>网站</th><th>用户名</th><th>密码</th><th>强度</th><th>操作</th></tr></thead>
+              <tbody>
+                <tr><td>github.com</td><td>user@example.com</td><td>••••••••</td><td><span class="badge badge-success">强</span></td><td><button class="btn btn-sm">复制</button></td></tr>
+                <tr><td>google.com</td><td>myaccount@gmail.com</td><td>••••••••</td><td><span class="badge badge-success">强</span></td><td><button class="btn btn-sm">复制</button></td></tr>
+                <tr><td>weak-site.example.com</td><td>admin</td><td>••••••</td><td><span class="badge badge-danger">弱</span></td><td><button class="btn btn-sm">编辑</button></td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function renderNotes(mc) {
+  mc.innerHTML = `
+    <div class="space-y-4">
+      <div class="flex justify-between">
+        <p class="text-sm text-secondary">记笔记，支持 Markdown 和图片</p>
+        <button class="btn btn-primary" onclick="openModal('新建笔记','<div class=\\\\'space-y-3\\\\'><input class=\\\\'input\\\\' placeholder=\\\\'笔记标题\\\'><textarea class=\\\\'input\\\\' rows=\\\\'8\\\\' placeholder=\\\\'支持 Markdown 格式…\\\' style=\\\\'resize:vertical;min-height:120px\\\'>这是一条超长测试文字，用于验证动态行高和文字换行是否正常工作。如果行高不正确，文字会出现重叠或内容被截断的问题。</textarea></div>','<button class=\\\\'btn btn-primary\\\\' onclick=\\\\'closeModal();showToast(\\\'success\\\',\\\'笔记已保存\\\')'>保存</button><button class=\\\\'btn\\\\' onclick=\\\\'closeModal()\\\'>取消</button>')">新建笔记</button>
+      </div>
+      <div class="filter-bar">
+        <input class="input" placeholder="搜索笔记…" style="width:200px"><select class="select"><option>全部标签</option><option>工作</option><option>个人</option></select>
+      </div>
+      <div class="grid-2">
+        <div class="card p-3 searchable-row">
+          <h3 style="font-size:14px;font-weight:600;margin-bottom:4px">会议记录 - 项目评审</h3>
+          <p class="text-sm text-secondary" style="overflow:hidden;text-overflow:ellipsis;display:-webkit-box;-webkit-line-clamp:3;line-clamp:3;-webkit-box-orient:vertical">讨论了第一季度项目进展、问题和下一步计划。重点讨论了架构优化方案和性能目标。需要在下周五前完成里程碑验收。</p>
+          <div class="flex gap-2 mt-2"><span class="badge badge-info">工作</span><span class="text-xs text-secondary">2026-07-24</span></div>
+        </div>
+        <div class="card p-3 searchable-row">
+          <h3 style="font-size:14px;font-weight:600;margin-bottom:4px">购物清单</h3>
+          <p class="text-sm text-secondary" style="overflow:hidden;text-overflow:ellipsis;display:-webkit-box;-webkit-line-clamp:3;line-clamp:3;-webkit-box-orient:vertical">牛奶、面包、鸡蛋、水果、蔬菜……</p>
+          <div class="flex gap-2 mt-2"><span class="badge badge-info">个人</span><span class="text-xs text-secondary">2026-07-23</span></div>
+        </div>
+      </div>
+      ${displayMode === 'professional' ? `
+      <div class="card">
+        <div class="card-header"><span class="card-title">笔记统计</span></div>
+        <div class="card-body">
+          <div class="grid-3">
+            <div class="card p-3 text-center"><div class="stat-value" style="font-size:18px">12</div><div class="stat-label">总笔记数</div></div>
+            <div class="card p-3 text-center"><div class="stat-value" style="font-size:18px">3</div><div class="stat-label">图片笔记</div></div>
+            <div class="card p-3 text-center"><div class="stat-value" style="font-size:18px">2.3 MB</div><div class="stat-label">总存储</div></div>
+          </div>
+        </div>
+      </div>` : ''}
+    </div>
+  `;
+}
+
+function renderNetworkSpeedtest(mc) {
+  mc.innerHTML = `
+    <div class="space-y-4">
+      <p class="text-sm text-secondary">测试网络连接速度和质量</p>
+      <div class="tabs">
+        <span class="tab active" onclick="this.classList.add('active');this.parentElement.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));this.classList.add('active');document.getElementById('netTestContent').style.display='';document.getElementById('netHistoryContent').style.display='none'">测速</span>
+        ${displayMode === 'professional' ? '<span class="tab" onclick="this.classList.add(\'active\');this.parentElement.querySelectorAll(\'.tab\').forEach(t=>t.classList.remove(\'active\'));this.classList.add(\'active\');document.getElementById(\'netTestContent\').style.display=\'none\';document.getElementById(\'netHistoryContent\').style.display=\'\'">历史记录</span>' : ''}
+      </div>
+      <div id="netTestContent">
+        <div class="card">
+          <div class="card-body">
+            <div class="flex gap-2 mb-3">
+              <button class="btn btn-primary btn-sm">🌐 本地网络</button>
+              <button class="btn btn-sm">📡 代理/VPN</button>
+            </div>
+            <button class="btn btn-primary mb-3" onclick="showToast('info','测试中…','正在测量延迟')">▶ 开始测速</button>
+            <div class="grid-3">
+              <div class="card p-3 text-center"><div class="stat-value" style="font-size:20px">12 ms</div><div class="stat-label">延迟</div></div>
+              <div class="card p-3 text-center"><div class="stat-value" style="font-size:20px">98.5 Mbps</div><div class="stat-label">下载</div></div>
+              <div class="card p-3 text-center"><div class="stat-value" style="font-size:20px">45.2 Mbps</div><div class="stat-label">上传</div></div>
+            </div>
+            <div class="grid-3 mt-3">
+              <div class="card p-3 text-center"><div class="stat-value" style="font-size:18px">3.2 ms</div><div class="stat-label">抖动</div></div>
+              <div class="card p-3 text-center"><div class="stat-value" style="font-size:18px">0.1%</div><div class="stat-label">丢包</div></div>
+              <div class="card p-3 text-center"><div class="stat-value" style="font-size:18px">15.2 ms</div><div class="stat-label">DNS</div></div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div id="netHistoryContent" style="display:none">
+        <div class="card">
+          <div class="card-header"><span class="card-title">历史测速趋势</span></div>
+          <div class="card-body">
+            <div class="table-wrap">
+              <table>
+                <thead><tr><th>日期</th><th>延迟</th><th>下载</th><th>上传</th><th>类型</th></tr></thead>
+                <tbody>
+                  ${mockData.small.speedtests.map(s => `<tr><td>${s.date}</td><td>${s.ping} ms</td><td>${s.download} Mbps</td><td>${s.upload} Mbps</td><td>本地</td></tr>`).join('')}
+                  <tr><td>07-23</td><td>15 ms</td><td>85.2 Mbps</td><td>40.1 Mbps</td><td>代理</td></tr>
+                  <tr><td>07-22</td><td>8 ms</td><td>110.3 Mbps</td><td>52.8 Mbps</td><td>本地</td></tr>
+                </tbody>
+              </table>
+            </div>
+            <div class="mt-3"><p class="text-xs text-secondary">SVG 折线图（下载速度趋势）</p>
+              <svg viewBox="0 0 320 80" style="width:100%;height:80px">
+                <polyline points="8,60 60,40 112,50 164,25 216,45 268,30 312,35" fill="none" stroke="var(--primary)" stroke-width="2"/>
+              </svg>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function renderSettings(mc) {
+  mc.innerHTML = `
+    <div class="space-y-4" style="max-width:600px">
+      <p class="text-sm text-secondary">应用设置和偏好</p>
+      <div class="card">
+        <div class="card-header"><span class="card-title">账户</span></div>
+        <div class="card-body space-y-2">
+          <button class="btn w-full" onclick="openModal('修改密码','<div class=\\\\'space-y-3\\\\'><label class=\\\\'text-sm\\\\'>新密码</label><input class=\\\\'input\\\\' type=\\\\'password\\\\'><label class=\\\\'text-sm mt-2\\\\'>确认新密码</label><input class=\\\\'input\\\\' type=\\\\'password\\\\'></div>','<button class=\\\\'btn btn-primary\\\\' onclick=\\\\'closeModal();showToast(\\\'success\\\',\\\'密码已修改\\\')'>保存</button><button class=\\\\'btn\\\\' onclick=\\\\'closeModal()\\\'>取消</button>')">🔑 修改密码</button>
+          <button class="btn w-full" onclick="showToast('info','请输入验证码')">📱 重新绑定验证器</button>
+          <button class="btn w-full" onclick="showToast('info','更新邮件地址')">📧 更新邮箱</button>
+          <button class="btn w-full" onclick="showToast('success','已生成新恢复密钥')">🔄 重新生成恢复密钥</button>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-header"><span class="card-title">集成</span></div>
+        <div class="card-body space-y-2">
+          <label class="checkbox-label"><input type="checkbox" checked> 开机自启</label>
+          <label class="checkbox-label"><input type="checkbox"> 文件钩子自启动</label>
+          <label class="checkbox-label"><input type="checkbox"> 关联 .txt 文件</label>
+        </div>
+      </div>
+      ${displayMode === 'professional' ? `
+      <div class="card">
+        <div class="card-header"><span class="card-title">模块锁定</span></div>
+        <div class="card-body">
+          <p class="text-xs text-secondary mb-3">进入以下模块前要求重新验证一个解锁因子</p>
+          <div class="checkbox-group">
+            <label class="checkbox-label"><input type="checkbox"> 文件加密</label>
+            <label class="checkbox-label"><input type="checkbox"> 密码管理</label>
+            <label class="checkbox-label"><input type="checkbox"> 笔记</label>
+          </div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-header"><span class="card-title">高级</span></div>
+        <div class="card-body space-y-2">
+          <button class="btn w-full btn-sm" onclick="showToast('success','诊断信息已复制')">📋 复制诊断信息</button>
+          <button class="btn w-full btn-sm" onclick="showToast('success','已恢复默认')">🔄 恢复默认设置</button>
+        </div>
+      </div>` : ''}
+    </div>
+  `;
+}
+
+function renderHelp(mc) {
+  mc.innerHTML = `
+    <div class="space-y-4" style="max-width:600px">
+      <p class="text-sm text-secondary">快捷键和操作指南</p>
+      <div class="card">
+        <div class="card-header"><span class="card-title">快捷键</span></div>
+        <div class="card-body">
+          <table>
+            <thead><tr><th>操作</th><th>快捷键</th></tr></thead>
+            <tbody>
+              <tr><td>命令面板</td><td><kbd style="background:var(--border);padding:2px 6px;border-radius:4px;font-size:12px">Ctrl + K</kbd></td></tr>
+              <tr><td>搜索</td><td><kbd style="background:var(--border);padding:2px 6px;border-radius:4px;font-size:12px">Ctrl + F</kbd></td></tr>
+              <tr><td>新建笔记</td><td><kbd style="background:var(--border);padding:2px 6px;border-radius:4px;font-size:12px">Ctrl + N</kbd></td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-header"><span class="card-title">关于</span></div>
+        <div class="card-body">
+          <p class="text-sm">File Vault v0.1.0</p>
+          <p class="text-xs text-secondary mt-2">多因素文件加密 + 密码管理 + 剪贴板历史 + 笔记</p>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+// ===== Import Action =====
+function importAction() {
+  openModal('导入数据','<div class=\\\\'space-y-3\\\\'><label class=\\\\'text-sm\\\\'>导入类型</label><select class=\\\\'select w-full\\\\'><option>密码 CSV</option><option>剪贴板 JSON</option><option>笔记</option></select><label class=\\\\'checkbox-label mt-2\\\\'><input type=\\\\'checkbox\\\\' checked> 导入后安全删除源文件</label></div>','<button class=\\\\'btn btn-primary\\\\' onclick=\\\\'closeModal();showToast(\\\'success\\\',\\\'导入成功\\\',\\\'12 条记录已导入\\\')'>开始导入</button><button class=\\\\'btn\\\\' onclick=\\\\'closeModal()\\\'>取消</button>');
+}
+
+// ===== Init =====
+renderContent('overview');
+</script>
+</body>
+</html>

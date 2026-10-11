@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 自带的矢量图标。原先用的是 @android:drawable/ic_menu_* —— 那是 2010 年
+     Gingerbread 时代的平台资源，在今天的 Material 界面里一眼就看得出年代感，
+     而且不同厂商 ROM 里长得还不一样。自带一份就三端一致、也能跟着强调色染色。 -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24"
+    android:tint="?attr/colorControlNormal">
+    <path
+        android:fillColor="@android:color/white"
+        android:pathData="M12,5V2L8,6l4,4V7a5,5 0,1 1,-5 5H5a7,7 0,1 0,7 -7z" />
+</vector>

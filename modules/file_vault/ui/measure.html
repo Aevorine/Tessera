@@ -1,0 +1,323 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>layout probe</title>
+    <script>
+      // vaultApi.ts 在模块加载时就 `const raw = window.vaultAPI`，所以这两个
+      // 桩必须在模块图之前装好。内容取真实 RPC 的形状，不是空对象。
+      (function () {
+        const now = Math.floor(Date.now() / 1000)
+        const mk = (i) => ({
+          id: 'e' + i,
+          name: ['Example Mail', 'Old Forum', 'Shop A', 'Shop B', 'Bank of Nowhere', 'Cloud Drive'][i % 6] + ' ' + i,
+          url: i % 3 === 0 ? 'http://forum.example.org' : 'https://mail.example.com/login',
+          username: 'alice' + i + '@example.com',
+          password: ['p9$Kw2mZq7Lt4Xv1', '123456', 'SharedPass!2024', 'SharedPass!2024', 'qwer1234', 'Alice-2024'][i % 6],
+          notes: '',
+          created_at: now - 86400 * (i + 3),
+          updated_at: now - 86400 * (i + 3),
+        })
+        const entries = Array.from({ length: 40 }, (_, i) => mk(i))
+        const clip = Array.from({ length: 30 }, (_, i) => ({
+          id: 'c' + i,
+          content_type: i % 5 === 0 ? 'url' : i % 7 === 0 ? 'code' : 'text',
+          content_format: 'plain',
+          content_text:
+            '第 ' + i + ' 条剪贴板内容，用来占出真实的行高与折行。' +
+            'A clipboard entry long enough to wrap onto a second line in the list column.',
+          thumbnail_path: null,
+          source_app: 'Notepad',
+          created_at: '2026-08-19 10:00:00',
+          is_pinned: false,
+          is_hidden: false,
+          is_truncated: false,
+        }))
+        const results = {
+          identity_exists: { ok: true, exists: true },
+          password_list: { ok: true, entries: entries },
+          password_sort_mode_get: { ok: true, sort_mode: 'recent' },
+          password_get_history: { ok: true, history: [] },
+          clipboard_list: { ok: true, entries: clip },
+          clipboard_list_trash: { ok: true, entries: [] },
+          clipboard_list_snippets: { ok: true, entries: [] },
+          clipboard_duplicates: { ok: true, groups: [] },
+          note_list: { ok: true, notes: Array.from({ length: 25 }, (_, i) => ({
+            id: i + 1,
+            title: '笔记 ' + i + ' — A note title long enough to wrap in the list column',
+            category: i % 3 === 0 ? '工作' : '',
+            preview: '正文预览内容，足够长以便折行显示。A preview line long enough to wrap. '.repeat(2),
+            content_length: 1200,
+            content_storage_mode: 'encrypted_db',
+            format: 'markdown',
+            tags: [],
+            is_pinned: 0, is_hidden: 0, is_deleted: 0, sort_order: 0,
+            created_at: '2026-08-10 09:00:00', updated_at: '2026-08-19 09:00:00',
+          })) },
+          note_list_trash: { ok: true, notes: [] },
+          note_search: { ok: true, notes: [] },
+          note_list_tags: { ok: true, tags: [] },
+          note_get: { ok: true, note: {
+            id: 1, title: '笔记 0 — A note title long enough to wrap in the list column',
+            category: '工作', preview: '', content_length: 1200,
+            content_storage_mode: 'encrypted_db', format: 'markdown', tags: [],
+            is_pinned: 0, is_hidden: 0, is_deleted: 0, sort_order: 0,
+            created_at: '2026-08-10 09:00:00', updated_at: '2026-08-19 09:00:00',
+            content: ['# 标题', '', '这是一篇用来量版面的笔记正文。', '', 'A body paragraph long enough to show how the editor lays out real text.', '', '- 列表项一', '- 列表项二'].join(String.fromCharCode(10)),
+          } },
+          note_category_list: { ok: true, categories: [] },
+          note_text_storage_mode_get: { ok: true, mode: 'encrypted_db' },
+          recovery_codes_list: { ok: true, codes: [] },
+
+          // AI 对话页：没有这三条，它永远停在"还没配置"那条短分支上——
+          // 一张空状态卡片加一颗按钮，整页九百多像素是白的。**探针会报 OK**，
+          // 因为几何上确实"填满"了，填的是空状态。跨设备页刚踩过同一个坑
+          // （见下面 crossDeviceAPI 的 available 注释）。
+          get_ai_config: { ok: true, config: { configured: true, model: 'deepseek-chat', base_url: '' } },
+          list_ai_models: { ok: true, models: ['deepseek-chat', 'deepseek-reasoner'], details: [] },
+          ai_history_list: { ok: true, history: [] },
+          ai_skill_list: { ok: true, skills: [] },
+
+          // —— 下面这些是 2026-08-19 自检时按 ?trace=1 打出来的调用清单补的 ——
+          // 形状抄自 src/shared/ipcTypes.ts，不是随手编的：编错一个字段名，
+          // 组件会静默走进"没有这一项"的分支，探针照样报 OK。
+          diagnostic_log_status: { ok: true, enabled: true },
+          diagnostic_log_query: { ok: true, entries: [], total: 0, truncated: false },
+          diagnostic_log_stats: {
+            ok: true,
+            stats: {
+              lines: 0, occurrences: 0,
+              by_level: { debug: 0, info: 0, warn: 0, error: 0 },
+              by_module: [], top_problems: [], first_ts: 0, last_ts: 0,
+            },
+            environment: { os: 'Windows', os_release: '11', os_version: '10.0.26200', arch: 'AMD64', python: '3.12.0' },
+          },
+          data_dir_info: { path: 'C:\\probe\\data', source: 'default', pending_move_from: null, can_change: true },
+          file_clip_clipboard_status: { ok: true, has_files: false, paths: [], is_cut: false },
+          file_clip_hook_status: {
+            ok: true, compiled: true, running: false, autostart: false,
+            exe_path: '', source_path: '', cli_script: '', state: 'stopped', last_error: null,
+          },
+          file_clip_undo_info: { ok: true, has_undo: false },
+          file_clip_progress_preferences_get: { ok: true, preferences: { position: 'bottom-right', auto_hide_seconds: 5, compact: false } },
+          file_manager_shortcuts_get: { ok: true, shortcuts: {
+            copy:             { key: 'C', ctrl: true,  alt: false, shift: false },
+            cut:              { key: 'X', ctrl: true,  alt: false, shift: false },
+            paste:            { key: 'V', ctrl: true,  alt: false, shift: false },
+            delete_recycle:   { key: 'Delete', ctrl: false, alt: false, shift: false },
+            delete_permanent: { key: 'Delete', ctrl: false, alt: false, shift: true },
+          } },
+          clipboard_settings_get: { ok: true, settings: { max_entries: 5000, cleanup_days: 30, cleanup_hours: '03:00', sensitive_ttl_minutes: 15 } },
+          // 数组一定要给真数组：answerAll 的兜底是个 Proxy，对它 .map() 会当场抛。
+          clipboard_find_near_duplicates: { ok: true, groups: [] },
+          password_breach_check: { ok: true, breached: {}, checked: 0 },
+          duress_status: { ok: true, configured: false },
+          clipboard_blacklist_list: { ok: true, apps: [] },
+          recovery_codes_settings_get: { ok: true, settings: { scan_downloads_enabled: false, reveal_requires_verify: true } },
+          note_image_storage_mode_get: { ok: true, mode: 'encrypted_db' },
+        }
+        // 没显式给数据的 RPC 一律返回一个"什么都答得上"的对象：ok 为真，
+        // 任何没列出的字段给一个空数组（既有 .map/.length/.filter，又不会
+        // 假装有内容）。探针要量的是布局，不是把上百个 IPC 逐个补全——补不全
+        // 就整页白屏，那才是真的什么都量不到。
+        const answerAll = (base) => new Proxy(base || { ok: true }, {
+          get(target, prop) {
+            if (prop in target) return target[prop]
+            if (prop === 'ok') return true
+            if (typeof prop !== 'string') return undefined
+            return []
+          },
+          has: () => true,
+        })
+        window.vaultAPI = {
+          call: (m) => {
+            // ?trace=1 时把每个被调用的 RPC 记下来。补桩要补哪些，
+            // 靠猜不如靠问——探针跑一遍就知道这个面板到底要什么。
+            if (location.search.includes('trace=1')) {
+              window.__rpc = window.__rpc || []
+              if (!window.__rpc.includes(m)) window.__rpc.push(m)
+            }
+            return Promise.resolve(answerAll(results[m]))
+          },
+          onProgress: () => () => {},
+          onEvent: () => () => {},
+          onBackendRestarted: () => () => {},
+          onVaultLocked: () => () => {},
+          onBackendFatal: () => () => {},
+        }
+        const electronStub = {
+          openFiles: () => Promise.resolve(null),
+          saveFile: () => Promise.resolve(null),
+          getPathForFile: () => '',
+          showItemInFolder: () => {},
+          clipboardWriteText: () => Promise.resolve({ ok: true }),
+          clipboardReadText: () => Promise.resolve({ ok: true, text: '' }),
+          getAppVersion: () => Promise.resolve('0.0.0-probe'),
+          getSystemLocale: () => Promise.resolve('zh-CN'),
+          getUpdateState: () => Promise.resolve({ status: 'idle' }),
+          getStartupSettings: () => Promise.resolve({ openAtLogin: true, silent: true }),
+          // 返回**字符串数组**——调用方直接 d.includes('C:\\') 和 d.map()。
+          // 通用兜底给的是 {ok:true}，那两个方法都不存在，文件管理器一挂载就白屏。
+          listDrives: () => Promise.resolve(['C:\\', 'D:\\']),
+          // 设置页的实时指标面板逐个字段做算术（.toFixed / 相减），
+          // 通用兜底的 {ok:true} 一到就整页白屏。形状抄自 RuntimeMetricsSnapshot。
+          getRuntimeMetrics: () => Promise.resolve({
+            capturedAtMs: 0, cpuPercent: 3.5,
+            workingSetBytes: 180 * 1024 * 1024, privateMemoryBytes: 150 * 1024 * 1024,
+            totalMemoryBytes: 16 * 1024 * 1024 * 1024, freeMemoryBytes: 8 * 1024 * 1024 * 1024,
+            processCount: 7, uptimeSeconds: 1234,
+          }),
+          // 全局快捷键：调用方读的是 globalRes.shortcuts / globalRes.registered，
+          // 不是裸对象。通用兜底给的是 {ok:true}，setRegistered(undefined) 之后
+          // 下一帧 registered[action] 就炸，整个设置页白屏。
+          // 这三条必须**跟 shared/ipcTypes.ts 的 GlobalShortcutAction 一一对应**。
+          // 少一条的表现不是"少显示一行"，是设置页和帮助页**整页白屏**：
+          // formatBinding(undefined) 会去读 undefined.ctrl 直接抛异常。
+          // 2026-08-27 加 toggleWindow 时就漏了这里，探针当场把两页报成 BAD。
+          getGlobalShortcuts: () => Promise.resolve({
+            shortcuts: {
+              toggleWindow:     { key: 'T', ctrl: true, alt: true, shift: false },
+              clipboardCapture: { key: 'C', ctrl: true, alt: true, shift: false },
+              quickNote:        { key: 'N', ctrl: true, alt: true, shift: false },
+            },
+            registered: { toggleWindow: true, clipboardCapture: true, quickNote: true },
+          }),
+          setFileManagerActive: () => {},
+        }
+        // 没显式列出的方法一律返回一个无害的空实现：探针的目的是量布局，
+        // 不是把二十几个 IPC 逐个补全；补不全就整页白屏，那才真的量不到东西。
+        // 跨设备同步是**另一个进程**（Go 守护），走独立的 window.crossDeviceAPI，
+        // 不是 vaultAPI —— 见 src/lib/crossDeviceApi.ts 的文件头。
+        // 少了它，CrossDeviceScreen 一挂载就读 undefined.available 白屏。
+        //
+        // **available 必须是 true。** 它原先返回 false，于是这一页永远走
+        // `available === false` 那条短分支——一句错误提示加一颗重试按钮，
+        // 半屏都占不满。探针因此十四格全绿，而用户看到的是真正的那一页：
+        // 八个分区叠起来一千多像素高，被 PageShell 的 fill 档裁掉下半截、
+        // 还滚不动。**量替身的空状态永远量不出真身的毛病**，跟 `?shell=1`
+        // 那次是同一个教训（见 layout-probe.mjs 的 junk 检测注释）。
+        const cdDevices = Array.from({ length: 6 }, (_, i) => ({
+          device_id: 'dev-' + i,
+          name: ['书房台式机', 'Pixel 8', 'iPad Air', '公司笔记本', '客厅电视盒', '备用手机'][i],
+          type: i % 2 === 0 ? 'desktop' : 'mobile',
+          trust: i === 5 ? 'temp' : 'long',
+          // **必须用后端真实的那套大写状态名**（agent.go / ONLINE_STATES）。
+          // 一开始随手写了 'online' / 'offline'，结果两件事同时错了而探针照样报 OK：
+          // `ONLINE_STATES.has('online')` 是 false，所以六台设备全被画成离线；
+          // `t('state.online')` 找不到键，徽章上直接显示英文 "online"。
+          // 桩编错一个字符串，量到的就是另一个应用。
+          state: i < 2 ? 'CONNECTED' : i === 2 ? 'DEGRADED' : i === 4 ? 'RECONNECTING' : 'DISCONNECTED',
+          // 守护进程发的是毫秒（agent.go 的 UnixMilli）。
+          paired_at: Date.now() - 86400000 * (i + 1),
+          last_seen: Date.now() - 60000 * i,
+          rtt_ms: 8 + i * 3,
+          clip_latency_ms: i < 2 ? 12 + i * 5 : undefined,
+          // 延迟曲线：第二台演示"越来越慢"，界面应把它画成警示色。
+          clip_latency_hist: i < 3
+            ? Array.from({ length: 12 }, (_, k) => ({
+                ms: i === 1 ? 20 + k * k * 3 : 14 + ((k * 7) % 9), at: Date.now() - (12 - k) * 60000,
+              }))
+            : undefined,
+          method: 'lan',
+          via: i === 4 ? 'relay' : 'direct',
+          relayed: i === 4,
+        }))
+        const cdResults = {
+          status: {
+            device_id: 'dev-self',
+            name: '这台电脑',
+            fingerprint: 'AB:CD:EF:01:23:45:67:89',
+            port: 51820,
+            devices: cdDevices,
+            options: {
+              clip_sync: true, auto_accept: false, download_dir: 'D:\\Downloads',
+              rendezvous_addr: '', rendezvous_secret_set: false,
+              relay_on_metered: false, metered: false,
+            },
+          },
+          // 一条正在跑的 clip 推送：跟真实文件传输走同一份 active_transfers，
+          // item_kind: 'clip' 是唯一区分标记（见 core/agent/agent.go）。
+          active_transfers: { transfers: [
+            { transfer_id: 'x-clip-1', device_id: 'dev-1', device_name: cdDevices[1].name,
+              direction: 'send', name: '剪贴板图片', item_kind: 'clip', total: 8_400_000, state: 'running' },
+          ] },
+          // 剪贴板同步状态面板：同步历史 + 因果冲突。形状抄自 agent.go 的
+          // clip_sync_log / clip_conflicts 分支——都不给的话探针只量到空状态，
+          // 见 layout-probe.mjs 顶上"桩错一个字段就停在空状态"的教训。
+          clip_sync_log: { items: [
+            { device_id: 'dev-1', device_name: cdDevices[1].name, mime: 'image/png',
+              item_id: 'a1b2c3d4', ok: true, error: '', at: (now - 30) * 1000 },
+            { device_id: 'dev-2', device_name: cdDevices[2].name, mime: 'text/html',
+              item_id: 'e5f6a7b8', ok: true, error: '', at: (now - 120) * 1000 },
+            { device_id: 'dev-3', device_name: cdDevices[3].name, mime: 'application/rtf',
+              item_id: 'c9d0e1f2', ok: false, error: '连接已断开', at: (now - 240) * 1000 },
+          ] },
+          // 剪贴板时间线，形状抄自 agent.go 的 clipTimeline。
+          clip_timeline: { clip_sync: true, items: [
+            { item_id: 't1', source: 'dev-1', source_name: cdDevices[1].name, local: false, via: 'sync',
+              at: Date.now() - 20000, preferred: 'text/plain;charset=utf-8',
+              preview: 'The quick — “brown” fox ∑ x² ≤ ∞, see https://example.org/a?b=c&d=e for the full derivation…',
+              kinds: [{ mime: 'text/plain;charset=utf-8', size: 24576, ready: true }], size: 24576, complete: true, available: true },
+            { item_id: 't2', source: 'dev-2', source_name: cdDevices[2].name, local: false, via: 'pull',
+              at: Date.now() - 360000, preferred: 'text/plain;charset=utf-8', preview: '断线期间在平板上复制的一段长文……',
+              kinds: [{ mime: 'text/plain;charset=utf-8', size: 102400, ready: false }], size: 102400, complete: false, available: false },
+            { item_id: 't3', source: 'dev-self', source_name: '这台电脑', local: true, via: 'local',
+              at: Date.now() - 900000, preferred: 'image/png', preview: '',
+              kinds: [{ mime: 'image/png', size: 845000, ready: true }], size: 845000, complete: true, available: true },
+          ] },
+          clip_conflicts: { items: [
+            { device_id: 'dev-4', device_name: cdDevices[4].name,
+              incoming_hlc: '1755600000000:3:dev-4', local_hlc: '1755599999000:1:dev-self',
+              at: (now - 600) * 1000 },
+          ] },
+          nearby: { devices: cdDevices.slice(0, 3).map((d) => ({
+            device_id: d.device_id + '-n', name: d.name, type: d.type,
+            addrs: ['192.0.2.' + (10 + Number(d.device_id.slice(4)))], via: 'mdns', paired: false,
+          })) },
+          // RFC 5737 的文档保留网段，不是任何真实机器的地址——桩里写像真的一样的
+          // 内网 IP，看的人分不清那是编的还是这台机器的。
+          endpoints: { endpoints: ['192.0.2.7:51820', '198.51.100.4:51820'] },
+          diagnose: { checks: [
+            { id: 'listen', status: 'ok', fields: { port: '51820' } },
+            { id: 'mdns', status: 'ok', fields: {} },
+            { id: 'peers', status: 'info', fields: { count: '6' } },
+          ] },
+        }
+        window.crossDeviceAPI = new Proxy({
+          // available() 的调用方接着 .catch()，所以必须返回 Promise 而不是裸布尔。
+          // 而且**解出来的是 `{available, error}` 不是裸布尔**（见
+          // CrossDeviceScreen 的 `setAvailable(a.available)`）：返回 `true` 的话
+          // `a.available` 是 undefined，这一页就永远停在"正在启动跨设备服务…"。
+          // 桩的形状写错一个字段名，探针照样全绿——它量的是那句转圈提示。
+          available: () => Promise.resolve({ available: true, error: null }),
+          call: (method) => Promise.resolve(answerAll(cdResults[method])),
+        }, {
+          get(target, prop) {
+            if (prop in target) return target[prop]
+            if (typeof prop !== 'string') return undefined
+            if (prop.startsWith('on')) return () => () => {}
+            return () => Promise.resolve(answerAll())
+          },
+          has: () => true,
+        })
+        window.electronAPI = new Proxy(electronStub, {
+          get(target, prop) {
+            if (prop in target) return target[prop]
+            if (typeof prop !== 'string') return undefined
+            if (prop.startsWith('on')) return () => () => {}
+            // 跟 vaultAPI 的兜底保持一致：返回"什么都答得上"的对象，
+            // 而不是裸的 {ok:true}。裸对象让 res.entries 是 undefined
+            // 而不是 []，调用方一 .length 就炸（文件管理器踩过）。
+            return () => Promise.resolve(answerAll())
+          },
+          has: () => true,
+        })
+      })()
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/measure.tsx"></script>
+  </body>
+</html>
