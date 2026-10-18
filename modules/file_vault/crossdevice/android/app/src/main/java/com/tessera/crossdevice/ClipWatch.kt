@@ -79,8 +79,8 @@ object ImeMode {
 
 /**
  * 后台剪贴板监听，仅在 Tessera 是默认输入法时工作。
- * 回调在主线程而读图可能达 8 MB，故放单独线程；连续变化（一次复制可能写两遍）攒 120 ms 只处理最后一
- * 次。
+ * 回调在主线程而读图可能达 8 MB，故放单独线程；变化时立即读一次，80 ms 后再补读一次
+ * （一次复制可能写两遍），重复内容由 ClipDedupe 挡掉。
  */
 class ClipWatcher(private val context: Context, private val send: (JSONObject) -> Boolean) {
     private val cm = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
@@ -88,8 +88,9 @@ class ClipWatcher(private val context: Context, private val send: (JSONObject) -
     private val worker = Executors.newSingleThreadExecutor { r -> Thread(r, "tessera-clip-watch") }
     private val readNow = Runnable { worker.execute { capture() } }
     private val listener = ClipboardManager.OnPrimaryClipChangedListener {
+        worker.execute { capture() }
         main.removeCallbacks(readNow)
-        main.postDelayed(readNow, 120)
+        main.postDelayed(readNow, 80)
     }
 
     fun start() {
