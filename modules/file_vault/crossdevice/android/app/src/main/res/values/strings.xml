@@ -478,6 +478,11 @@
     <string name="clip_timeline_failed">取不到这条内容</string>
     <string name="clip_timeline_pulled">断线期间复制</string>
     <string name="clip_timeline_image">图片</string>
+    <string name="clip_pick_title">发送剪贴板</string>
+    <string name="clip_pick_current">当前剪贴板</string>
+    <string name="clip_pick_all">全选</string>
+    <string name="clip_pick_send">发送 %1$d 条</string>
+    <string name="clip_pick_sent">已发送 %1$d 条</string>
     <string name="clip_timeline_no_preview">（无文本预览）</string>
     <string name="clip_latency_stats">剪贴板耗时，最近 %1$d 次：最低 %2$d ms，平均 %3$d ms，最高 %4$d ms</string>
     <string name="clip_latency_worse">比平时慢</string>

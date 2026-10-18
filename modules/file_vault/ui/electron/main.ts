@@ -229,6 +229,16 @@ function startCrossDeviceBridge(): void {
   crossDevice = new CrossDeviceBridge(CROSSDEVICE_COMMAND, CROSSDEVICE_DATA_DIR, deviceName)
 
   crossDevice.setEventListener((e) => {
+    // 本机剪贴板变化事件只给主进程用，不转发渲染进程。
+    if (e.event === 'clip_changed') {
+      if (clipTimer) onClipChanged()
+      return
+    }
+    if (e.event === 'clip_watch') {
+      setClipEventDriven(true)
+      return
+    }
+    if (e.event === 'daemon_restarting') setClipEventDriven(false)
     // 收到别的设备发来的剪贴板内容 → 写进本机系统剪贴板。
     // 这一步必须在主进程做：渲染进程拿不到系统剪贴板的多格式写入能力。
     if (e.event === 'clip' && e.data) {
@@ -342,8 +352,9 @@ function readLocalClipboard(): { preferred: string; reps: Array<{ mime: string; 
 
 // 剪贴板跨设备自动同步：复制动作本身触发同步，不该让用户去面板按"发送剪贴板"。
 //
-// 用轮询：Windows 有 AddClipboardFormatListener 但 Electron 未暴露，接它要写需按 ABI 重编的原生模块，
-// 代价远大于收益；轮询只是一次 OpenClipboard + 读文本，空闲时微秒级。
+// 事件驱动：守护进程用 AddClipboardFormatListener 监听，变了发 clip_changed，这里立即读，检测延迟接近 0，
+// 也不再高频 OpenClipboard 抢别的程序的锁。守护进程报 clip_watch 之前（或它重启期间）退回 50 ms 轮询；
+// 有事件源后轮询降到 CLIP_SAFETY_POLL_MS 只作兜底。
 //
 // 只比较指纹：文本直接用内容（小，长度相同内容不同也不漏发），超过 SAMPLE_SPAN 的长文本改存哈希。
 // 图片曾每轮 `toBitmap()` 复制整张位图再做 SHA-256（1920×1080 每次 8.3 MB），剪贴板里躺一张截图就一直烧 CPU。
@@ -357,6 +368,12 @@ function readLocalClipboard(): { preferred: string; reps: Array<{ mime: string; 
 //
 // 只发最新一次复制：无历史队列，每轮只看当前内容，与上轮不同就发，中间被跳过的不补发。
 const CLIP_POLL_MS = 50
+
+/** 有事件源时的兜底轮询间隔。 */
+const CLIP_SAFETY_POLL_MS = 1000
+
+/** 守护进程的剪贴板事件源是否在工作。 */
+let clipEventDriven = false
 
 /** 采样哈希每段取多少字节，以及文本超过多长就改存哈希。 */
 const SAMPLE_SPAN = 32 * 1024
@@ -486,29 +503,54 @@ function pushClipboardNow(): void {
     })
 }
 
+/** 看一次剪贴板，变了就发。返回 false 表示这次没读到（被锁或暂时为空），值得稍后重试。 */
+function checkClipboardOnce(): boolean {
+  if (!clipAutoSync || isPaused) return true
+  let fp: string
+  try {
+    fp = clipboardFingerprint(Date.now())
+  } catch {
+    return false // 别的程序正锁着剪贴板
+  }
+  if (fp === 'empty') return false
+  if (fp === lastClipFingerprint) return true
+  lastClipFingerprint = fp
+  pushClipboardNow()
+  return true
+}
+
+/** clip_changed 到达：立即读；写入方刚放手时偶尔读不到，短间隔补读两次。 */
+function onClipChanged(): void {
+  if (checkClipboardOnce()) return
+  let tries = 0
+  const retry = () => {
+    if (checkClipboardOnce() || ++tries >= 3) return
+    setTimeout(retry, 15)
+  }
+  setTimeout(retry, 15)
+}
+
 function startClipboardWatcher(): void {
   if (clipTimer) return
   // 启动时只记指纹不发送：刚启动时剪贴板里是很久以前复制的内容，
   // 当作"刚发生的复制"广播会覆盖所有设备上各自的剪贴板。
   lastClipFingerprint = clipboardFingerprint(Date.now())
-  clipTimer = setInterval(() => {
-    if (!clipAutoSync || isPaused) return
-    let fp: string
-    try {
-      fp = clipboardFingerprint(Date.now())
-    } catch {
-      return // 别的程序正锁着剪贴板，下一轮再看
-    }
-    if (fp === lastClipFingerprint || fp === 'empty') return
-    lastClipFingerprint = fp
-    pushClipboardNow()
-  }, CLIP_POLL_MS)
+  clipTimer = setInterval(checkClipboardOnce, clipEventDriven ? CLIP_SAFETY_POLL_MS : CLIP_POLL_MS)
 }
 
 function stopClipboardWatcher(): void {
   if (!clipTimer) return
   clearInterval(clipTimer)
   clipTimer = null
+}
+
+/** 事件源上线 / 掉线时换轮询档位。 */
+function setClipEventDriven(on: boolean): void {
+  if (clipEventDriven === on) return
+  clipEventDriven = on
+  if (!clipTimer) return
+  clearInterval(clipTimer)
+  clipTimer = setInterval(checkClipboardOnce, on ? CLIP_SAFETY_POLL_MS : CLIP_POLL_MS)
 }
 
 /**
@@ -1150,9 +1192,12 @@ function createWindow() {
     // 不回传给渲染进程——列表页用不着正文，多走一趟只是多一份副本。
     if (method === 'clip_timeline_apply') {
       const res = await crossDevice.call<IncomingClip & { item_id?: string; errors?: string[] }>(method, params)
-      writeIncomingClip(res)
-      // 写完立刻对齐指纹：否则下一轮轮询把它当成新复制又自动发一遍。
-      noteClipboardWritten()
+      // local:false：「发送剪贴板」多选发送，只推给其他设备，不改本机剪贴板。
+      if (params.local !== false) {
+        writeIncomingClip(res)
+        // 写完立刻对齐指纹：否则下一轮轮询把它当成新复制又自动发一遍。
+        noteClipboardWritten()
+      }
       return { item_id: res.item_id, errors: res.errors ?? [] }
     }
     // 剪贴板自动同步的开关跟着 clip_sync 选项走，两个地方各存一份状态迟早

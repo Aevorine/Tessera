@@ -1,6 +1,8 @@
 package node
 
 import (
+	"sync"
+
 	"github.com/Aevorine/Tessera/crossdevice/core/clipboard"
 	"github.com/Aevorine/Tessera/crossdevice/core/store"
 )
@@ -61,16 +63,40 @@ func (n *Node) SetPeerPolicy(deviceID, clipPolicy, filePolicy string) (*store.Pe
 
 // BroadcastClipCount 同 BroadcastClip，另外返回真正发出去了几台——被策略跳过的
 // 不算。界面据此说「已发到 N 台」，不能把按策略没发的也算进去。
+// 各设备并行发：一台正在传大文件（写锁被数据块占着）或走中转很慢，不拖住其他设备。
 func (n *Node) BroadcastClipCount(it *clipboard.Item) (int, []error) {
-	sent := 0
-	var errs []error
-	for _, s := range n.Sessions() {
-		ok, err := s.sendClipFiltered(it)
+	sessions := n.Sessions()
+	if len(sessions) == 1 {
+		ok, err := sessions[0].sendClipFiltered(it)
 		if err != nil {
-			errs = append(errs, wrapSendErr(s, err))
-			continue
+			return 0, []error{wrapSendErr(sessions[0], err)}
 		}
 		if ok {
+			return 1, nil
+		}
+		return 0, nil
+	}
+	type result struct {
+		ok  bool
+		err error
+	}
+	res := make([]result, len(sessions))
+	var wg sync.WaitGroup
+	for i, s := range sessions {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			ok, err := s.sendClipFiltered(it)
+			res[i] = result{ok, err}
+		}()
+	}
+	wg.Wait()
+	sent := 0
+	var errs []error
+	for i, r := range res {
+		if r.err != nil {
+			errs = append(errs, wrapSendErr(sessions[i], r.err))
+		} else if r.ok {
 			sent++
 		}
 	}

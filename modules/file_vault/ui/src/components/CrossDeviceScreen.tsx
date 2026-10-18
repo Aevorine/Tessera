@@ -12,8 +12,10 @@ import {
   File as FileIcon,
   Folder,
   FolderOpen,
+  Gauge,
   GitFork,
   Globe,
+  History,
   Image as ImageIcon,
   Info,
   Hash,
@@ -44,7 +46,8 @@ import {
   X,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { Badge, EmptyState, FeatureTitle, NUMERIC_CLASS, PageHeader, PageSection, PageShell } from '@/components/ui/page'
+import { Badge, EmptyState, FeatureTitle, NUMERIC_CLASS, PageHeader, PageShell } from '@/components/ui/page'
+import { InfoHint } from '@/components/ui/info-hint'
 import { Workbench, WorkbenchDetailBody, WorkbenchDetailHeader } from '@/components/ui/workbench'
 // 这一页不再直接用 Card：所有分区统一走 PageSection（页头、留白、折叠行为
 // 都由它定死），这样以后加新分区也不可能长歪。见 ui/page.tsx 顶部的说明。
@@ -56,7 +59,6 @@ import { Progress } from '@/components/ui/progress'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { cn } from '@/lib/utils'
 import { electronApi } from '@/lib/electronApi'
 import { crossDeviceApi } from '@/lib/crossDeviceApi'
@@ -65,6 +67,9 @@ import { buildPairLink, parsePairInput } from '@/lib/pairLink'
 import { copyText } from '@/lib/clipboard'
 import { ClipTimelinePanel } from '@/components/crossdevice/ClipTimelinePanel'
 import { LatencySparkline } from '@/components/crossdevice/LatencySparkline'
+import { FeatureGrid, type FeatureTileSpec } from '@/components/crossdevice/FeatureGrid'
+import { FeaturePanel } from '@/components/crossdevice/FeaturePanel'
+import { ClipSendDialog } from '@/components/crossdevice/ClipSendDialog'
 import { DevicePolicyPanel, type ClipPolicy, type FilePolicy } from '@/components/crossdevice/DevicePolicyPanel'
 import { latencyStats, type LatencyPoint } from '@/lib/latencyStats'
 
@@ -518,6 +523,15 @@ export function CrossDeviceScreen() {
   /** 发送目标模式：'one' 发一台，'many' 发勾选的多台。默认 'one'，群发应是明确动作。 */
   const [fanout, setFanout] = useState<'one' | 'many'>('one')
   const [soloTarget, setSoloTarget] = useState<string | null>(null)
+
+  /** 当前打开的全屏次功能面板，以及展开动画的圆心。 */
+  const [panel, setPanel] = useState<string | null>(null)
+  const [panelOrigin, setPanelOrigin] = useState<{ x: number; y: number } | null>(null)
+  const [clipPickOpen, setClipPickOpen] = useState(false)
+  const rootRef = useRef<HTMLDivElement>(null)
+  const closePanel = useCallback(() => setPanel(null), [])
+  // 指标只在其面板打开时每秒刷新。
+  useEffect(() => setMetricsOpen(panel === 'metrics'), [panel])
 
   /** 传输记录里被勾中的行。与上面的 selected（设备勾选）是两回事，别复用。 */
   const [pickedRows, setPickedRows] = useState<Set<string>>(new Set())
@@ -1251,19 +1265,6 @@ export function CrossDeviceScreen() {
     }
   }
 
-  async function sendClipboard() {
-    try {
-      const res = await api.call<{ sent?: number; skipped?: string }>('send_clip', {})
-      if (res.skipped === 'echo') toast.message(t('clipEchoSkipped'))
-      // 发给 0 台不是成功：守护进程不报错（内容已登记，只是无连接可发），不能报绿色成功。
-      else if (!res.sent) toast.warning(t('clipSentNowhere'))
-      else toast.success(t('clipSent', { count: res.sent }))
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err)
-      toast.error(msg.includes('clipboard.empty') ? t('clipboardEmpty') : msg)
-    }
-  }
-
   /**
    * 队列结果回话：报守护进程展开后的真实文件数而非用户选的项数（选文件夹时差很大）；skipped 是空文件
    * 夹和读不了的路径，必须说明，否则用户不知道哪步出了岔子。
@@ -1487,29 +1488,1147 @@ export function CrossDeviceScreen() {
     },
   ]
 
+  const errorRows = transfers.filter((r) => r.kind === 'error').length
+  const tiles: FeatureTileSpec[] = [
+    {
+      id: 'devices',
+      icon: MonitorSmartphone,
+      title: t('tileDevices'),
+      badge: t('badgeOnline', { online: online.length, total: devices.length }),
+    },
+    {
+      id: 'pair',
+      icon: QrCode,
+      title: t('tilePair'),
+      badge: nearby.length > 0 ? t('badgeNearby', { count: nearby.length }) : t('badgeNearbyNone'),
+    },
+    {
+      id: 'clipboard',
+      icon: History,
+      title: t('tileClipboard'),
+      badge: status.options.clip_sync ? t('badgeAutoOn') : t('badgeAutoOff'),
+      attention: !status.options.clip_sync,
+    },
+    {
+      id: 'activity',
+      icon: Activity,
+      title: t('tileActivity'),
+      badge:
+        errorRows > 0
+          ? t('badgeFailed', { count: errorRows })
+          : transfers.length > 0
+            ? t('badgeCount', { count: transfers.length })
+            : t('badgeEmpty'),
+      attention: errorRows > 0,
+    },
+    {
+      id: 'synclog',
+      icon: GitFork,
+      title: t('tileSyncLog'),
+      badge:
+        clipConflicts.length > 0
+          ? t('badgeConflicts', { count: clipConflicts.length })
+          : clipSyncLog.length > 0
+            ? t('badgeCount', { count: clipSyncLog.length })
+            : t('badgeEmpty'),
+      attention: clipConflicts.length > 0,
+    },
+    {
+      id: 'metrics',
+      icon: Gauge,
+      title: t('tileMetrics'),
+      badge: rtt === null ? t('metricUnavailable') : `${rtt} ms`,
+    },
+    {
+      id: 'diag',
+      icon: Stethoscope,
+      title: t('tileDiag'),
+      badge:
+        firewall === 'blocked'
+          ? t('badgeFirewallBlocked')
+          : firewall === 'allowed'
+            ? t('badgeFirewallOk')
+            : t('firewallState.unknown'),
+      attention: firewall === 'blocked',
+    },
+    {
+      id: 'crossnet',
+      icon: Globe,
+      title: t('tileCrossnet'),
+      badge: status.options.rendezvous_addr ? t('badgeOn') : t('badgeOff'),
+    },
+    {
+      id: 'options',
+      icon: SlidersHorizontal,
+      title: t('tileOptions'),
+      badge: status.options.auto_accept ? t('badgeAutoAccept') : t('badgeAskAccept'),
+    },
+    {
+      id: 'self',
+      icon: Monitor,
+      title: t('thisDevice'),
+      badge: status.port ? `${t('listeningPort')} ${status.port}` : status.name,
+    },
+  ]
+  const panelTile = tiles.find((x) => x.id === panel) ?? null
+
+  function openPanel(id: string, el: HTMLElement) {
+    const root = rootRef.current
+    if (root) {
+      const r = el.getBoundingClientRect()
+      const b = root.getBoundingClientRect()
+      setPanelOrigin({ x: r.left - b.left + r.width / 2, y: r.top - b.top + r.height / 2 })
+    } else {
+      setPanelOrigin(null)
+    }
+    if (id === 'pair') void refreshNearby()
+    setPanel(id)
+  }
+
+  const transferRows = activeTransfers.map((a) => {
+    const ItemIcon = ITEM_ICON[a.itemKind] ?? FileIcon
+    const eta = etaSeconds(a)
+    return (
+      <div key={a.key} className="space-y-1.5">
+        <div className="flex items-center gap-2 text-sm">
+          <ItemIcon className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+          <span className="min-w-0 flex-1 truncate font-medium" title={a.name}>
+            {a.name}
+          </span>
+          <span className="shrink-0 text-sm text-muted-foreground">
+            {a.direction === 'send' ? t('dirTo', { name: a.deviceName }) : t('dirFrom', { name: a.deviceName })}
+          </span>
+          <span className="shrink-0 tabular text-sm text-muted-foreground">
+            {a.state === 'paused'
+              ? t('transferPaused')
+              : [
+                  a.speed > 0 ? t('transferSpeed', { rate: humanSize(a.speed) }) : null,
+                  eta !== null ? t('transferEta', { time: humanDuration(eta) }) : null,
+                ]
+                  .filter(Boolean)
+                  .join(' · ')}
+          </span>
+          <span className="w-12 shrink-0 text-right tabular text-sm font-semibold">{a.percent}%</span>
+          <div className="flex shrink-0 items-center gap-0.5">
+            <Button
+              size="sm"
+              variant="ghost"
+              className="size-7 p-0"
+              aria-label={a.state === 'paused' ? t('resumeTransfer') : t('pauseTransfer')}
+              onClick={() => controlTransfer(a.key, a.state === 'paused' ? 'resume' : 'pause')}
+            >
+              {a.state === 'paused' ? <Play className="size-3.5" /> : <Pause className="size-3.5" />}
+            </Button>
+            <Button
+              size="sm"
+              variant="ghost"
+              className="size-7 p-0 text-muted-foreground hover:text-destructive"
+              aria-label={t('cancelTransfer')}
+              onClick={() => controlTransfer(a.key, 'cancel')}
+            >
+              <X className="size-3.5" />
+            </Button>
+          </div>
+        </div>
+        <Progress value={a.percent} className={cn('h-1.5', a.state === 'paused' && 'opacity-50')} />
+      </div>
+    )
+  })
+
+  const renderPanel = (id: string): { body: React.ReactNode; actions?: React.ReactNode; fill?: boolean } => {
+    switch (id) {
+      case 'devices':
+        return {
+          fill: true,
+          body: (
+            <Workbench
+              className="min-h-0 flex-1"
+              selected={detailDevice !== null}
+              onBack={() => setDetailDeviceId(null)}
+              backLabel={tCommon('backToList')}
+              placeholder={<EmptyState icon={MonitorSmartphone} title={t('deviceDetailEmpty')} className="m-6" />}
+              detail={
+                detailDevice && (
+                  <DeviceDetailPane
+                    device={detailDevice}
+                    onRevoke={() => revoke(detailDevice)}
+                    onUpdated={updateDevice}
+                  />
+                )
+              }
+              list={
+                <div className="space-y-2 p-3">
+                  {devices.length === 0 && <p className="text-sm text-muted-foreground">{t('noDevices')}</p>}
+                  {devices.map((d) => {
+                    const Icon = DEVICE_ICON[d.type] ?? Laptop
+                    const isOnline = ONLINE_STATES.has(d.state)
+                    return (
+                      <div
+                        key={d.device_id}
+                        role="button"
+                        tabIndex={0}
+                        onClick={() => setDetailDeviceId(d.device_id)}
+                        onKeyDown={(e) => e.key === 'Enter' && setDetailDeviceId(d.device_id)}
+                        className={cn(
+                          'ds-focus-ring flex cursor-pointer items-center gap-3 rounded-md border px-3 py-2 transition-colors',
+                          isOnline ? 'border-border' : 'border-dashed opacity-70',
+                          detailDeviceId === d.device_id && 'bg-accent-soft shadow-[inset_2px_0_0_var(--primary)]',
+                        )}
+                      >
+                        {fanout === 'many' && (
+                          <Checkbox
+                            checked={selected.has(d.device_id)}
+                            onClick={(e) => e.stopPropagation()}
+                            onCheckedChange={() => toggleSelected(d.device_id)}
+                            disabled={!isOnline}
+                            aria-label={t('selectDevice', { name: d.name })}
+                          />
+                        )}
+                        <Icon className="h-5 w-5 shrink-0 text-muted-foreground" />
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-2">
+                            <span className="truncate font-medium">{d.name}</span>
+                            <span
+                              className={cn(
+                                'rounded px-1.5 py-0.5 text-2xs',
+                                d.trust === 'temp' ? 'bg-amber-500/15 text-amber-600' : 'bg-muted text-muted-foreground',
+                              )}
+                            >
+                              {d.trust === 'temp' ? t('trustTemp') : t('trustLong')}
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
+                            {isOnline ? <Wifi className="h-3 w-3" /> : <WifiOff className="h-3 w-3" />}
+                            <span>{t(`state.${d.state}`, { defaultValue: d.state })}</span>
+                            {d.rtt_ms !== undefined && <span>· {d.rtt_ms} ms</span>}
+                            {d.clip_latency_ms !== undefined && (
+                              <span className="text-primary" data-hint={t('clipLatencyLabel')}>
+                                · {t('clipLatencyBadge', { ms: d.clip_latency_ms })}
+                              </span>
+                            )}
+                            {d.clip_latency_hist && d.clip_latency_hist.length >= 2 && (
+                              <LatencySparkline points={d.clip_latency_hist} className="ml-1" />
+                            )}
+                            {d.expires_at && (
+                              <span>
+                                ·{' '}
+                                {t('expiresIn', {
+                                  minutes: Math.max(0, Math.round((d.expires_at - Date.now()) / 60000)),
+                                })}
+                              </span>
+                            )}
+                            {d.clip_policy && d.clip_policy !== 'all' && (
+                              <span
+                                className="inline-flex items-center"
+                                aria-label={t(`policyClip.${d.clip_policy}`)}
+                                data-hint={t(`policyClip.${d.clip_policy}`)}
+                              >
+                                {d.clip_policy === 'off' ? <Ban className="h-3 w-3" /> : <Type className="h-3 w-3" />}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            revoke(d)
+                          }}
+                          aria-label={t('revoke')}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    )
+                  })}
+                </div>
+              }
+            />
+          ),
+        }
+
+      case 'pair':
+        return {
+          body: (
+            <div className="space-y-5">
+              <div className="flex flex-wrap items-end gap-3">
+                <div className="space-y-1">
+                  <Label>{t('trustLevel')}</Label>
+                  <Select value={pairMode} onValueChange={(v) => setPairMode(v as 'long' | 'temp')}>
+                    <SelectTrigger className="w-[190px]">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="long">{t('trustLongDesc')}</SelectItem>
+                      <SelectItem value="temp">{t('trustTempDesc')}</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                {pairMode === 'temp' && (
+                  <div className="space-y-1">
+                    <Label>{t('validFor')}</Label>
+                    <Select value={tempTtl} onValueChange={setTempTtl}>
+                      <SelectTrigger className="w-[150px]">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="600">{t('ttl10m')}</SelectItem>
+                        <SelectItem value="1800">{t('ttl30m')}</SelectItem>
+                        <SelectItem value="3600">{t('ttl1h')}</SelectItem>
+                        <SelectItem value="86400">{t('ttl1d')}</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
+              </div>
+
+              <Tabs value={pairTab} onValueChange={setPairTab}>
+                <TabsList className="flex h-auto w-full flex-wrap justify-start gap-1 p-1">
+                  <TabsTrigger className="flex-none gap-1.5 px-3 py-1.5" value="digits">
+                    <Hash className="size-4 shrink-0" aria-hidden="true" />
+                    {t('tabShortCode')}
+                  </TabsTrigger>
+                  <TabsTrigger className="flex-none gap-1.5 px-3 py-1.5" value="show">
+                    <QrCode className="size-4 shrink-0" aria-hidden="true" />
+                    {t('tabShowCode')}
+                  </TabsTrigger>
+                  <TabsTrigger className="flex-none gap-1.5 px-3 py-1.5" value="enter">
+                    <Keyboard className="size-4 shrink-0" aria-hidden="true" />
+                    {t('tabEnterCode')}
+                  </TabsTrigger>
+                  <TabsTrigger className="flex-none gap-1.5 px-3 py-1.5" value="nearby" onClick={() => void refreshNearby()}>
+                    <Radar className="size-4 shrink-0" aria-hidden="true" />
+                    {t('tabNearby')}
+                  </TabsTrigger>
+                  <TabsTrigger className="flex-none gap-1.5 px-3 py-1.5" value="manual">
+                    <Link2 className="size-4 shrink-0" aria-hidden="true" />
+                    {t('tabManual')}
+                  </TabsTrigger>
+                </TabsList>
+
+                <TabsContent value="digits" className="space-y-4 pt-3">
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <div className="space-y-3 rounded-xl border border-border bg-surface p-5">
+                      <FeatureTitle as="p">{t('shortCodeShowTitle')}</FeatureTitle>
+                      {!shortCode ? (
+                        <Button onClick={showShortCode} disabled={shortBusy}>
+                          {shortBusy ? <Loader2 className="mr-2 size-4 animate-spin" /> : <Hash className="mr-2 size-4" />}
+                          {t('shortCodeGenerate')}
+                        </Button>
+                      ) : (
+                        <div className="space-y-2">
+                          <p className="font-mono text-3xl font-semibold tracking-[0.35em] tabular">{shortCode.code}</p>
+                          <p className="text-sm text-muted-foreground tabular">
+                            {shortCodeLeft >= 60
+                              ? t('codeExpiresInMinutes', {
+                                  minutes: Math.floor(shortCodeLeft / 60),
+                                  seconds: shortCodeLeft % 60,
+                                })
+                              : t('codeExpiresIn', { seconds: shortCodeLeft })}
+                          </p>
+                          <Button size="sm" variant="outline" onClick={stopShortCode}>
+                            {t('shortCodeStop')}
+                          </Button>
+                        </div>
+                      )}
+                    </div>
+                    <div className="space-y-3 rounded-xl border border-border bg-surface p-5">
+                      <FeatureTitle as="p">{t('shortCodeEnterTitle')}</FeatureTitle>
+                      <Input
+                        value={peerShortCode}
+                        onChange={(e) => setPeerShortCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                        onKeyDown={(e) => e.key === 'Enter' && void pairWithShortCode()}
+                        inputMode="numeric"
+                        autoComplete="one-time-code"
+                        placeholder="000000"
+                        aria-label={t('shortCodeEnterTitle')}
+                        className="h-14 text-center font-mono text-3xl font-semibold tracking-[0.35em] tabular"
+                      />
+                      <Button
+                        className="w-full"
+                        onClick={() => void pairWithShortCode()}
+                        disabled={pairing || peerShortCode.length !== 6}
+                      >
+                        {pairing ? <Loader2 className="mr-2 size-4 animate-spin" /> : <Link2 className="mr-2 size-4" />}
+                        {t('pairNow')}
+                      </Button>
+                    </div>
+                  </div>
+                </TabsContent>
+
+                <TabsContent value="show" className="space-y-3 pt-3">
+                  {!myCode ? (
+                    <Button onClick={showCode} disabled={busy}>
+                      {busy && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                      {t('generateCode')}
+                    </Button>
+                  ) : (
+                    <div className="flex flex-col items-center gap-3">
+                      {qrDataUrl && (
+                        <img
+                          src={qrDataUrl}
+                          alt={t('qrAlt')}
+                          className="rounded-md border bg-white p-2"
+                          width={260}
+                          height={260}
+                        />
+                      )}
+                      <p className="text-sm text-muted-foreground">
+                        {codeLeft >= 60
+                          ? t('codeExpiresInMinutes', { minutes: Math.floor(codeLeft / 60), seconds: codeLeft % 60 })
+                          : t('codeExpiresIn', { seconds: codeLeft })}
+                      </p>
+                      <p className="font-mono text-sm">
+                        {t('fingerprint')}: {myCode.fingerprint}
+                      </p>
+                      <div className="flex flex-wrap justify-center gap-2">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => {
+                            void copyText(myCode.code).then((ok) => ok && toast.success(t('codeCopied')))
+                          }}
+                        >
+                          <Copy className="mr-2 h-4 w-4" />
+                          {t('copyCode')}
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => {
+                            void copyText(buildPairLink(myCode.code)).then(
+                              (ok) => ok && toast.success(t('pairLinkCopied')),
+                            )
+                          }}
+                        >
+                          <Link2 className="mr-2 h-4 w-4" />
+                          {t('copyPairLink')}
+                        </Button>
+                        <Button variant="outline" size="sm" onClick={showCode} disabled={busy}>
+                          {busy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-2 h-4 w-4" />}
+                          {t('refreshCode')}
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+                </TabsContent>
+
+                <TabsContent value="enter" className="space-y-3 pt-3">
+                  <Label htmlFor="peer-code">{t('peerCodeLabel')}</Label>
+                  <Input
+                    id="peer-code"
+                    value={peerCode}
+                    onChange={(e) => setPeerCode(e.target.value)}
+                    placeholder="CB1:...  /  tessera://pair?c=..."
+                    className="font-mono text-sm"
+                  />
+                  <Button onClick={pairWithCode} disabled={pairing || !peerCode.trim()}>
+                    {pairing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Link2 className="mr-2 h-4 w-4" />}
+                    {t('pairNow')}
+                  </Button>
+                </TabsContent>
+
+                <TabsContent value="nearby" className="space-y-2 pt-3">
+                  <div className="flex flex-wrap items-center justify-end gap-2">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => void refreshNearby()}
+                      disabled={nearbyBusy || scanBusy}
+                    >
+                      {nearbyBusy ? <Loader2 className="mr-2 size-4 animate-spin" /> : <RefreshCw className="mr-2 size-4" />}
+                      {t('refresh')}
+                    </Button>
+                    <Button size="sm" onClick={scanLan} disabled={scanBusy}>
+                      {scanBusy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Radar className="mr-2 h-4 w-4" />}
+                      {t('scanLan')}
+                    </Button>
+                  </div>
+                  {nearby.length === 0 ? (
+                    <div className="flex items-center justify-center gap-2 rounded-xl border border-dashed p-8 text-sm text-muted-foreground">
+                      {scanBusy ? <Loader2 className="size-4 animate-spin" aria-hidden="true" /> : <Radar className="size-4" aria-hidden="true" />}
+                      {scanBusy ? t('scanning') : t('nearbyEmpty')}
+                      {!scanBusy && <InfoHint text={t('nearbyEmptyHint')} />}
+                    </div>
+                  ) : (
+                    nearby.map((d) => {
+                      const Icon = DEVICE_ICON[d.type] ?? Laptop
+                      return (
+                        <div key={d.device_id} className="flex items-center gap-3 rounded-md border px-3 py-2">
+                          <Icon className="size-5 shrink-0 text-muted-foreground" />
+                          <div className="min-w-0 flex-1">
+                            <div className="truncate font-medium">{d.name}</div>
+                            <div className="flex flex-wrap items-center gap-x-2 text-sm">
+                              {!d.paired && (
+                                <span className="text-amber-600 dark:text-amber-500">{t('nearbyUnverified')}</span>
+                              )}
+                              {d.addrs?.[0] && <span className="font-mono text-muted-foreground">{d.addrs[0]}</span>}
+                            </div>
+                          </div>
+                          {d.paired ? (
+                            <span className="flex shrink-0 items-center gap-1.5 rounded-md bg-emerald-500/10 px-2.5 py-1.5 text-sm font-medium text-emerald-600 dark:text-emerald-400">
+                              <CheckCircle2 className="size-3.5" />
+                              {t('nearbyAlreadyPaired')}
+                            </span>
+                          ) : (
+                            <Button size="sm" onClick={() => pairNearby(d)} disabled={pairing}>
+                              {pairing ? <Loader2 className="mr-2 size-4 animate-spin" /> : <Link2 className="mr-2 size-4" />}
+                              {t('pairNow')}
+                            </Button>
+                          )}
+                        </div>
+                      )
+                    })
+                  )}
+                  {scanInfo && (
+                    <p className="text-sm text-muted-foreground">
+                      {t('scanSummary', { probed: scanInfo.probed, subnets: scanInfo.subnets.join('、') || '—' })}
+                    </p>
+                  )}
+                </TabsContent>
+
+                <TabsContent value="manual" className="space-y-3 pt-3">
+                  <div className="space-y-1.5">
+                    <Label>{t('myAddressLabel')}</Label>
+                    {endpoints.length === 0 ? (
+                      <p className="text-sm text-muted-foreground">{t('myAddressUnknown')}</p>
+                    ) : (
+                      <div className="flex flex-wrap gap-2">
+                        {endpoints.map((addr) => (
+                          <Button
+                            key={addr}
+                            size="sm"
+                            variant="outline"
+                            className="font-mono text-sm"
+                            onClick={() => {
+                              void copyText(addr).then((ok) => ok && toast.success(t('addressCopied')))
+                            }}
+                          >
+                            <Copy className="mr-2 h-3.5 w-3.5" />
+                            {addr}
+                          </Button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="manual-addr">{t('peerAddressLabel')}</Label>
+                    <Input
+                      id="manual-addr"
+                      value={manualAddr}
+                      onChange={(e) => setManualAddr(e.target.value)}
+                      onKeyDown={(e) => e.key === 'Enter' && pairWithAddress()}
+                      placeholder="192.168.1.23"
+                      className="font-mono text-sm"
+                    />
+                  </div>
+                  <Button onClick={pairWithAddress} disabled={pairing || !manualAddr.trim()}>
+                    {pairing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Link2 className="mr-2 h-4 w-4" />}
+                    {t('pairNow')}
+                  </Button>
+                </TabsContent>
+              </Tabs>
+            </div>
+          ),
+        }
+
+      case 'clipboard':
+        return { fill: true, body: <ClipTimelinePanel available={available === true} variant="fill" /> }
+
+      case 'activity':
+        return {
+          actions:
+            transfers.length > 0 ? (
+              <>
+                <label className="flex cursor-pointer items-center gap-1.5 text-sm text-muted-foreground">
+                  <Checkbox
+                    checked={pickedRows.size > 0 && pickedRows.size === transfers.length}
+                    onCheckedChange={(v) =>
+                      setPickedRows(v === true ? new Set(transfers.map((r) => r.key)) : new Set())
+                    }
+                    aria-label={t('activitySelectAll')}
+                  />
+                  {t('activitySelectAll')}
+                </label>
+                {pickedRows.size > 0 && (
+                  <Button size="sm" variant="outline" onClick={deletePickedRows}>
+                    <Trash2 className="mr-2 size-4" />
+                    {t('activityDeleteSelected', { count: pickedRows.size })}
+                  </Button>
+                )}
+                <Button size="sm" variant="ghost" onClick={clearAllRows}>
+                  {t('activityClearAll')}
+                </Button>
+              </>
+            ) : undefined,
+          body:
+            transfers.length === 0 ? (
+              <EmptyState icon={Activity} title={t('badgeEmpty')} className="h-full" />
+            ) : (
+              <div className="space-y-1 rounded-xl border bg-card p-2">
+                {transfers.map((r) => {
+                  const ItemIcon = ITEM_ICON[r.itemKind] ?? FileIcon
+                  return (
+                    <label
+                      key={r.key}
+                      className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-muted/50"
+                    >
+                      <Checkbox
+                        checked={pickedRows.has(r.key)}
+                        onCheckedChange={() => toggleRow(r.key)}
+                        aria-label={t('activitySelectRow', { name: r.name })}
+                      />
+                      {r.kind === 'error' ? (
+                        <Ban className="size-4 shrink-0 text-destructive" />
+                      ) : r.kind === 'canceled' ? (
+                        <X className="size-4 shrink-0 text-muted-foreground" />
+                      ) : r.kind === 'done' || r.kind === 'recv_done' ? (
+                        <CheckCircle2 className="size-4 shrink-0 text-emerald-500" />
+                      ) : (
+                        <ItemIcon className="size-4 shrink-0 text-muted-foreground" />
+                      )}
+                      <span className="truncate" title={r.name}>
+                        {r.name}
+                      </span>
+                      <span className="shrink-0 text-sm text-muted-foreground">
+                        {r.direction === 'send' ? t('dirTo', { name: r.deviceName }) : t('dirFrom', { name: r.deviceName })}
+                        {r.size ? ` · ${humanSize(r.size)}` : ''}
+                        {r.elapsedMs ? ` · ${r.elapsedMs} ms` : ''}
+                      </span>
+                      {r.kind === 'canceled' && (
+                        <span className="shrink-0 rounded bg-muted px-1.5 py-0.5 text-2xs text-muted-foreground">
+                          {t('transferCanceled')}
+                        </span>
+                      )}
+                      {r.skipped && (
+                        <span className="shrink-0 rounded bg-emerald-500/10 px-1.5 py-0.5 text-2xs text-emerald-600 dark:text-emerald-400">
+                          {t('instantSkip')}
+                        </span>
+                      )}
+                      {r.error && <span className="truncate text-sm text-destructive">{r.error}</span>}
+                      {r.relayed !== undefined && (r.kind === 'done' || r.kind === 'recv_done') && (
+                        <span
+                          className={cn(
+                            'shrink-0 rounded px-1.5 py-0.5 text-2xs',
+                            r.relayed ? 'bg-warning/12 text-warning' : 'bg-success/12 text-success',
+                          )}
+                          data-hint={r.relayed ? t('receiptRelayedHint') : t('receiptDirectHint')}
+                        >
+                          {r.relayed ? t('receiptRelayed') : t('receiptDirect')}
+                        </span>
+                      )}
+                    </label>
+                  )
+                })}
+              </div>
+            ),
+        }
+
+      case 'synclog':
+        return {
+          body:
+            clipConflicts.length === 0 && clipSyncLog.length === 0 ? (
+              <EmptyState icon={GitFork} title={t('badgeEmpty')} className="h-full" />
+            ) : (
+              <div className="grid gap-5 xl:grid-cols-2">
+                {clipConflicts.length > 0 && (
+                  <div className="space-y-2">
+                    <h4 className="text-sm font-medium text-muted-foreground">{t('clipConflictsTitle')}</h4>
+                    {clipConflicts
+                      .slice()
+                      .reverse()
+                      .map((c, i) => (
+                        <div
+                          key={`${c.device_id}-${c.at}-${i}`}
+                          data-hint={t('clipConflictHint')}
+                          className="flex items-center gap-2 rounded-lg border border-warning/30 bg-warning/5 px-3 py-2.5 text-sm"
+                        >
+                          <span className="shrink-0 rounded-full bg-muted px-2 py-0.5 text-2xs font-medium">
+                            {t('thisDevice')}
+                          </span>
+                          <GitFork className="size-4 shrink-0 rotate-180 text-warning" aria-hidden="true" />
+                          <span className="shrink-0 rounded-full bg-muted px-2 py-0.5 text-2xs font-medium">
+                            {c.device_name}
+                          </span>
+                          <span className="min-w-0 flex-1 truncate text-muted-foreground">
+                            {t('clipConflictLine', { device: c.device_name })}
+                          </span>
+                          <span className="shrink-0 text-2xs text-muted-foreground tabular">
+                            {new Date(c.at).toLocaleTimeString()}
+                          </span>
+                        </div>
+                      ))}
+                  </div>
+                )}
+                {clipSyncLog.length > 0 && (
+                  <div className="space-y-2">
+                    <h4 className="text-sm font-medium text-muted-foreground">{t('clipSyncHistory')}</h4>
+                    <div className="space-y-1 rounded-xl border bg-card p-2">
+                      {clipSyncLog
+                        .slice()
+                        .reverse()
+                        .map((e, i) => {
+                          const kind = t(CLIP_MIME_KIND[e.mime] ?? 'clipKind.generic')
+                          return (
+                            <div
+                              key={`${e.item_id}-${e.mime}-${e.at}-${i}`}
+                              className="flex items-center gap-2 rounded-md px-2 py-1 text-sm"
+                            >
+                              {e.ok ? (
+                                <CheckCircle2 className="size-4 shrink-0 text-emerald-500" aria-hidden="true" />
+                              ) : (
+                                <Ban className="size-4 shrink-0 text-destructive" aria-hidden="true" />
+                              )}
+                              <span className="min-w-0 flex-1 truncate">
+                                {e.ok
+                                  ? t('clipSyncFrom', { device: e.device_name, kind })
+                                  : t('clipSyncFailedFrom', { device: e.device_name, kind })}
+                              </span>
+                              {e.error && (
+                                <span className="max-w-[40%] shrink-0 truncate text-2xs text-destructive" title={e.error}>
+                                  {e.error}
+                                </span>
+                              )}
+                              <span className="shrink-0 text-2xs text-muted-foreground tabular">
+                                {new Date(e.at).toLocaleTimeString()}
+                              </span>
+                            </div>
+                          )
+                        })}
+                    </div>
+                  </div>
+                )}
+              </div>
+            ),
+        }
+
+      case 'metrics':
+        return {
+          body: (
+            <div className="grid auto-rows-fr gap-3 sm:grid-cols-2 xl:grid-cols-3">
+              {metricCards.map((m) => (
+                <div key={m.label} className="flex flex-col justify-between rounded-xl border border-border/70 bg-card px-5 py-4">
+                  <p className="text-sm text-muted-foreground">{m.label}</p>
+                  <p className={cn('mt-2 font-mono text-sihao', NUMERIC_CLASS)}>{m.value}</p>
+                </div>
+              ))}
+            </div>
+          ),
+        }
+
+      case 'diag':
+        return {
+          actions: (
+            <>
+              {firewall === 'blocked' && (
+                <Button size="sm" variant="outline" onClick={fixFirewall} disabled={firewallBusy}>
+                  {firewallBusy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <ShieldCheck className="mr-2 h-4 w-4" />}
+                  {t('firewallFix')}
+                </Button>
+              )}
+              <Button size="sm" onClick={runDiagnose} disabled={diagBusy}>
+                {diagBusy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Stethoscope className="mr-2 h-4 w-4" />}
+                {t('diagRun')}
+              </Button>
+            </>
+          ),
+          body: (
+            <div className="space-y-3">
+              <div className="flex items-center gap-2 text-sm">
+                <ShieldCheck
+                  className={cn(
+                    'size-4',
+                    firewall === 'allowed'
+                      ? 'text-emerald-500'
+                      : firewall === 'blocked'
+                        ? 'text-amber-500'
+                        : 'text-muted-foreground',
+                  )}
+                />
+                <span className="text-muted-foreground">
+                  {t(`firewallState.${firewall ?? 'unknown'}`, { defaultValue: t('firewallState.unknown') })}
+                </span>
+              </div>
+              {diag && (
+                <div className="space-y-1.5 rounded-xl border bg-card p-4">
+                  {diag.checks.map((c) => (
+                    <div key={c.id} className="flex items-start gap-2 text-sm">
+                      {c.status === 'ok' ? (
+                        <CheckCircle2 className="mt-0.5 size-4 shrink-0 text-emerald-500" />
+                      ) : c.status === 'info' ? (
+                        <Info className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
+                      ) : c.status === 'warn' ? (
+                        <AlertTriangle className="mt-0.5 size-4 shrink-0 text-amber-500" />
+                      ) : (
+                        <Ban className="mt-0.5 size-4 shrink-0 text-destructive" />
+                      )}
+                      <div className="min-w-0">
+                        <div>{t(`diag.${c.id}.${c.status}`, { ...c.values, defaultValue: c.id })}</div>
+                        {(c.status === 'warn' || c.status === 'fail') && (
+                          <div className="text-sm text-muted-foreground">
+                            {t(`diag.${c.id}.fix`, { ...c.values, defaultValue: '' })}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          ),
+        }
+
+      case 'crossnet':
+        return {
+          body: (
+            <div className="max-w-3xl space-y-4">
+              <div className="flex items-center gap-2 rounded-xl border bg-card px-4 py-3 text-sm">
+                <Globe
+                  className={cn('size-4 shrink-0', status.options.rendezvous_addr ? 'text-emerald-500' : 'text-muted-foreground')}
+                  aria-hidden="true"
+                />
+                <span className="min-w-0 flex-1">
+                  {status.options.rendezvous_addr
+                    ? t('crossnetStatusOn', { addr: status.options.rendezvous_addr })
+                    : t('crossnetStatusOff')}
+                </span>
+                <InfoHint text={t('crossnetExplain')} />
+              </div>
+              <div className="space-y-1">
+                <Label htmlFor="rv-addr" className="flex items-center gap-1.5">
+                  {t('crossnetAddr')}
+                  <InfoHint text={t('crossnetAddrHelp')} />
+                </Label>
+                <Input
+                  id="rv-addr"
+                  value={rvAddr}
+                  onChange={(e) => setRvAddr(e.target.value)}
+                  placeholder="example.com:47820"
+                  spellCheck={false}
+                />
+              </div>
+              <div className="space-y-1">
+                <Label htmlFor="rv-secret" className="flex items-center gap-1.5">
+                  {t('crossnetSecret')}
+                  <InfoHint text={t('crossnetSecretHelp')} />
+                </Label>
+                <Input
+                  id="rv-secret"
+                  type="password"
+                  value={rvSecret}
+                  onChange={(e) => setRvSecret(e.target.value)}
+                  placeholder={status.options.rendezvous_secret_set ? '••••••••' : ''}
+                  spellCheck={false}
+                />
+              </div>
+              <label className="flex items-center gap-3 text-sm">
+                <Checkbox
+                  checked={status.options.relay_on_metered}
+                  onCheckedChange={(v) => setOption({ relay_on_metered: v === true })}
+                />
+                <span className="font-medium">{t('crossnetMetered')}</span>
+                <InfoHint text={t('crossnetMeteredDesc')} />
+              </label>
+              <div className="flex gap-2 pt-1">
+                <Button onClick={saveCrossnet} disabled={busy || !rvAddr.trim()}>
+                  {t('crossnetSave')}
+                </Button>
+                <Button variant="outline" onClick={disableCrossnet} disabled={busy || !status.options.rendezvous_addr}>
+                  {t('crossnetDisable')}
+                </Button>
+              </div>
+            </div>
+          ),
+        }
+
+      case 'options':
+        return {
+          body: (
+            <div className="max-w-3xl space-y-2">
+              {(
+                [
+                  ['clip_sync', status.options.clip_sync, t('optClipSync'), t('optClipSyncDesc')],
+                  ['clip_plain_only', status.options.clip_plain_only === true, t('optClipPlainOnly'), t('optClipPlainOnlyDesc')],
+                  ['auto_accept', status.options.auto_accept, t('optAutoAccept'), t('optAutoAcceptDesc')],
+                ] as const
+              ).map(([key, on, label, desc]) => (
+                <label
+                  key={key}
+                  className="flex cursor-pointer items-center gap-3 rounded-xl border bg-card px-4 py-3 text-sm hover:bg-surface"
+                >
+                  <Checkbox checked={on} onCheckedChange={(v) => setOption({ [key]: v === true })} />
+                  <span className="min-w-0 flex-1 font-medium">{label}</span>
+                  <InfoHint text={desc} />
+                </label>
+              ))}
+              <div className="flex items-center gap-3 rounded-xl border bg-card px-4 py-3">
+                <FolderOpen className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+                <div className="min-w-0 flex-1">
+                  <div className="text-sm font-medium">{t('downloadDir')}</div>
+                  <div className="truncate font-mono text-sm text-muted-foreground" title={status.options.download_dir}>
+                    {status.options.download_dir}
+                  </div>
+                </div>
+                <Button size="sm" variant="outline" onClick={pickDownloadDir} disabled={busy}>
+                  {t('changeDownloadDir')}
+                </Button>
+              </div>
+            </div>
+          ),
+        }
+
+      case 'self':
+        return {
+          body: (
+            <div className="grid max-w-4xl gap-3 text-sm sm:grid-cols-3">
+              <div className="rounded-xl border bg-card px-5 py-4">
+                <div className="text-muted-foreground">{t('deviceName')}</div>
+                {renamingDevice ? (
+                  <div className="flex items-center gap-1 pt-1">
+                    <Input
+                      value={draftName}
+                      onChange={(e) => setDraftName(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') void saveDeviceName()
+                        if (e.key === 'Escape') setRenamingDevice(false)
+                      }}
+                      autoFocus
+                      maxLength={64}
+                      className="h-8 text-sm"
+                    />
+                    <Button size="sm" className="h-8 px-2" onClick={saveDeviceName} disabled={busy}>
+                      {t('save')}
+                    </Button>
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-1 pt-1">
+                    <span className="truncate font-medium text-sihao">{status.name}</span>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="size-7 p-0"
+                      aria-label={t('renameThisDevice')}
+                      onClick={() => {
+                        setDraftName(status.name)
+                        setRenamingDevice(true)
+                      }}
+                    >
+                      <Pencil className="size-3.5" />
+                    </Button>
+                  </div>
+                )}
+              </div>
+              <div className="rounded-xl border bg-card px-5 py-4">
+                <div className="text-muted-foreground">{t('fingerprint')}</div>
+                <div className="break-all pt-1 font-mono text-sm">{status.fingerprint}</div>
+              </div>
+              <div className="rounded-xl border bg-card px-5 py-4">
+                <div className="text-muted-foreground">{t('listeningPort')}</div>
+                <div className="pt-1 font-mono text-sihao">{status.port}</div>
+              </div>
+            </div>
+          ),
+        }
+    }
+    return { body: null }
+  }
+
+  const current = panel ? renderPanel(panel) : null
+
   return (
     <div
-      className={cn(
-        // 本页是八个分区叠起来的文档型页面（1920×1080 下总高一千三百多像素），而 `<main>` 是overflow-hidden
-        // 定高盒子，滚动职责在各页面，所以根 div 必须自己滚，否则超出部分被直接裁掉。`min-h-0 flex-1
-        // overflow-y-auto` 缺一不可：min-h-0 才允许 flex 子项矮于内容。
-        'ds-page-wash relative min-h-0 flex-1 space-y-5 overflow-y-auto px-8 pt-4 pb-7',
-        dragOver && 'outline-2 outline-dashed outline-offset-[-8px] outline-primary',
-      )}
+      ref={rootRef}
+      className="relative flex min-h-0 flex-1 flex-col overflow-hidden"
       onDragOver={(e) => {
         // 必须 preventDefault，否则浏览器按默认行为处理（打开文件），drop 根本不触发。
         e.preventDefault()
         if (!dragOver) setDragOver(true)
       }}
       onDragLeave={(e) => {
-        // 只在真正离开整个面板时才收起提示。不加这个判断的话，
-        // 鼠标划过任何子元素都会触发 dragleave，边框会疯狂闪。
+        // 只在真正离开整页时才收起，否则划过子元素边框会闪。
         if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setDragOver(false)
       }}
       onDrop={handleDrop}
     >
+      <div className="ds-page-wash flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-6 pt-5 pb-6" aria-hidden={panel ? true : undefined}>
+        {firewall === 'blocked' && (
+          <Alert className="border-amber-500/40 bg-amber-500/10">
+            <AlertTriangle className="h-4 w-4 text-amber-600 dark:text-amber-500" />
+            <AlertDescription className="flex flex-wrap items-center gap-x-3 gap-y-2">
+              <span className="min-w-0 flex-1 text-sm">{t('firewallBlocked')}</span>
+              <Button size="sm" onClick={fixFirewall} disabled={firewallBusy}>
+                {firewallBusy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <ShieldCheck className="mr-2 h-4 w-4" />}
+                {t('firewallFix')}
+              </Button>
+            </AlertDescription>
+          </Alert>
+        )}
+
+        <section className="relative shrink-0 overflow-hidden rounded-2xl border border-border/70 bg-card">
+          <Send
+            aria-hidden="true"
+            className="pointer-events-none absolute -top-6 -right-6 size-40 -rotate-12 text-primary opacity-[0.05]"
+          />
+          <div className="relative grid gap-5 p-5 xl:grid-cols-[minmax(0,1fr)_auto] xl:items-center">
+            <div className="flex min-w-0 items-center gap-4">
+              <span className="ds-icon-chip relative size-14 rounded-2xl">
+                <Monitor className="size-7" aria-hidden="true" />
+                <span
+                  className={cn(
+                    'absolute -right-1 -bottom-1 size-3.5 rounded-full border-2 border-card',
+                    online.length > 0 ? 'bg-emerald-500' : 'bg-muted-foreground/40',
+                  )}
+                />
+              </span>
+              <div className="min-w-0 flex-1">
+                <div className="truncate font-heading text-sihao font-medium">{status.name}</div>
+                <div className="mt-1 flex flex-wrap items-center gap-1.5 text-sm text-muted-foreground">
+                  {online.length === 0 ? (
+                    <span>{t('heroNoDevice')}</span>
+                  ) : (
+                    online.map((d) => {
+                      const Icon = DEVICE_ICON[d.type] ?? Laptop
+                      return (
+                        <span
+                          key={d.device_id}
+                          className="inline-flex max-w-[14rem] items-center gap-1.5 rounded-full border border-border/70 bg-surface px-2.5 py-0.5"
+                          data-hint={d.rtt_ms !== undefined ? `${d.name} · ${d.rtt_ms} ms` : d.name}
+                        >
+                          <Icon className="size-3.5 shrink-0 text-primary" aria-hidden="true" />
+                          <span className="truncate">{d.name}</span>
+                        </span>
+                      )
+                    })
+                  )}
+                </div>
+              </div>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2.5">
+              <Button size="lg" className="h-12 rounded-xl px-5" onClick={() => setClipPickOpen(true)} disabled={online.length === 0}>
+                <Clipboard className="mr-2 size-5" />
+                {t('sendClipboard')}
+              </Button>
+              <Button
+                size="lg"
+                variant="outline"
+                className="h-12 rounded-xl px-5"
+                onClick={sendFiles}
+                disabled={sendTargets.length === 0}
+              >
+                <Upload className="mr-2 size-5" />
+                {sendTargets.length === 1 && fanout === 'one'
+                  ? t('sendFilesToOne', { name: online.find((d) => d.device_id === sendTargets[0])?.name ?? '' })
+                  : sendTargets.length > 0
+                    ? t('sendFilesToSelected', { count: sendTargets.length })
+                    : t('sendFiles')}
+              </Button>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={status.options.clip_sync}
+                aria-label={t('autoSync')}
+                data-hint={status.options.clip_sync ? t('clipAutoOnDesc') : t('clipAutoOffDesc')}
+                onClick={() => setOption({ clip_sync: !status.options.clip_sync })}
+                className="ds-focus-ring inline-flex h-12 items-center gap-2.5 rounded-xl border border-border/70 px-4 text-sm transition-colors hover:bg-surface"
+              >
+                <span
+                  className={cn(
+                    'relative h-5 w-9 rounded-full transition-colors',
+                    status.options.clip_sync ? 'bg-primary' : 'bg-muted-foreground/30',
+                  )}
+                >
+                  <span
+                    className={cn(
+                      'absolute top-0.5 size-4 rounded-full bg-background shadow transition-[left]',
+                      status.options.clip_sync ? 'left-[1.125rem]' : 'left-0.5',
+                    )}
+                  />
+                </span>
+                {t('autoSync')}
+              </button>
+              <Button variant="ghost" size="icon" className="size-12 rounded-xl" onClick={refresh} aria-label={t('refresh')}>
+                <RefreshCw className="size-5" />
+              </Button>
+            </div>
+          </div>
+
+          <div className="relative flex flex-wrap items-center gap-2 border-t border-border/60 bg-surface/50 px-5 py-2.5">
+            <span className="text-sm text-muted-foreground">{t('sendTo')}</span>
+            <div className="inline-flex rounded-lg border bg-muted/40 p-0.5">
+              {(['one', 'many'] as const).map((m) => (
+                <button
+                  key={m}
+                  type="button"
+                  onClick={() => setFanout(m)}
+                  className={cn(
+                    'rounded-md px-3 py-1 text-sm transition-colors',
+                    fanout === m ? 'bg-background shadow-sm' : 'text-muted-foreground hover:text-foreground',
+                  )}
+                >
+                  {m === 'one' ? t('fanoutOne') : t('fanoutMany')}
+                </button>
+              ))}
+            </div>
+            {fanout === 'one' ? (
+              <Select value={soloTarget ?? ''} onValueChange={setSoloTarget}>
+                <SelectTrigger className="h-8 w-52">
+                  <SelectValue placeholder={t('fanoutPickOne')} />
+                </SelectTrigger>
+                <SelectContent>
+                  {online.map((d) => (
+                    <SelectItem key={d.device_id} value={d.device_id}>
+                      {d.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            ) : (
+              online.map((d) => (
+                <button
+                  key={d.device_id}
+                  type="button"
+                  role="checkbox"
+                  aria-checked={selected.has(d.device_id)}
+                  onClick={() => toggleSelected(d.device_id)}
+                  className={cn(
+                    'ds-focus-ring rounded-full border px-3 py-1 text-sm transition-colors',
+                    selected.has(d.device_id)
+                      ? 'border-primary bg-primary/10 text-primary'
+                      : 'border-border/70 text-muted-foreground hover:text-foreground',
+                  )}
+                >
+                  {d.name}
+                </button>
+              ))
+            )}
+          </div>
+
+          {activeTransfers.length > 0 && (
+            <div className="relative space-y-3 border-t border-border/60 px-5 py-3">{transferRows}</div>
+          )}
+        </section>
+
+        <FeatureGrid tiles={tiles} onOpen={openPanel} className="min-h-[220px] flex-1" />
+      </div>
+
+      {panel && current && (
+        <FeaturePanel
+          key={panel}
+          label={panelTile?.title ?? ''}
+          origin={panelOrigin}
+          backLabel={t('back')}
+          actions={current.actions}
+          onClose={closePanel}
+          bodyClassName={current.fill ? 'flex flex-col overflow-hidden' : undefined}
+        >
+          {current.body}
+        </FeaturePanel>
+      )}
+
       {dragOver && (
-        <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center rounded-md bg-background/80">
+        <div className="pointer-events-none absolute inset-0 z-40 flex items-center justify-center bg-background/80 outline-2 outline-dashed outline-offset-[-8px] outline-primary">
           <div className="flex flex-col items-center gap-2 text-primary">
             <Upload className="h-8 w-8" />
             <p className="text-sm font-medium">
@@ -1524,1126 +2643,10 @@ export function CrossDeviceScreen() {
           </div>
         </div>
       )}
-      {/* 跟别的面板一样走 <PageHeader>。手抄这一份原本少了 justify-between、
-          gap 也差一档，两个面板并排看就能看出标题起始位置对不齐。 */}
-      <PageHeader title={t('pageTitle')} />
 
-      {/* 防火墙拦截提示。
-          放在最顶上是因为它是「附近的设备一直是空的」的首要原因，而且用户
-          自己永远猜不到——Windows 丢掉入站包时不报错、不记日志、也不弹窗。
-          只在真的没放行时出现，放行了就不占地方。 */}
-      {firewall === 'blocked' && (
-        <Alert className="border-amber-500/40 bg-amber-500/10">
-          <AlertTriangle className="h-4 w-4 text-amber-600 dark:text-amber-500" />
-          <AlertDescription className="flex flex-wrap items-center gap-x-3 gap-y-2">
-            <span className="min-w-0 flex-1 text-sm">{t('firewallBlocked')}</span>
-            <Button size="sm" onClick={fixFirewall} disabled={firewallBusy}>
-              {firewallBusy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <ShieldCheck className="mr-2 h-4 w-4" />}
-              {t('firewallFix')}
-            </Button>
-          </AlertDescription>
-        </Alert>
-      )}
+      <ClipSendDialog open={clipPickOpen} onOpenChange={setClipPickOpen} />
 
-      {/* 传输中心——这一页的主角，所以排在最前。
-          这个应用存在的理由就两件事：剪贴板跨设备同步、文件跨设备互传。
-          它们以前是一排浮在页面中段的按钮，而"本机指纹和监听端口"占着首屏——
-          那是排查时才看一眼的参考信息，天天用的动作反倒要往下找。
-
-          发送目标是**显式**的：原先的规则是"勾了发给勾选的、没勾发给所有在线
-          设备"，规则本身没错，但它不写在界面上——用户按下"发送文件"时并不知道
-          这一份东西要去一台还是五台。现在做成明摆着的二选一，选"发给多台"时
-          下面的设备列表才出现勾选框。 */}
-      {/* 传输中心。**不给折叠**：这是这一页天天要用的那件事，
-          给它加一层点击是帮倒忙。跟安卓端「快捷操作」永远摊开是同一个判断。 */}
-      <PageSection icon={Send} title={t('transferHub')} contentClassName="space-y-4">
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="text-sm text-muted-foreground">{t('sendTo')}</span>
-            <div className="inline-flex rounded-lg border bg-muted/40 p-0.5">
-              <button
-                type="button"
-                onClick={() => setFanout('one')}
-                className={cn(
-                  'rounded-md px-3 py-1.5 text-sm transition-colors',
-                  fanout === 'one' ? 'bg-background shadow-sm' : 'text-muted-foreground hover:text-foreground',
-                )}
-              >
-                {t('fanoutOne')}
-              </button>
-              <button
-                type="button"
-                onClick={() => setFanout('many')}
-                className={cn(
-                  'rounded-md px-3 py-1.5 text-sm transition-colors',
-                  fanout === 'many' ? 'bg-background shadow-sm' : 'text-muted-foreground hover:text-foreground',
-                )}
-              >
-                {t('fanoutMany')}
-              </button>
-            </div>
-
-            {fanout === 'one' ? (
-              <Select value={soloTarget ?? ''} onValueChange={setSoloTarget}>
-                <SelectTrigger className="w-52">
-                  <SelectValue placeholder={t('fanoutPickOne')} />
-                </SelectTrigger>
-                <SelectContent>
-                  {online.map((d) => (
-                    <SelectItem key={d.device_id} value={d.device_id}>
-                      {d.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            ) : (
-              <span className="text-sm text-muted-foreground">
-                {t('fanoutTickBelow', { count: sendTargets.length })}
-              </span>
-            )}
-          </div>
-
-          <div className="flex flex-wrap gap-2">
-            <Button onClick={sendClipboard} disabled={online.length === 0}>
-              <Clipboard className="mr-2 h-4 w-4" />
-              {t('sendClipboard')}
-            </Button>
-            <Button variant="outline" onClick={sendFiles} disabled={sendTargets.length === 0}>
-              <Upload className="mr-2 h-4 w-4" />
-              {sendTargets.length === 1 && fanout === 'one'
-                ? t('sendFilesToOne', { name: online.find((d) => d.device_id === sendTargets[0])?.name ?? '' })
-                : sendTargets.length > 0
-                  ? t('sendFilesToSelected', { count: sendTargets.length })
-                  : t('sendFiles')}
-            </Button>
-            <Button variant="ghost" onClick={refresh}>
-              <RefreshCw className="mr-2 h-4 w-4" />
-              {t('refresh')}
-            </Button>
-          </div>
-
-          {/* 自动同步的状态必须摆在按钮旁边。
-              开着的时候，"发送剪贴板"这个按钮其实很少需要按——复制完就已经
-              同步过去了。不说清楚的话，用户会一直手动按，还会以为没生效。 */}
-          <div className="flex items-start gap-2 rounded-lg border border-border/70 bg-muted/25 px-3 py-2">
-            {status.options.clip_sync ? (
-              <CheckCircle2 className="mt-0.5 size-4 shrink-0 text-emerald-500" aria-hidden="true" />
-            ) : (
-              <Info className="mt-0.5 size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
-            )}
-            <div className="min-w-0 flex-1">
-              <div className="text-sm font-medium">
-                {status.options.clip_sync ? t('clipAutoOn') : t('clipAutoOff')}
-              </div>
-              <p className="text-sm text-muted-foreground">
-                {status.options.clip_sync ? t('clipAutoOnDesc') : t('clipAutoOffDesc')}
-              </p>
-            </div>
-            <Button
-              size="sm"
-              variant="ghost"
-              className="shrink-0"
-              onClick={() => setOption({ clip_sync: !status.options.clip_sync })}
-            >
-              {status.options.clip_sync ? t('clipAutoTurnOff') : t('clipAutoTurnOn')}
-            </Button>
-          </div>
-      </PageSection>
-
-      {/* 进行中的传输。
-          排在传输中心正下方：正在发生的事永远比"接下来能做什么"更该被看到。
-          每条都能暂停和取消——传错了设备、选错了文件、或者正传着 4 GB 却要
-          出门，在这之前用户唯一能做的是把应用关掉，而那会把已传好的部分
-          一起丢掉。 */}
-      {active.size > 0 && (
-        <PageSection
-          icon={Loader2}
-          title={t('inProgress', { count: active.size })}
-          contentClassName="space-y-3.5"
-        >
-            {activeTransfers.map((a) => {
-              const ItemIcon = ITEM_ICON[a.itemKind] ?? FileIcon
-              const eta = etaSeconds(a)
-              return (
-                <div key={a.key} className="space-y-1.5 rounded-lg border border-border/70 bg-muted/25 px-3 py-2.5">
-                  <div className="flex items-center gap-2 text-sm">
-                    <ItemIcon className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
-                    <span className="min-w-0 flex-1 truncate font-medium" title={a.name}>
-                      {a.name}
-                    </span>
-                    <span className="shrink-0 text-sm text-muted-foreground">
-                      {a.direction === 'send' ? t('dirTo', { name: a.deviceName }) : t('dirFrom', { name: a.deviceName })}
-                    </span>
-                    <span className="shrink-0 tabular text-sm font-semibold">{a.percent}%</span>
-                    {/* 控制按钮贴着进度放，不折进菜单里：要用它的时候人是着急的。 */}
-                    <div className="flex shrink-0 items-center gap-0.5">
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            className="size-7 p-0"
-                            aria-label={a.state === 'paused' ? t('resumeTransfer') : t('pauseTransfer')}
-                            onClick={() => controlTransfer(a.key, a.state === 'paused' ? 'resume' : 'pause')}
-                          >
-                            {a.state === 'paused' ? <Play className="size-3.5" /> : <Pause className="size-3.5" />}
-                          </Button>
-                        </TooltipTrigger>
-                        <TooltipContent>
-                          {a.state === 'paused' ? t('resumeTransfer') : t('pauseTransfer')}
-                        </TooltipContent>
-                      </Tooltip>
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            className="size-7 p-0 text-muted-foreground hover:text-destructive"
-                            aria-label={t('cancelTransfer')}
-                            onClick={() => controlTransfer(a.key, 'cancel')}
-                          >
-                            <X className="size-3.5" />
-                          </Button>
-                        </TooltipTrigger>
-                        <TooltipContent>{t('cancelTransfer')}</TooltipContent>
-                      </Tooltip>
-                    </div>
-                  </div>
-                  <Progress value={a.percent} className={cn('h-1.5', a.state === 'paused' && 'opacity-50')} />
-                  {/* text-2xs 而不是 text-[11px]：11px 在这个项目的正文下限
-                      （16px）之下，而且是个游离在字号刻度之外的硬编码值。
-                      text-2xs 是 index.css 里定义好的装饰性档位。 */}
-                  <div className="flex items-center justify-between text-2xs text-muted-foreground">
-                    <span className="tabular">
-                      {humanSize(a.done)} / {humanSize(a.total)}
-                    </span>
-                    <span className="tabular">
-                      {a.state === 'paused'
-                        ? t('transferPaused')
-                        : [
-                            a.speed > 0 ? t('transferSpeed', { rate: humanSize(a.speed) }) : null,
-                            eta !== null ? t('transferEta', { time: humanDuration(eta) }) : null,
-                          ]
-                            .filter(Boolean)
-                            .join(' · ')}
-                    </span>
-                  </div>
-                </div>
-              )
-            })}
-        </PageSection>
-      )}
-
-      {/* 剪贴板同步状态面板。
-          正在传的大表示已经在上面「进行中的传输」里了（item_kind === 'clip'，
-          共用同一套进度/暂停/取消）——这里只放*已经结束*的东西：同步到没到、
-          以及两端是不是在互不知情的情况下并发改了剪贴板。两者都是"信号推送、
-          详情回头查"的模式，见 refreshClipSyncLog/refreshClipConflicts。
-          没有任何历史时整块不出现，不占位置。 */}
-      {(clipConflicts.length > 0 || clipSyncLog.length > 0) && (
-        <PageSection
-          icon={GitFork}
-          title={t('clipSyncPanel')}
-          collapsible
-          storageKey="crossdevice.clipsync"
-          contentClassName="space-y-4"
-        >
-          {clipConflicts.length > 0 && (
-            <div className="space-y-2">
-              <h4 className="text-sm font-medium text-muted-foreground">{t('clipConflictsTitle')}</h4>
-              <div className="space-y-2">
-                {clipConflicts
-                  .slice()
-                  .reverse()
-                  .map((c, i) => (
-                    <div
-                      key={`${c.device_id}-${c.at}-${i}`}
-                      className="space-y-1.5 rounded-lg border border-warning/30 bg-warning/5 px-3 py-2.5"
-                    >
-                      {/* 分叉图标 + 两个设备徽章，是"这是一次真分叉，不是先后覆盖"
-                          这件事本身的可视化——不是装饰。 */}
-                      <div className="flex items-center gap-2 text-sm">
-                        <span className="shrink-0 rounded-full bg-muted px-2 py-0.5 text-2xs font-medium">
-                          {t('thisDevice')}
-                        </span>
-                        <GitFork className="size-4 shrink-0 rotate-180 text-warning" aria-hidden="true" />
-                        <span className="shrink-0 rounded-full bg-muted px-2 py-0.5 text-2xs font-medium">
-                          {c.device_name}
-                        </span>
-                        <span className="min-w-0 flex-1 truncate text-muted-foreground">
-                          {t('clipConflictLine', { device: c.device_name })}
-                        </span>
-                        <span className="shrink-0 text-2xs text-muted-foreground tabular">
-                          {new Date(c.at).toLocaleTimeString()}
-                        </span>
-                      </div>
-                      <p className="text-2xs text-muted-foreground">{t('clipConflictHint')}</p>
-                    </div>
-                  ))}
-              </div>
-            </div>
-          )}
-
-          {clipSyncLog.length > 0 && (
-            <div className="space-y-2">
-              <h4 className="text-sm font-medium text-muted-foreground">{t('clipSyncHistory')}</h4>
-              <div className="space-y-1">
-                {clipSyncLog
-                  .slice()
-                  .reverse()
-                  .map((e, i) => {
-                    const kind = t(CLIP_MIME_KIND[e.mime] ?? 'clipKind.generic')
-                    return (
-                      <div
-                        key={`${e.item_id}-${e.mime}-${e.at}-${i}`}
-                        className="flex items-center gap-2 rounded-md px-1 py-0.5 text-sm"
-                      >
-                        {e.ok ? (
-                          <CheckCircle2 className="size-4 shrink-0 text-emerald-500" aria-hidden="true" />
-                        ) : (
-                          <Ban className="size-4 shrink-0 text-destructive" aria-hidden="true" />
-                        )}
-                        <span className="min-w-0 flex-1 truncate">
-                          {e.ok
-                            ? t('clipSyncFrom', { device: e.device_name, kind })
-                            : t('clipSyncFailedFrom', { device: e.device_name, kind })}
-                        </span>
-                        {e.error && (
-                          <span className="shrink-0 max-w-[40%] truncate text-2xs text-destructive" title={e.error}>
-                            {e.error}
-                          </span>
-                        )}
-                        <span className="shrink-0 text-2xs text-muted-foreground tabular">
-                          {new Date(e.at).toLocaleTimeString()}
-                        </span>
-                      </div>
-                    )
-                  })}
-              </div>
-            </div>
-          )}
-        </PageSection>
-      )}
-
-      {/* 传输活动。
-          记录可以逐条勾选删除，也可以一键清空——失败记录尤其需要能删掉：
-          它会一直挂在列表顶端，而用户已经知道了、也重传成功了，留着只是噪音。
-          可折叠：这份列表会越攒越长，而它是"回头看"用的，不是"正在做"。 */}
-      {transfers.length > 0 && (
-        <PageSection
-          icon={Activity}
-          title={t('activity')}
-          collapsible
-          storageKey="crossdevice.activity"
-          contentClassName="space-y-1.5"
-          actions={
-            <>
-              {/* 全选和"删除选中"是一对：只有逐条勾的话，清一份 50 行的列表
-                  要点 50 次。与安卓端的已配对设备列表用同一套交互。 */}
-              <label className="flex cursor-pointer items-center gap-1.5 text-sm text-muted-foreground">
-                <Checkbox
-                  checked={pickedRows.size > 0 && pickedRows.size === transfers.length}
-                  onCheckedChange={(v) =>
-                    setPickedRows(v === true ? new Set(transfers.map((r) => r.key)) : new Set())
-                  }
-                  aria-label={t('activitySelectAll')}
-                />
-                {t('activitySelectAll')}
-              </label>
-              {pickedRows.size > 0 && (
-                <Button size="sm" variant="outline" onClick={deletePickedRows}>
-                  <Trash2 className="mr-2 size-4" />
-                  {t('activityDeleteSelected', { count: pickedRows.size })}
-                </Button>
-              )}
-              <Button size="sm" variant="ghost" onClick={clearAllRows}>
-                {t('activityClearAll')}
-              </Button>
-            </>
-          }
-        >
-            {transfers.map((r) => {
-              const ItemIcon = ITEM_ICON[r.itemKind] ?? FileIcon
-              return (
-                <label
-                  key={r.key}
-                  className="flex cursor-pointer items-center gap-2 rounded-md px-1 py-0.5 text-sm hover:bg-muted/50"
-                >
-                  <Checkbox
-                    checked={pickedRows.has(r.key)}
-                    onCheckedChange={() => toggleRow(r.key)}
-                    aria-label={t('activitySelectRow', { name: r.name })}
-                  />
-                  {r.kind === 'error' ? (
-                    <Ban className="size-4 shrink-0 text-destructive" />
-                  ) : r.kind === 'canceled' ? (
-                    <X className="size-4 shrink-0 text-muted-foreground" />
-                  ) : r.kind === 'done' || r.kind === 'recv_done' ? (
-                    <CheckCircle2 className="size-4 shrink-0 text-emerald-500" />
-                  ) : (
-                    <ItemIcon className="size-4 shrink-0 text-muted-foreground" />
-                  )}
-                  <span className="truncate" title={r.name}>
-                    {r.name}
-                  </span>
-                  <span className="shrink-0 text-sm text-muted-foreground">
-                    {r.direction === 'send' ? t('dirTo', { name: r.deviceName }) : t('dirFrom', { name: r.deviceName })}
-                    {r.size ? ` · ${humanSize(r.size)}` : ''}
-                    {r.elapsedMs ? ` · ${r.elapsedMs} ms` : ''}
-                  </span>
-                  {r.kind === 'canceled' && (
-                    <span className="shrink-0 rounded bg-muted px-1.5 py-0.5 text-2xs text-muted-foreground">
-                      {t('transferCanceled')}
-                    </span>
-                  )}
-                  {r.skipped && (
-                    <span className="shrink-0 rounded bg-emerald-500/10 px-1.5 py-0.5 text-2xs text-emerald-600 dark:text-emerald-400">
-                      {t('instantSkip')}
-                    </span>
-                  )}
-                  {r.error && <span className="truncate text-sm text-destructive">{r.error}</span>}
-                  {/* 隐私账单：这次传输走了哪条路，以及那条路上的第三方能看到什么。
-                      只在传输**成功完成**时显示——失败的那次没有"经过了谁"可言。
-
-                      为什么值得占这一格：走中继时，字节确实经过了一台服务器。
-                      用户有权知道这件事，而且更该知道"服务器看得到的只有密文和
-                      文件大小"。不说的话，知道的人会担心，不知道的人则完全不知道
-                      自己在担心什么——两种都不好。 */}
-                  {r.relayed !== undefined && (r.kind === 'done' || r.kind === 'recv_done') && (
-                    <span
-                      className={cn(
-                        'shrink-0 rounded px-1.5 py-0.5 text-2xs',
-                        r.relayed
-                          ? 'bg-warning/12 text-warning'
-                          : 'bg-success/12 text-success',
-                      )}
-                      title={r.relayed ? t('receiptRelayedHint') : t('receiptDirectHint')}
-                    >
-                      {r.relayed ? t('receiptRelayed') : t('receiptDirect')}
-                    </span>
-                  )}
-                </label>
-              )
-            })}
-        </PageSection>
-      )}
-
-      {/* 设备列表。**不给折叠**：「我连着谁、谁在线」是这一页要回答的第一个问题，
-          跟安卓端把已配对设备卡永远摊开是同一个判断——那张卡被藏起来正是这一轮
-          修的第一个 bug。 */}
-      <PageSection
-        icon={MonitorSmartphone}
-        title={t('pairedDevices', { count: devices.length })}
-        padded={false}
-      >
-        {/* 左选右看，走全应用共用的 <Workbench>。
-            这一段是这一页里唯一"一堆同类东西挑一个"的地方——设备的往返时延、
-            走的直连还是中继、什么时候到期，一行里塞不下，塞下了也读不了。 */}
-        <Workbench
-          className="rounded-none border-0"
-          // 这一页整页自己滚，工作台只是其中一个分区——没有人能给它一个确定的
-          // 高度，`flex-1` 无处可分。embedded 档自己定高度，见 workbench.tsx。
-          embedded
-          selected={detailDevice !== null}
-          onBack={() => setDetailDeviceId(null)}
-          backLabel={tCommon('backToList')}
-          placeholder={
-            <EmptyState icon={MonitorSmartphone} title={t('deviceDetailEmpty')} className="m-6" />
-          }
-          detail={
-            detailDevice && (
-              <DeviceDetailPane device={detailDevice} onRevoke={() => revoke(detailDevice)} onUpdated={updateDevice} />
-            )
-          }
-          list={
-        <div className="space-y-2 p-3">
-          {devices.length === 0 && <p className="text-sm text-muted-foreground">{t('noDevices')}</p>}
-          {devices.map((d) => {
-            const Icon = DEVICE_ICON[d.type] ?? Laptop
-            const isOnline = ONLINE_STATES.has(d.state)
-            return (
-              <div
-                key={d.device_id}
-                role="button"
-                tabIndex={0}
-                onClick={() => setDetailDeviceId(d.device_id)}
-                onKeyDown={(e) => e.key === 'Enter' && setDetailDeviceId(d.device_id)}
-                className={cn(
-                  'ds-focus-ring flex cursor-pointer items-center gap-3 rounded-md border px-3 py-2 transition-colors',
-                  isOnline ? 'border-border' : 'border-dashed opacity-70',
-                  detailDeviceId === d.device_id && 'bg-accent-soft shadow-[inset_2px_0_0_var(--primary)]',
-                )}
-              >
-                {/* 勾选框只在「发给多台」模式下出现。发给一台时目标由上面那个
-                    下拉框决定，这里再摆一排勾选框只会让人搞不清到底哪个说了算。 */}
-                {fanout === 'many' && (
-                  <Checkbox
-                    checked={selected.has(d.device_id)}
-                    onClick={(e) => e.stopPropagation()}
-                    onCheckedChange={() => toggleSelected(d.device_id)}
-                    disabled={!isOnline}
-                    aria-label={t('selectDevice', { name: d.name })}
-                  />
-                )}
-                <Icon className="h-5 w-5 shrink-0 text-muted-foreground" />
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-center gap-2">
-                    <span className="truncate font-medium">{d.name}</span>
-                    <span
-                      className={cn(
-                        'rounded px-1.5 py-0.5 text-2xs',
-                        d.trust === 'temp' ? 'bg-amber-500/15 text-amber-600' : 'bg-muted text-muted-foreground',
-                      )}
-                    >
-                      {d.trust === 'temp' ? t('trustTemp') : t('trustLong')}
-                    </span>
-                  </div>
-                  <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
-                    {isOnline ? <Wifi className="h-3 w-3" /> : <WifiOff className="h-3 w-3" />}
-                    <span>{t(`state.${d.state}`, { defaultValue: d.state })}</span>
-                    {d.rtt_ms !== undefined && <span>· {d.rtt_ms} ms</span>}
-                    {d.clip_latency_ms !== undefined && (
-                      <span className="text-primary" title={t('clipLatencyLabel')}>
-                        · {t('clipLatencyBadge', { ms: d.clip_latency_ms })}
-                      </span>
-                    )}
-                    {d.clip_latency_hist && d.clip_latency_hist.length >= 2 && (
-                      <LatencySparkline points={d.clip_latency_hist} className="ml-1" />
-                    )}
-                    {d.expires_at && <span>· {t('expiresIn', { minutes: Math.max(0, Math.round((d.expires_at - Date.now()) / 60000)) })}</span>}
-                    {d.clip_policy && d.clip_policy !== 'all' && (
-                      <span
-                        className="inline-flex items-center"
-                        aria-label={t(`policyClip.${d.clip_policy}`)}
-                        data-hint={t(`policyClip.${d.clip_policy}`)}
-                      >
-                        {d.clip_policy === 'off' ? <Ban className="h-3 w-3" /> : <Type className="h-3 w-3" />}
-                      </span>
-                    )}
-                  </div>
-                </div>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button size="sm" variant="ghost" onClick={(e) => { e.stopPropagation(); revoke(d) }} aria-label={t('revoke')}>
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent>{t('revoke')}</TooltipContent>
-                </Tooltip>
-              </div>
-            )
-          })}
-        </div>
-          }
-        />
-      </PageSection>
-
-      {/* 实时指标。
-          默认收起，展开后每秒刷一次；收起时那个定时器根本不启动，一点 CPU 都不占。
-          这一组跟安卓端「实时指标」是同一批数、同一个顺序、同一套措辞——
-          同一个人在电脑和手机上看到的应该是同一份读数，而不是两套各自命名的东西。 */}
-      <PageSection
-        icon={Activity}
-        title={t('liveMetrics')}
-        collapsible
-        defaultExpanded={false}
-        storageKey="crossdevice.metrics"
-        onExpandedChange={setMetricsOpen}
-        contentClassName="grid gap-3 sm:grid-cols-2 xl:grid-cols-4"
-      >
-        {metricCards.map((m) => (
-          <div key={m.label} className="rounded-lg border border-border/70 bg-surface px-3 py-2">
-            <p className="text-sm text-muted-foreground">{m.label}</p>
-            <p className={cn('mt-1 font-mono text-sm', NUMERIC_CLASS)}>{m.value}</p>
-          </div>
-        ))}
-      </PageSection>
-
-      {/* 配对。
-          可折叠：这块是这一页最高的一张卡（五个配对方式 + 二维码 + 大输入框），
-          而配好设备之后它就是"偶尔才用一次"的东西。收起来只剩一行标题，
-          下面的诊断和选项就不用每次滚半天才够得着。展开状态记住，
-          还没配过设备的人第一次打开是展开的。
-
-          安卓端「出示我的码」那张卡走的是同一套：标题右侧向下箭头、
-          展开时转 180°、状态持久化——两端同一个符号表达同一件事。 */}
-      <PageSection
-        icon={Link2}
-        title={t('addDevice')}
-        collapsible
-        storageKey="crossdevice.addDevice"
-        defaultExpanded={devices.length === 0}
-      >
-          <div className="mb-4 flex flex-wrap items-end gap-3">
-            <div className="space-y-1">
-              <Label>{t('trustLevel')}</Label>
-              <Select value={pairMode} onValueChange={(v) => setPairMode(v as 'long' | 'temp')}>
-                <SelectTrigger className="w-[190px]">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="long">{t('trustLongDesc')}</SelectItem>
-                  <SelectItem value="temp">{t('trustTempDesc')}</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            {pairMode === 'temp' && (
-              <div className="space-y-1">
-                <Label>{t('validFor')}</Label>
-                <Select value={tempTtl} onValueChange={setTempTtl}>
-                  <SelectTrigger className="w-[150px]">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="600">{t('ttl10m')}</SelectItem>
-                    <SelectItem value="1800">{t('ttl30m')}</SelectItem>
-                    <SelectItem value="3600">{t('ttl1h')}</SelectItem>
-                    <SelectItem value="86400">{t('ttl1d')}</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            )}
-          </div>
-
-          {/* 四种配对方式并列。不用 grid-cols-4：TabsTrigger 自带 whitespace-nowrap
-              且不裁剪，四等分在法语/俄语下装不下标签文字，会直接溢出压到隔壁
-              标签上。改成按内容宽度排布并允许换行——宽窗口一行、窄窗口两行，
-              任何语言下都不会重叠。与登录页的解锁方式标签栏是同一套做法。 */}
-          <Tabs value={pairTab} onValueChange={setPairTab}>
-            <TabsList className="flex h-auto w-full flex-wrap justify-start gap-1 p-1">
-              {/* 数字码排第一并默认选中：其它三条路各有前提——二维码要摄像头、
-                  附近设备要组播（很多家用路由器直接丢掉）、手动地址要知道 IP 和
-                  端口。只有这条在哪儿都成立，所以它该是第一眼看到的那个。 */}
-              <TabsTrigger className="flex-none gap-1.5 px-3 py-1.5" value="digits">
-                <Hash className="size-4 shrink-0" aria-hidden="true" />
-                {t('tabShortCode')}
-              </TabsTrigger>
-              <TabsTrigger className="flex-none gap-1.5 px-3 py-1.5" value="show">
-                <QrCode className="size-4 shrink-0" aria-hidden="true" />
-                {t('tabShowCode')}
-              </TabsTrigger>
-              <TabsTrigger className="flex-none gap-1.5 px-3 py-1.5" value="enter">
-                <Keyboard className="size-4 shrink-0" aria-hidden="true" />
-                {t('tabEnterCode')}
-              </TabsTrigger>
-              <TabsTrigger className="flex-none gap-1.5 px-3 py-1.5" value="nearby" onClick={() => void refreshNearby()}>
-                <Radar className="size-4 shrink-0" aria-hidden="true" />
-                {t('tabNearby')}
-              </TabsTrigger>
-              <TabsTrigger className="flex-none gap-1.5 px-3 py-1.5" value="manual">
-                <Link2 className="size-4 shrink-0" aria-hidden="true" />
-                {t('tabManual')}
-              </TabsTrigger>
-            </TabsList>
-
-            <TabsContent value="digits" className="space-y-4 pt-3">
-              <div className="grid gap-4 md:grid-cols-2">
-                {/* 左：本机显示码 */}
-                <div className="space-y-2 rounded-lg border border-border bg-surface p-4">
-                  <FeatureTitle as="p">{t('shortCodeShowTitle')}</FeatureTitle>
-                  {!shortCode ? (
-                    <Button onClick={showShortCode} disabled={shortBusy}>
-                      {shortBusy ? <Loader2 className="mr-2 size-4 animate-spin" /> : <Hash className="mr-2 size-4" />}
-                      {t('shortCodeGenerate')}
-                    </Button>
-                  ) : (
-                    <div className="space-y-2">
-                      {/* 码本身要足够大——用户是隔着一段距离照着另一台设备的屏幕敲的。
-                          等宽 + 字距拉开，避免 6 和 8、0 和 O 看混。 */}
-                      <p className="font-mono text-3xl font-semibold tracking-[0.35em] tabular">
-                        {shortCode.code}
-                      </p>
-                      <p className="text-sm text-muted-foreground tabular">
-                        {shortCodeLeft >= 60
-                          ? t('codeExpiresInMinutes', {
-                              minutes: Math.floor(shortCodeLeft / 60),
-                              seconds: shortCodeLeft % 60,
-                            })
-                          : t('codeExpiresIn', { seconds: shortCodeLeft })}
-                      </p>
-                      <Button size="sm" variant="outline" onClick={stopShortCode}>
-                        {t('shortCodeStop')}
-                      </Button>
-                    </div>
-                  )}
-                </div>
-
-                {/* 右：输入对方的码 */}
-                <div className="space-y-2 rounded-lg border border-border bg-surface p-4">
-                  <FeatureTitle as="p">{t('shortCodeEnterTitle')}</FeatureTitle>
-                  <Input
-                    value={peerShortCode}
-                    onChange={(e) => setPeerShortCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
-                    onKeyDown={(e) => e.key === 'Enter' && void pairWithShortCode()}
-                    inputMode="numeric"
-                    autoComplete="one-time-code"
-                    placeholder="000000"
-                    aria-label={t('shortCodeEnterTitle')}
-                    className="text-center font-mono text-3xl font-semibold tracking-[0.35em] tabular"
-                  />
-                  <Button
-                    className="w-full"
-                    onClick={() => void pairWithShortCode()}
-                    disabled={pairing || peerShortCode.length !== 6}
-                  >
-                    {pairing ? <Loader2 className="mr-2 size-4 animate-spin" /> : <Link2 className="mr-2 size-4" />}
-                    {t('pairNow')}
-                  </Button>
-                </div>
-              </div>
-            </TabsContent>
-
-            <TabsContent value="show" className="space-y-3 pt-3">
-              {!myCode ? (
-                <Button onClick={showCode} disabled={busy}>
-                  {busy && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                  {t('generateCode')}
-                </Button>
-              ) : (
-                <div className="flex flex-col items-center gap-3">
-                  {qrDataUrl && (
-                    <img src={qrDataUrl} alt={t('qrAlt')} className="rounded-md border bg-white p-2" width={260} height={260} />
-                  )}
-                  {/* 有效期从 60 秒放宽到 5 分钟之后（见 core/pairing/qr.go 里 QRTTL 的
-                      说明），再显示成「300 秒后过期」就不好读了。超过一分钟按
-                      「X 分 Y 秒」显示，一分钟以内保持原来的秒数写法。 */}
-                  <p className="text-sm text-muted-foreground">
-                    {codeLeft >= 60
-                      ? t('codeExpiresInMinutes', { minutes: Math.floor(codeLeft / 60), seconds: codeLeft % 60 })
-                      : t('codeExpiresIn', { seconds: codeLeft })}
-                  </p>
-                  <p className="font-mono text-sm">{t('fingerprint')}: {myCode.fingerprint}</p>
-                  <div className="flex flex-wrap justify-center gap-2">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => {
-                        // 只有真写进去了才报"已复制"。原来无条件 toast——复制失败时
-                        // 界面照样说成功，用户去粘贴才发现是空的。
-                        void copyText(myCode.code).then((ok) => ok && toast.success(t('codeCopied')))
-                      }}
-                    >
-                      <Copy className="mr-2 h-4 w-4" />
-                      {t('copyCode')}
-                    </Button>
-                    {/* 换一张二维码。用途不只是"扫失败了重来"：这张码带的是
-                        一次性令牌，被别人拍到过、投屏时露出去过、或者只是挂太久
-                        了，都应该能当场作废重发一张，而不是等它自己过期。 */}
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => {
-                        void copyText(buildPairLink(myCode.code)).then((ok) => ok && toast.success(t('pairLinkCopied')))
-                      }}
-                    >
-                      <Link2 className="mr-2 h-4 w-4" />
-                      {t('copyPairLink')}
-                    </Button>
-                    <Button variant="outline" size="sm" onClick={showCode} disabled={busy}>
-                      {busy ? (
-                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      ) : (
-                        <RefreshCw className="mr-2 h-4 w-4" />
-                      )}
-                      {t('refreshCode')}
-                    </Button>
-                  </div>
-                </div>
-              )}
-            </TabsContent>
-
-            <TabsContent value="enter" className="space-y-3 pt-3">
-              <Label htmlFor="peer-code">{t('peerCodeLabel')}</Label>
-              <Input
-                id="peer-code"
-                value={peerCode}
-                onChange={(e) => setPeerCode(e.target.value)}
-                placeholder="CB1:...  /  tessera://pair?c=..."
-                className="font-mono text-sm"
-              />
-              <Button onClick={pairWithCode} disabled={pairing || !peerCode.trim()}>
-                {pairing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Link2 className="mr-2 h-4 w-4" />}
-                {t('pairNow')}
-              </Button>
-            </TabsContent>
-
-            <TabsContent value="nearby" className="space-y-2 pt-3">
-              <div className="flex flex-wrap items-center justify-end gap-2">
-                <div className="flex shrink-0 gap-2">
-                  <Button size="sm" variant="outline" onClick={() => void refreshNearby()} disabled={nearbyBusy || scanBusy}>
-                    {nearbyBusy ? <Loader2 className="mr-2 size-4 animate-spin" /> : <RefreshCw className="mr-2 size-4" />}
-                    {t('refresh')}
-                  </Button>
-                  {/* 主动扫描是「列表一直是空的」的正解，所以它是主按钮而不是
-                      藏在某个折叠区里。被动刷新只是把已经听到的读一遍，网络
-                      丢组播时刷一百次也还是空的。 */}
-                  <Button size="sm" onClick={scanLan} disabled={scanBusy}>
-                    {scanBusy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Radar className="mr-2 h-4 w-4" />}
-                    {t('scanLan')}
-                  </Button>
-                </div>
-              </div>
-
-              {nearby.length === 0 ? (
-                <div className="space-y-2 rounded border border-dashed p-4 text-center">
-                  <p className="text-sm text-muted-foreground">{scanBusy ? t('scanning') : t('nearbyEmpty')}</p>
-                  {!scanBusy && <p className="text-sm text-muted-foreground">{t('nearbyEmptyHint')}</p>}
-                </div>
-              ) : (
-                nearby.map((d) => {
-                  const Icon = DEVICE_ICON[d.type] ?? Laptop
-                  return (
-                    <div key={d.device_id} className="flex items-center gap-3 rounded-md border px-3 py-2">
-                      <Icon className="size-5 shrink-0 text-muted-foreground" />
-                      <div className="min-w-0 flex-1">
-                        <div className="truncate font-medium">{d.name}</div>
-                        {/* 名字必须标「未验证」：设备名是攻击者可以任意伪造的，
-                            把自己命名成「我的手机」很容易让人点错。真正能证明
-                            身份的是配对时两边核对的那组安全码。
-                            已配对的设备不用标——它的身份早就在配对时核实过了。 */}
-                        <div className="flex flex-wrap items-center gap-x-2 text-sm">
-                          {!d.paired && (
-                            <span className="text-amber-600 dark:text-amber-500">{t('nearbyUnverified')}</span>
-                          )}
-                          {d.addrs?.[0] && <span className="font-mono text-muted-foreground">{d.addrs[0]}</span>}
-                        </div>
-                      </div>
-                      {d.paired ? (
-                        <span className="flex shrink-0 items-center gap-1.5 rounded-md bg-emerald-500/10 px-2.5 py-1.5 text-sm font-medium text-emerald-600 dark:text-emerald-400">
-                          <CheckCircle2 className="size-3.5" />
-                          {t('nearbyAlreadyPaired')}
-                        </span>
-                      ) : (
-                        <Button size="sm" onClick={() => pairNearby(d)} disabled={pairing}>
-                          {pairing ? <Loader2 className="mr-2 size-4 animate-spin" /> : <Link2 className="mr-2 size-4" />}
-                          {t('pairNow')}
-                        </Button>
-                      )}
-                    </div>
-                  )
-                })
-              )}
-
-              {scanInfo && (
-                <p className="text-sm text-muted-foreground">
-                  {t('scanSummary', { probed: scanInfo.probed, subnets: scanInfo.subnets.join('、') || '—' })}
-                </p>
-              )}
-            </TabsContent>
-
-            {/* 手动输入地址：所有自动发现都失效时的兜底。只要两台机器 IP 能通
-                就一定连得上——不依赖组播、不依赖广播、也不要求在同一网段。 */}
-            <TabsContent value="manual" className="space-y-3 pt-3">
-              <div className="space-y-1.5">
-                <Label>{t('myAddressLabel')}</Label>
-                {endpoints.length === 0 ? (
-                  <p className="text-sm text-muted-foreground">{t('myAddressUnknown')}</p>
-                ) : (
-                  <div className="flex flex-wrap gap-2">
-                    {endpoints.map((addr) => (
-                      <Button
-                        key={addr}
-                        size="sm"
-                        variant="outline"
-                        className="font-mono text-sm"
-                        onClick={() => {
-                          void copyText(addr).then((ok) => ok && toast.success(t('addressCopied')))
-                        }}
-                      >
-                        <Copy className="mr-2 h-3.5 w-3.5" />
-                        {addr}
-                      </Button>
-                    ))}
-                  </div>
-                )}
-              </div>
-
-              <div className="space-y-1.5">
-                <Label htmlFor="manual-addr">{t('peerAddressLabel')}</Label>
-                <Input
-                  id="manual-addr"
-                  value={manualAddr}
-                  onChange={(e) => setManualAddr(e.target.value)}
-                  onKeyDown={(e) => e.key === 'Enter' && pairWithAddress()}
-                  placeholder="192.168.1.23"
-                  className="font-mono text-sm"
-                />
-                {/* 只写 IP 也行——守护进程会去问对方的固定信标端口要 QUIC 端口。
-                    以前这里硬性要求写成 IP:端口，而那个端口号只有对方界面上才
-                    看得到；这条路本来就是"别的都失效了"的兜底，不该再加一道
-                    用户跨不过去的门槛。 */}
-              </div>
-              <Button onClick={pairWithAddress} disabled={pairing || !manualAddr.trim()}>
-                {pairing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Link2 className="mr-2 h-4 w-4" />}
-                {t('pairNow')}
-              </Button>
-            </TabsContent>
-          </Tabs>
-      </PageSection>
-
-      {/* 连接诊断。默认收起——它是"连不上的时候才来"的东西，
-          而绝大多数打开这一页的时刻并不是那个时刻。 */}
-      <PageSection
-        icon={Stethoscope}
-        title={t('diagTitle')}
-        collapsible
-        defaultExpanded={false}
-        storageKey="crossdevice.diagnose"
-        contentClassName="space-y-3"
-      >
-          <div className="flex flex-wrap items-center gap-3">
-            <Button variant="outline" size="sm" onClick={runDiagnose} disabled={diagBusy}>
-              {diagBusy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Stethoscope className="mr-2 h-4 w-4" />}
-              {t('diagRun')}
-            </Button>
-            <span className="flex items-center gap-1.5 text-sm">
-              <ShieldCheck
-                className={cn(
-                  'h-3.5 w-3.5',
-                  firewall === 'allowed'
-                    ? 'text-emerald-500'
-                    : firewall === 'blocked'
-                      ? 'text-amber-500'
-                      : 'text-muted-foreground',
-                )}
-              />
-              <span className="text-muted-foreground">
-                {t(`firewallState.${firewall ?? 'unknown'}`, { defaultValue: t('firewallState.unknown') })}
-              </span>
-            </span>
-            {firewall === 'blocked' && (
-              <Button size="sm" variant="outline" onClick={fixFirewall} disabled={firewallBusy}>
-                {firewallBusy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-                {t('firewallFix')}
-              </Button>
-            )}
-          </div>
-
-          {diag === null ? (
-            <p className="text-sm text-muted-foreground">{t('diagIdle')}</p>
-          ) : (
-            <div className="space-y-1.5">
-              {diag.checks.map((c) => (
-                <div key={c.id} className="flex items-start gap-2 text-sm">
-                  {c.status === 'ok' ? (
-                    <CheckCircle2 className="mt-0.5 size-4 shrink-0 text-emerald-500" />
-                  ) : c.status === 'info' ? (
-                    <Info className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
-                  ) : c.status === 'warn' ? (
-                    <AlertTriangle className="mt-0.5 size-4 shrink-0 text-amber-500" />
-                  ) : (
-                    <Ban className="mt-0.5 size-4 shrink-0 text-destructive" />
-                  )}
-                  <div className="min-w-0">
-                    {/* 诊断结论在这里翻译，不在 Go 里拼字符串：守护进程不知道
-                        界面是什么语言，让它产出人话等于把六种语言写死在后端。 */}
-                    <div>{t(`diag.${c.id}.${c.status}`, { ...c.values, defaultValue: c.id })}</div>
-                    {/* 修复建议只给真正需要用户动手的项。info 是"一切正常，只是
-                        对面不在"，给它配一句"请检查…"反而是在制造焦虑。 */}
-                    {(c.status === 'warn' || c.status === 'fail') && (
-                      <div className="text-sm text-muted-foreground">
-                        {t(`diag.${c.id}.fix`, { ...c.values, defaultValue: '' })}
-                      </div>
-                    )}
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-      </PageSection>
-
-      {/* 跨网络连接。默认收起：两台设备在同一个 Wi-Fi 下根本不需要它。
-          两端必须填**同一个**中转点地址才能互相找到，所以桌面和手机都得有这个入口。 */}
-      <PageSection
-        icon={Globe}
-        title={t('crossnetTitle')}
-        collapsible
-        defaultExpanded={false}
-        storageKey="crossdevice.crossnet"
-        contentClassName="space-y-3"
-      >
-          <p className="text-sm text-muted-foreground">{t('crossnetExplain')}</p>
-
-          <Alert>
-            <AlertDescription>
-              {status.options.rendezvous_addr
-                ? t('crossnetStatusOn', { addr: status.options.rendezvous_addr })
-                : t('crossnetStatusOff')}
-            </AlertDescription>
-          </Alert>
-
-          <div className="space-y-1">
-            <Label htmlFor="rv-addr">{t('crossnetAddr')}</Label>
-            <Input
-              id="rv-addr"
-              value={rvAddr}
-              onChange={(e) => setRvAddr(e.target.value)}
-              placeholder="example.com:47820"
-              spellCheck={false}
-            />
-            <p className="text-sm text-muted-foreground">{t('crossnetAddrHelp')}</p>
-          </div>
-
-          <div className="space-y-1">
-            <Label htmlFor="rv-secret">{t('crossnetSecret')}</Label>
-            <Input
-              id="rv-secret"
-              type="password"
-              value={rvSecret}
-              onChange={(e) => setRvSecret(e.target.value)}
-              placeholder={status.options.rendezvous_secret_set ? '••••••••' : ''}
-              spellCheck={false}
-            />
-            <p className="text-sm text-muted-foreground">{t('crossnetSecretHelp')}</p>
-          </div>
-
-          <label className="flex items-start gap-3 text-sm">
-            <Checkbox
-              checked={status.options.relay_on_metered}
-              onCheckedChange={(v) => setOption({ relay_on_metered: v === true })}
-            />
-            <span>
-              <span className="font-medium">{t('crossnetMetered')}</span>
-              <span className="block text-sm text-muted-foreground">{t('crossnetMeteredDesc')}</span>
-            </span>
-          </label>
-
-          <div className="flex gap-2 pt-1">
-            <Button size="sm" onClick={saveCrossnet} disabled={busy || !rvAddr.trim()}>
-              {t('crossnetSave')}
-            </Button>
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={disableCrossnet}
-              disabled={busy || !status.options.rendezvous_addr}
-            >
-              {t('crossnetDisable')}
-            </Button>
-          </div>
-      </PageSection>
-
-      {/* 选项。设置类内容，默认收起。 */}
-      <PageSection
-        icon={SlidersHorizontal}
-        title={t('options')}
-        collapsible
-        defaultExpanded={false}
-        storageKey="crossdevice.options"
-        contentClassName="space-y-3"
-      >
-          <label className="flex items-start gap-3 text-sm">
-            <Checkbox
-              checked={status.options.clip_sync}
-              onCheckedChange={(v) => setOption({ clip_sync: v === true })}
-            />
-            <span>
-              <span className="font-medium">{t('optClipSync')}</span>
-              <span className="block text-sm text-muted-foreground">{t('optClipSyncDesc')}</span>
-            </span>
-          </label>
-          <label className="flex items-start gap-3 text-sm">
-            <Checkbox
-              checked={status.options.clip_plain_only === true}
-              onCheckedChange={(v) => setOption({ clip_plain_only: v === true })}
-            />
-            <span>
-              <span className="font-medium">{t('optClipPlainOnly')}</span>
-              <span className="block text-sm text-muted-foreground">{t('optClipPlainOnlyDesc')}</span>
-            </span>
-          </label>
-          <label className="flex items-start gap-3 text-sm">
-            <Checkbox
-              checked={status.options.auto_accept}
-              onCheckedChange={(v) => setOption({ auto_accept: v === true })}
-            />
-            <span>
-              <span className="font-medium">{t('optAutoAccept')}</span>
-              <span className="block text-sm text-muted-foreground">{t('optAutoAcceptDesc')}</span>
-            </span>
-          </label>
-          <div className="flex items-start gap-2 pt-1">
-            <div className="min-w-0 flex-1">
-              <div className="text-sm font-medium">{t('downloadDir')}</div>
-              <div className="truncate font-mono text-sm text-muted-foreground" title={status.options.download_dir}>
-                {status.options.download_dir}
-              </div>
-            </div>
-            <Button size="sm" variant="outline" onClick={pickDownloadDir} disabled={busy}>
-              <FolderOpen className="mr-2 h-4 w-4" />
-              {t('changeDownloadDir')}
-            </Button>
-          </div>
-      </PageSection>
-
-      {/* 本机身份。设备名、指纹、端口——排查时才看一眼的参考信息，默认收起。
-          跟安卓端把「本机身份」沉到设置区是同一个判断。 */}
-      <PageSection
-        icon={Monitor}
-        title={t('thisDevice')}
-        collapsible
-        defaultExpanded={false}
-        storageKey="crossdevice.thisDevice"
-        contentClassName="grid gap-2 text-sm sm:grid-cols-3"
-      >
-          <div>
-            <div className="text-muted-foreground">{t('deviceName')}</div>
-            {renamingDevice ? (
-              <div className="flex items-center gap-1 pt-0.5">
-                <Input
-                  value={draftName}
-                  onChange={(e) => setDraftName(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') void saveDeviceName()
-                    if (e.key === 'Escape') setRenamingDevice(false)
-                  }}
-                  autoFocus
-                  maxLength={64}
-                  className="h-7 text-sm"
-                />
-                <Button size="sm" className="h-7 px-2" onClick={saveDeviceName} disabled={busy}>
-                  {t('save')}
-                </Button>
-              </div>
-            ) : (
-              <div className="flex items-center gap-1">
-                <span className="font-medium">{status.name}</span>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      className="h-6 w-6 p-0"
-                      aria-label={t('renameThisDevice')}
-                      onClick={() => {
-                        setDraftName(status.name)
-                        setRenamingDevice(true)
-                      }}
-                    >
-                      <Pencil className="h-3.5 w-3.5" />
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent>{t('renameThisDevice')}</TooltipContent>
-                </Tooltip>
-              </div>
-            )}
-          </div>
-          <div>
-            <div className="text-muted-foreground">{t('fingerprint')}</div>
-            <div className="font-mono text-sm">{status.fingerprint}</div>
-          </div>
-          <div>
-            <div className="text-muted-foreground">{t('listeningPort')}</div>
-            <div className="font-mono text-sm">{status.port}</div>
-          </div>
-      </PageSection>
-
-      {/* 跨设备剪贴板时间线：任一设备最近复制过的内容，挑一条再次粘贴。
-          排在「本机」之后：它是翻看历史用的固定大小窗口（可全屏），不是天天要点的动作，
-          放在前面只会把传输、配对这些常用块挤到屏幕下方。 */}
-      <ClipTimelinePanel available={available === true} />
-
-      {/* 配对安全码确认。这一步不能省：设备名可以随便伪造，
-          只有两端比对同一组安全码才能挡住中间人。 */}
+      {/* 配对安全码确认：设备名可伪造，只有两端比对同一组安全码才能挡住中间人。 */}
       <Dialog open={!!pairReq} onOpenChange={(o) => !o && respondPair(false)}>
         <DialogContent>
           <DialogHeader>
@@ -2655,13 +2658,10 @@ export function CrossDeviceScreen() {
                 <div className="font-medium">{pairReq.name}</div>
                 <div className="font-mono text-sm text-muted-foreground">{pairReq.fingerprint}</div>
               </div>
-              <div className="rounded-lg border bg-muted/40 p-5 text-center">
+              <div className="rounded-lg border bg-muted/40 p-5 text-center" data-hint={t('confirmPairHint')}>
                 <div className="font-mono text-3xl tracking-[0.3em]">{pairReq.sas_digits}</div>
                 <div className="mt-2 text-3xl">{pairReq.sas_emoji.join(' ')}</div>
               </div>
-              <Alert>
-                <AlertDescription>{t('confirmPairHint')}</AlertDescription>
-              </Alert>
             </div>
           )}
           <DialogFooter>
@@ -2673,7 +2673,6 @@ export function CrossDeviceScreen() {
         </DialogContent>
       </Dialog>
 
-      {/* 接收文件确认 */}
       <Dialog open={!!xferReq} onOpenChange={(o) => !o && respondTransfer(false)}>
         <DialogContent>
           <DialogHeader>

@@ -91,7 +91,14 @@ function IconAction({
  */
 const WINDOW_HEIGHT = 'h-[min(32rem,65vh)]'
 
-export function ClipTimelinePanel({ available }: { available: boolean }) {
+export function ClipTimelinePanel({
+  available,
+  variant = 'section',
+}: {
+  available: boolean
+  /** fill：放进全屏面板，铺满高度，不带分区标题与说明。 */
+  variant?: 'section' | 'fill'
+}) {
   const { t, i18n } = useTranslation('crossdevice')
   const [items, setItems] = useState<ClipTimelineItem[]>([])
   const [clipSync, setClipSync] = useState(true)
@@ -289,6 +296,18 @@ export function ClipTimelinePanel({ available }: { available: boolean }) {
         })}
       </ul>
     )
+
+  if (variant === 'fill') {
+    return (
+      <div className="flex h-full min-h-0 flex-col gap-3">
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="min-w-0 flex-1">{filterBar()}</div>
+          <div className="flex items-center gap-1">{refreshAndClear}</div>
+        </div>
+        <div className="min-h-0 flex-1 overflow-hidden rounded-xl border bg-card">{list('line-clamp-6')}</div>
+      </div>
+    )
+  }
 
   return (
     <>

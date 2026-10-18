@@ -1471,21 +1471,101 @@ class MainActivity : AppCompatActivity() {
         queued.forEach { svc.request(it) }
     }
 
+    /** 「发送剪贴板」入口：当前剪贴板 + 时间线（新到旧）做候选，弹选择框。 */
     private fun sendClipboard() {
         // 必须发多表示结构：Go 侧读的是 reps，只给 text 的话它会当成空内容
         // 直接回绝（详见 ClipboardBridge.buildTextReps 的说明）。
         val payload = ClipboardBridge.readAsReps(this)
-        if (payload == null) {
-            snack(getString(R.string.clipboard_empty))
-            return
+        var shown = false
+        fun open(items: org.json.JSONArray?) {
+            if (shown) return
+            shown = true
+            val entries = ArrayList<ClipPickEntry>()
+            if (payload != null) {
+                val first = payload.optJSONArray("reps")?.optJSONObject(0)
+                val text = if (payload.optString("preferred").startsWith("image/")) {
+                    getString(R.string.clip_timeline_image)
+                } else {
+                    runCatching {
+                        String(android.util.Base64.decode(first?.optString("data").orEmpty(), android.util.Base64.DEFAULT), Charsets.UTF_8)
+                    }.getOrDefault("").ifEmpty { getString(R.string.clip_timeline_no_preview) }
+                }
+                entries += ClipPickEntry(null, getString(R.string.clip_pick_current), text)
+            }
+            for (i in 0 until (items?.length() ?: 0)) {
+                val item = items?.optJSONObject(i) ?: continue
+                if (!item.optBoolean("available", true)) continue
+                val source = if (item.optBoolean("local")) getString(R.string.this_device_short) else item.optString("source_name")
+                val meta = buildString {
+                    append(source).append(" · ").append(relativeAgo(item.optLong("at")))
+                    append(" · ").append(android.text.format.Formatter.formatShortFileSize(this@MainActivity, item.optLong("size")))
+                }
+                val preview = item.optString("preview").ifEmpty {
+                    if (item.optString("preferred").startsWith("image/")) getString(R.string.clip_timeline_image)
+                    else getString(R.string.clip_timeline_no_preview)
+                }
+                entries += ClipPickEntry(item.optString("item_id"), meta, preview)
+            }
+            if (entries.isEmpty()) {
+                snack(getString(R.string.clipboard_empty))
+                return
+            }
+            ClipSendPicker.show(this, entries) { picked -> sendPicked(picked, payload) }
         }
-        // 同步进来的内容已由 SyncService 写入系统剪贴板；仅靠 Go 的 5 秒回环抑制，用户稍后切回前台会把它当
-        // 新复制再广播。
-        // 记录本机实际发送的 payload，使 Activity 生命周期内能跳过这份内容。
-        ClipDedupe.lastKey = ClipDedupe.key(payload)
-        // force：手动按的发送，接收端不做回环去重，同一内容也照发不误。
-        send("send_clip", payload.put("force", true))
-        snack(getString(R.string.clip_sent))
+        val started = SyncService.call("clip_timeline", JSONObject()) { res ->
+            val arr = res.optJSONObject("result")?.optJSONArray("items")
+            runOnUiThread { open(arr) }
+        }
+        if (!started) open(null)
+    }
+
+    /** 按时间从旧到新逐条发送（时间线是新到旧，当前剪贴板最新排最后），前一条回来再发下一条。 */
+    private fun sendPicked(picked: List<ClipPickEntry>, payload: JSONObject?) {
+        val queue = picked.filter { it.itemId != null }.reversed() + picked.filter { it.itemId == null }
+        var ok = 0
+        var firstError: String? = null
+        fun finish() {
+            snack(firstError ?: getString(R.string.clip_pick_sent, ok))
+        }
+        fun next(i: Int) {
+            if (i >= queue.size) {
+                finish()
+                return
+            }
+            val e = queue[i]
+            if (e.itemId == null) {
+                if (payload != null) {
+                    // 记录本机实际发送的 payload，使 Activity 生命周期内能跳过这份内容。
+                    ClipDedupe.lastKey = ClipDedupe.key(payload)
+                    // force：手动按的发送，接收端不做回环去重，同一内容也照发不误。
+                    send("send_clip", payload.put("force", true))
+                    ok++
+                }
+                next(i + 1)
+                return
+            }
+            val params = JSONObject().put("item_id", e.itemId).put("broadcast", true)
+            val sent = SyncService.call("clip_timeline_apply", params) { res ->
+                runOnUiThread {
+                    if (res.optBoolean("ok", true)) {
+                        ok++
+                    } else if (firstError == null) {
+                        val err = res.optString("error")
+                        firstError = if (err.contains("clip_source_offline")) {
+                            getString(R.string.clip_timeline_offline, e.meta.substringBefore(" · "))
+                        } else {
+                            err.ifEmpty { getString(R.string.clip_timeline_failed) }
+                        }
+                    }
+                    next(i + 1)
+                }
+            }
+            if (!sent) {
+                if (firstError == null) firstError = getString(R.string.starting)
+                next(i + 1)
+            }
+        }
+        next(0)
     }
 
     /**
