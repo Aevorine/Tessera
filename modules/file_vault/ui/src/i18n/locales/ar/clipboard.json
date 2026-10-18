@@ -198,5 +198,6 @@
   "facetDay.yesterday": "أمس",
   "facetDay.week": "آخر 7 أيام",
   "facetDay.month": "آخر 30 يومًا",
-  "facetDay.older": "أقدم"
+  "facetDay.older": "أقدم",
+  "copyAndPreview": "نسخ ومعاينة"
 }

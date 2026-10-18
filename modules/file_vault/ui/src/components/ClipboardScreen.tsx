@@ -350,10 +350,7 @@ export function ClipboardScreen({
     return result
   }, [scopeList, viewMode, debouncedSearch, category, pinnedOnly])
 
-  /*
-    右栏默认落在第一条，与密码页同规则：否则进页面时 1266×590 的右栏只有一行「从左边挑一条」。
-    不改变「点一行=立刻粘贴」：自动选中只影响右栏显示，不触发粘贴，是显示层默认值而非操作。
-  */
+  // 默认预览首条；自动选中不改动剪贴板。
   useEffect(() => {
     if (loading) return
     if (detailId !== null && filtered.some((e) => e.id === detailId)) return
@@ -488,14 +485,23 @@ export function ClipboardScreen({
     void copyText(result).then((ok) => ok && toast.success(t('quickConvertCopiedToast')))
   }
 
-  async function handlePasteClick(entry: ClipboardEntry) {
-    const res = await vaultApi.call('clipboard_paste', { id: entry.id })
-    if (!res.ok) {
-      toast.error(t('pasteFailedToast'), { description: translateError(res.error, res.error_params) })
-      return
+  function activateHistoryEntry(entry: ClipboardEntry) {
+    setDetailId(entry.id)
+    void handlePasteClick(entry, false)
+  }
+
+  async function handlePasteClick(entry: ClipboardEntry, autoPaste = true) {
+    try {
+      const res = await vaultApi.call('clipboard_paste', { id: entry.id, auto_paste: autoPaste })
+      if (!res.ok) {
+        toast.error(t('pasteFailedToast'), { description: translateError(res.error, res.error_params) })
+        return
+      }
+      // pasted=false 不是失败：Windows 阻止了自动粘贴（或没有先前聚焦的窗口），内容仍在剪贴板上。
+      toast.success(res.pasted ? t('pastedToast') : t('copiedToast'), { id: 'clipboard-copy' })
+    } catch {
+      toast.error(t('pasteFailedToast'))
     }
-    // pasted=false 不是失败：Windows 阻止了自动粘贴（或没有先前聚焦的窗口），内容仍在剪贴板上。
-    toast.success(res.pasted ? t('pastedToast') : t('copiedToast'))
   }
 
   async function handleDelete(entry: ClipboardEntry) {
@@ -927,8 +933,6 @@ export function ClipboardScreen({
     getItemKey: useCallback((index: number) => filtered[index]?.id ?? index, [filtered]),
   })
 
-  // 历史记录条目本身是「点了直接粘贴」的可点击区域（见 ClipboardRow onClick），
-  // 与密码页「点开详情面板」会冲突，所以用加宽而非新增详情面板。
   // ---- 一行顶栏 ----
   // 分类等功能做成顶栏上的菜单，当前状态直接写在触发器上（「分类 · 链接 › github.com」「选择 · 已选
   // 3」），不展开就知道筛选与选择状态。
@@ -1365,10 +1369,7 @@ export function ClipboardScreen({
           放会直接失效。而置顶项天然是少量（用户手动挑出来的几条到几十条），虚拟
           滚动在这个规模上省不下任何可感知的开销，用它换来的复杂度不划算。
           非置顶视图（可能有几千条）继续用虚拟滚动，两条路径互不干扰。 */}
-      {/* 左选右看，走全应用共用的 <Workbench>。
-          **行为一个字都没改**：点一行仍然是立刻粘贴。右栏由行内那颗独立的
-          「查看」按钮喂——见 ClipboardRow 的 onOpenDetail 注释。原先那句
-          "详情面板会和点击粘贴打架"仍然成立，所以详情做成加法而不是替换。 */}
+      {/* 历史记录单击复制并预览；显式粘贴仍在详情工具栏。 */}
       <Workbench
         listWidth="wide"
         listRef={scrollParentRef}
@@ -1426,6 +1427,7 @@ export function ClipboardScreen({
                     onOpenDetail={() => setDetailId(entry.id)}
                     active={detailId === entry.id}
                     onPaste={() => handlePasteClick(entry)}
+                    onActivate={() => activateHistoryEntry(entry)}
                     onTogglePinned={() => togglePinned(entry)}
                     onToggleHidden={() => toggleHidden(entry)}
                     onDelete={() => handleDelete(entry)}
@@ -1487,6 +1489,7 @@ export function ClipboardScreen({
                     onOpenDetail={() => setDetailId(entry.id)}
                     active={detailId === entry.id}
                       onPaste={() => handlePasteClick(entry)}
+                      onActivate={() => activateHistoryEntry(entry)}
                       onTogglePinned={() => togglePinned(entry)}
                       onToggleHidden={() => toggleHidden(entry)}
                       onDelete={() => handleDelete(entry)}
@@ -1974,6 +1977,7 @@ function ClipboardRow({
   selected,
   onToggleSelected,
   onPaste,
+  onActivate,
   onTogglePinned,
   onToggleHidden,
   onEdit,
@@ -1992,6 +1996,7 @@ function ClipboardRow({
   selected?: boolean
   onToggleSelected?: (checked: boolean) => void
   onPaste?: () => void
+  onActivate?: () => void
   onTogglePinned?: () => void
   onToggleHidden?: () => void
   onEdit?: () => void
@@ -2004,17 +2009,15 @@ function ClipboardRow({
   onPartialCopy?: () => void
   /** 点缩略图时打开原图查看器。不传就退回原来的静态缩略图。 */
   onOpenImage?: (entry: ClipboardEntry) => void
-  /**
-   * 把这一条送进右栏详情，必须是独立按钮而非整行点击：整行点击 = 立刻粘贴，是剪贴板历史的全部意义，
-   * 改成「选中」会让常用动作从一次点击变两次。详情是加法，行为不变。
-   */
+  /** 仅查看详情，不改动剪贴板。 */
   onOpenDetail?: () => void
   /** 这一条是不是正显示在右栏里。 */
   active?: boolean
 }) {
   const { t } = useTranslation('clipboard')
   const Icon = TYPE_ICONS[entry.content_type]
-  const clickable = Boolean(onPaste)
+  const activate = onActivate ?? onPaste
+  const clickable = Boolean(activate)
   const sanitizedHtml = useMemo(
     () => (entry.content_format === 'rich' && entry.content_text ? sanitizeRichText(entry.content_text) : null),
     [entry.content_format, entry.content_text],
@@ -2023,8 +2026,13 @@ function ClipboardRow({
     <div
       role={clickable ? 'button' : undefined}
       tabIndex={clickable ? 0 : undefined}
-      onClick={onPaste}
-      onKeyDown={(e) => clickable && e.key === 'Enter' && onPaste?.()}
+      onClick={activate}
+      title={onActivate ? t('copyAndPreview') : undefined}
+      onKeyDown={(e) => {
+        if (e.target !== e.currentTarget || !activate || (e.key !== 'Enter' && e.key !== ' ')) return
+        e.preventDefault()
+        activate()
+      }}
       className={cn(
         'flex items-start gap-3 rounded border p-3 text-left transition-colors',
         clickable && 'cursor-pointer hover:bg-accent/50',
@@ -2066,15 +2074,15 @@ function ClipboardRow({
               // 加载后变高，连续几张图会互相压住。
               // 缩略图统一压到 256×256 内（clipboard/service.py THUMBNAIL_MAX_SIZE），固定 8rem
               // 见方的框不裁内容且行高从第一帧确定。
-              // 点缩略图 = 打开查看器看原图，不是粘贴；stopPropagation 必需，否则会冒泡到整行的「点击即粘贴」。
+              // 历史图片与整行同样复制并预览；其他视图保留原图查看器。
               <button
                 type="button"
                 className="flex size-32 items-center justify-center overflow-hidden rounded border bg-surface transition-colors hover:border-primary"
-                title={onOpenImage ? t('imageViewerOpenHint') : undefined}
+                title={onActivate ? t('copyAndPreview') : onOpenImage ? t('imageViewerOpenHint') : undefined}
                 onClick={(e) => {
-                  if (!onOpenImage) return
                   e.stopPropagation()
-                  onOpenImage(entry)
+                  if (onActivate) onActivate()
+                  else onOpenImage?.(entry)
                 }}
               >
                 <img
