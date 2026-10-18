@@ -198,5 +198,6 @@
   "facetDay.yesterday": "Yesterday",
   "facetDay.week": "Last 7 days",
   "facetDay.month": "Last 30 days",
-  "facetDay.older": "Older"
+  "facetDay.older": "Older",
+  "copyAndPreview": "Copy and preview"
 }

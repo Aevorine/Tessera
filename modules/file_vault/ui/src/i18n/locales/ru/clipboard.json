@@ -198,5 +198,6 @@
   "facetDay.yesterday": "Вчера",
   "facetDay.week": "За 7 дней",
   "facetDay.month": "За 30 дней",
-  "facetDay.older": "Старше"
+  "facetDay.older": "Старше",
+  "copyAndPreview": "Копировать и просмотреть"
 }

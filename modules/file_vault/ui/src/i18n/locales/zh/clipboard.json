@@ -198,5 +198,6 @@
   "facetDay.yesterday": "昨天",
   "facetDay.week": "近 7 天",
   "facetDay.month": "近 30 天",
-  "facetDay.older": "更早"
+  "facetDay.older": "更早",
+  "copyAndPreview": "复制并查看"
 }
