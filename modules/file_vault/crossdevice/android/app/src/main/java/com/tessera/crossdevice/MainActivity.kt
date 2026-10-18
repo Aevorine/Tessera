@@ -277,6 +277,7 @@ class MainActivity : AppCompatActivity() {
         }
         ui.btnShowCode.setOnClickListener {
             // 码在「配对」面板里显示：先展开面板，码回来就填进去。
+            myCodeTimer.stop()
             panels.open(P_PAIR, it)
             send("show_pairing_code", JSONObject().put("mode", "long"))
         }
@@ -333,7 +334,8 @@ class MainActivity : AppCompatActivity() {
     private fun wirePanels() {
         panels.register(P_PAIR, ui.panelPair, onOpen = {
             if (nearbyCache.isEmpty()) send("list_nearby")
-        })
+            if (activityVisible && myCodeTimer.isActive) myCodeTimer.resume()
+        }, onClose = { myCodeTimer.pause() })
         panels.register(P_CLIP, ui.panelClip, onOpen = {
             refreshImeStatus()
             renderTimeline(lastTimeline)
@@ -463,6 +465,18 @@ class MainActivity : AppCompatActivity() {
 
     /** 生成了配对码却折叠着等于白生成，所以 showQr 要能把它展开。 */
     private var myCodeSection: Section? = null
+
+    /** 「我的配对码」倒计时：到期时配对面板开着就自动换新码，否则等面板再打开时换。 */
+    private val myCodeTimer = ExpiryCountdown {
+        ui.textCodeExpiry.setText(R.string.code_refreshing)
+        if (activityVisible && panels.isOpen(P_PAIR)) send("show_pairing_code", JSONObject().put("mode", "long"))
+    }
+
+    /** 数字码对话框倒计时：对话框开着时到期自动换新码。 */
+    private val shortCodeTimer = ExpiryCountdown {
+        shortCodeExpiryView?.setText(R.string.code_refreshing)
+        if (activityVisible && shortCodeView != null) send("show_short_code")
+    }
 
     // ---- 跨网络连接 ----
 
@@ -1725,6 +1739,10 @@ class MainActivity : AppCompatActivity() {
                 return
             }
             "paired", "state" -> {
+                if (obj.optString("event") == "paired" && myCodeTimer.isActive) {
+                    myCodeTimer.stop()
+                    ui.cardMyCode.visibility = android.view.View.GONE
+                }
                 val devices = obj.optJSONObject("data")?.optJSONArray("devices")
                 if (devices != null) renderDevices(devices) else send("status")
                 return
@@ -1868,8 +1886,9 @@ class MainActivity : AppCompatActivity() {
                 if (code.isNotEmpty()) {
                     shortCodeView?.text = code
                     val expiresAt = obj.optJSONObject("result")?.optLong("expires_at") ?: 0L
-                    val leftSec = ((expiresAt - System.currentTimeMillis()) / 1000).coerceAtLeast(0)
-                    shortCodeExpiryView?.text = getString(R.string.short_code_expires_in, leftSec / 60, leftSec % 60)
+                    shortCodeExpiryView?.let { v ->
+                        shortCodeTimer.start(v, expiresAt) { getString(R.string.code_expires_in, it) }
+                    }
                 }
                 // 不落到下面的通用分支：那里见到 code 就当配对二维码画，6 位数字码会被画成一张扫不通的码。
                 return
@@ -2279,6 +2298,7 @@ class MainActivity : AppCompatActivity() {
         // 关掉对话框就停止对外应答：界面都不在了还继续让别人搜得到，
         // 是用户完全预期不到的。
         dialog.setOnDismissListener {
+            shortCodeTimer.stop()
             shortCodeView = null
             shortCodeExpiryView = null
             send("clear_short_code")
@@ -2425,8 +2445,8 @@ class MainActivity : AppCompatActivity() {
         // 刚生成的码要是折叠着，等于白生成——用户按了「出示我的码」，
         // 屏幕上却只多出一行标题。
         myCodeSection?.expand(this)
-        val left = ((expiresAt - System.currentTimeMillis()) / 1000).coerceAtLeast(0)
-        ui.textCodeExpiry.text = getString(R.string.code_expires_in, left.toInt())
+        myCodeTimer.start(ui.textCodeExpiry, expiresAt) { getString(R.string.code_expires_in, it) }
+        if (!activityVisible || !panels.isOpen(P_PAIR)) myCodeTimer.pause()
     }
 
     private fun showSasDialog(data: JSONObject) {
@@ -2474,6 +2494,8 @@ class MainActivity : AppCompatActivity() {
             metricsHandler.post(refreshMetrics)
         }
         statusPollHandler.post(refreshStatusPoll)
+        if (myCodeTimer.isActive && panels.isOpen(P_PAIR)) myCodeTimer.resume()
+        if (shortCodeTimer.isActive) shortCodeTimer.resume()
     }
 
     override fun onResume() {
@@ -2494,6 +2516,8 @@ class MainActivity : AppCompatActivity() {
         activityVisible = false
         metricsHandler.removeCallbacks(refreshMetrics)
         statusPollHandler.removeCallbacks(refreshStatusPoll)
+        myCodeTimer.pause()
+        shortCodeTimer.pause()
         super.onStop()
     }
 
