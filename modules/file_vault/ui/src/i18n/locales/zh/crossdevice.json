@@ -298,5 +298,8 @@
   "badgeFirewallOk": "防火墙已放行",
   "badgeFirewallBlocked": "防火墙拦截",
   "badgeAutoAccept": "自动接收",
-  "badgeAskAccept": "接收前询问"
+  "badgeAskAccept": "接收前询问",
+  "openDownloadDir": "打开文件夹",
+  "openDownloadDirFailed": "无法打开收件文件夹。",
+  "recvDoneToast": "已收到 {{name}}"
 }

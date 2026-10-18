@@ -298,5 +298,8 @@
   "badgeFirewallOk": "Pare-feu autorise",
   "badgeFirewallBlocked": "Pare-feu bloque",
   "badgeAutoAccept": "Acceptation auto",
-  "badgeAskAccept": "Demander avant réception"
+  "badgeAskAccept": "Demander avant réception",
+  "openDownloadDir": "Ouvrir le dossier",
+  "openDownloadDirFailed": "Impossible d’ouvrir le dossier des fichiers reçus.",
+  "recvDoneToast": "Fichier reçu : {{name}}"
 }

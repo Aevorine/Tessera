@@ -291,6 +291,8 @@ class MainActivity : AppCompatActivity() {
                 pickFilesToSend.launch(arrayOf("*/*"))
             }
         }
+        ui.btnOpenSaveDir.setOnClickListener { ReceivedFolder.open(this) }
+        ui.textSaveTo.setOnClickListener { ReceivedFolder.open(this) }
         ui.btnPickSaveDir.setOnClickListener { pickSaveFolder.launch(null) }
         ui.btnAppearance.setOnClickListener { showAppearanceSettings() }
         ui.btnGuide.setOnClickListener { FirstRunGuide.show(this) }

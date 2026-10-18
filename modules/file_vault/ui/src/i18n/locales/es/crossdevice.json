@@ -298,5 +298,8 @@
   "badgeFirewallOk": "Cortafuegos permite",
   "badgeFirewallBlocked": "Cortafuegos bloquea",
   "badgeAutoAccept": "Aceptación automática",
-  "badgeAskAccept": "Preguntar antes de recibir"
+  "badgeAskAccept": "Preguntar antes de recibir",
+  "openDownloadDir": "Abrir carpeta",
+  "openDownloadDirFailed": "No se pudo abrir la carpeta de archivos recibidos.",
+  "recvDoneToast": "Recibido: {{name}}"
 }

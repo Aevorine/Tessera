@@ -8,4 +8,6 @@
     <files-path name="clipimg" path="clipimg/" />
     <!-- 超出系统剪贴板单次传递上限的长文本，改以 content:// 形式放进剪贴板。 -->
     <files-path name="cliptext" path="cliptext/" />
+    <!-- 收到的文件（默认存放处），「打开收件文件夹」里点开要交给别的应用。 -->
+    <files-path name="received" path="downloads/" />
 </paths>

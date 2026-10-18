@@ -27,5 +27,9 @@ export const crossDeviceApi: CrossDeviceApi = {
     raw.firewallAllow().catch((error: unknown) => {
       throw unwrapIpcError(error)
     }),
+  openDownloadDir: () =>
+    raw.openDownloadDir().catch((error: unknown) => {
+      throw unwrapIpcError(error)
+    }),
   onEvent: (callback) => raw.onEvent(callback),
 }

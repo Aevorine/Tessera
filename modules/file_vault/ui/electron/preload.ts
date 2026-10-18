@@ -73,6 +73,9 @@ contextBridge.exposeInMainWorld('crossDeviceAPI', {
   firewallAllow: (): Promise<{ ok: boolean; error?: string }> =>
     ipcRenderer.invoke('crossdevice:firewall-allow'),
 
+  openDownloadDir: (): Promise<{ ok: boolean; error?: string }> =>
+    ipcRenderer.invoke('crossdevice:open-download-dir'),
+
   onEvent: (callback: (payload: { event: string; data?: Record<string, unknown> }) => void) => {
     const listener = (_e: Electron.IpcRendererEvent, payload: { event: string; data?: Record<string, unknown> }) =>
       callback(payload)

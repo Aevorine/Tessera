@@ -70,6 +70,7 @@ const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(function Button(
       data-size={size}
       className={cn(buttonVariants({ variant, size, className }))}
       {...props}
+      title={props.title ?? (String(size).startsWith("icon") ? props["aria-label"] : undefined)}
     />
   )
 })

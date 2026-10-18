@@ -1229,6 +1229,18 @@ function createWindow() {
     return allowThroughFirewall(CROSSDEVICE_COMMAND)
   })
 
+  // 在资源管理器里打开收件目录。路径取自守护进程的当前设置，不收渲染进程传来的路径。
+  ipcMain.handle('crossdevice:open-download-dir', async (event): Promise<{ ok: boolean; error?: string }> => {
+    assertTrustedRenderer(event)
+    if (!crossDevice) return { ok: false, error: '跨设备服务未启动' }
+    const s = await crossDevice.call<{ options?: { download_dir?: string } }>('status')
+    const dir = s.options?.download_dir
+    if (!dir) return { ok: false, error: 'download_dir_unset' }
+    await fs.promises.mkdir(dir, { recursive: true })
+    const err = await shell.openPath(dir)
+    return err ? { ok: false, error: err } : { ok: true }
+  })
+
   ipcMain.handle('vault:call', async (event, method: VaultMethodName, params: unknown, progressToken?: string) => {
     assertTrustedRenderer(event)
     if (!bridge) throw new Error('Python backend is not running')
