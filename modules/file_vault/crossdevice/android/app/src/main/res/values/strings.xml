@@ -224,7 +224,6 @@
     <string name="short_code_generate">显示配对码</string>
     <string name="short_code_enter_title">输入对方设备的配对码</string>
     <string name="short_code_placeholder">000000</string>
-    <string name="short_code_expires_in">%1$d 分 %2$d 秒后过期</string>
     <string name="short_code_searching">正在局域网里找显示这个码的设备…</string>
     <string name="short_code_needs_six">请输入 6 位数字</string>
     <string name="short_code_safety_hint">这几位数字只决定「跟哪台设备说话」。对方仍然要在自己屏幕上点同意，然后两边会各显示同一组安全码供你核对——挡住冒充者的是那次核对，不是数字有多长。</string>
@@ -372,7 +371,8 @@
     <string name="diag_mdns_peers_info">当前局域网里还没有别的 Tessera 设备在广播。</string>
     <string name="diag_lan_scan_info">扫描了 %1$s 个地址（%2$s），当前没有别的设备在线。</string>
 
-    <string name="code_expires_in">%1$d 秒后过期</string>
+    <string name="code_expires_in">%1$s 后过期</string>
+    <string name="code_refreshing">正在换新码…</string>
     <string name="files_skipped">有 %1$d 项发不出去：%2$s（空文件夹或读不到）</string>
 
     <!-- 可展开 / 折叠的分区。标题上的箭头是全应用统一的折叠指示。 -->
