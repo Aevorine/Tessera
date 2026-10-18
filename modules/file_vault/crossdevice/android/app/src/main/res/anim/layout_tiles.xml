@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 功能格逐个错开入场，只在首次布局时播一次。 -->
+<layoutAnimation xmlns:android="http://schemas.android.com/apk/res/android"
+    android:animation="@anim/tile_enter"
+    android:animationOrder="normal"
+    android:delay="12%" />

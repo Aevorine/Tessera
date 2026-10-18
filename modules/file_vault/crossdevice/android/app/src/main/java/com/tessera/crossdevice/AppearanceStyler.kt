@@ -13,6 +13,8 @@ import com.tessera.crossdevice.databinding.ActivityMainBinding
 object AppearanceStyler {
     /** 分区标题图标的 tag：同 id 重复会让 ViewBinding 无法生成唯一引用，且只需批量染色。 */
     private const val SECTION_ICON_TAG = "sectionIcon"
+    private const val PANEL_ROOT_TAG = "panelRoot"
+    private const val PANEL_BAR_TAG = "panelBar"
 
     /**
      * 当前强调色，给 RecyclerView 的行用（它们在 apply() 之后才创建，遍历视图树够不到）。
@@ -20,6 +22,14 @@ object AppearanceStyler {
      */
     @Volatile
     var currentAccent: Int? = null
+        private set
+
+    /** 卡片底色与描边，给后建的功能格用（同 currentAccent 的理由）。 */
+    var currentSurface: Int? = null
+        private set
+    var currentBorder: Int = Color.TRANSPARENT
+        private set
+    var currentBorderWidth: Int = 0
         private set
 
     @Suppress("DEPRECATION")
@@ -81,7 +91,17 @@ object AppearanceStyler {
             if (view is ImageView && view.tag == SECTION_ICON_TAG) {
                 view.imageTintList = ColorStateList.valueOf(accent)
             }
+            // 全屏面板：底色同主界面，标题栏同顶栏。
+            when (view.tag) {
+                PANEL_ROOT_TAG -> view.setBackgroundColor(background)
+                PANEL_BAR_TAG -> view.setBackgroundColor(ColorUtils.blendARGB(surface, accent, 0.08f))
+            }
         }
+        // 状态头透一点强调色，一眼认出它是首页的「主角」。
+        ui.cardHero.setCardBackgroundColor(ColorUtils.blendARGB(surface, accent, 0.10f))
+        currentSurface = surface
+        currentBorder = border
+        currentBorderWidth = if (config.decoration == Decoration.OFF) 0 else 1
         activity.window.statusBarColor = ColorUtils.blendARGB(background, accent, 0.08f)
         activity.window.navigationBarColor = background
     }

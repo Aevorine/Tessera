@@ -1,28 +1,16 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  首页布局。四条原则（前三条沿用，第四条是这一版新加的）：
-  1. 最常用的四个动作（扫码 / 出示码 / 发剪贴板 / 发文件）在首屏就能点到，不藏进菜单。
-  2. 分区用卡片，卡片之间留白，避免一屏全是按钮的「控制面板感」。
-  3. 每个动作都是图标 + 文字，不做纯图标——手机上没有鼠标悬停，
-     图标不写字就只能靠猜，这跟桌面端「图标要有悬停提示」是同一件事的两种解法。
-  4. **每一个分区都是一张卡，而且都用「强调色图标 + 标题」这同一种头**。
-     上一版里「快速操作」「附近设备」「应用更新」三块是光秃秃浮在背景上的，
-     只有其余几块在卡里，滚下来像是两个人各做了一半界面。桌面端那边所有分区
-     走的是同一个 PageSection，这里对齐成同一种样子。
+  首页 = 一屏主界面 + 若干全屏次功能面板。
 
-  分区图标统一带 android:tag="sectionIcon"，由 AppearanceStyler 在运行时按当前
-  强调色一次性染色。用 tag 而不是 id：同一个 id 出现多次 ViewBinding 生成不了
-  唯一引用，而这些图标本来也不需要被代码单独引用。
+  主界面只放天天要看、天天要点的：状态头（本机名、在线概况、四个主动作）、进行中的传输、
+  「全部功能」格子、已配对设备。其余每一类功能（配对、剪贴板、跨网络、本机、更新、安全、诊断）
+  各收进一个全屏面板，由格子打开（FeaturePanels.kt：从格子处圆形展开，返回键 / Esc 收起）。
 
-  顺序按「用得多的排在前面」排，不按「概念上先介绍是什么」排：
+  所有控件 id 与改版前一致，MainActivity 的逻辑不用跟着搬家；面板只是换了它们的容器。
+  面板用 tag 标出「根 / 标题栏 / 返回键 / 正文」，PanelHost 与 AppearanceStyler 按 tag 统一处理，
+  新增面板不用改这两处代码。
 
-    发送（剪贴板 / 文件）→ 进行中的传输 → 已配对设备 → 我的配对码 → 附近设备
-    → 本机身份 → 剪贴板时间线 → 实时指标 → 更新 / 日志 / 应用锁 / 保存位置 → 使用指南
-
-  这个应用天天要用的只有两件事：同步剪贴板、传文件。它们排第一。
-  「本机身份」（设备名、指纹、端口）以前占着首屏——那是**排查时**才看一眼的
-  参考信息，为它让路等于每次用都要先往下滚。配对相关的三张卡挨在一起，
-  设置类的都沉到底部。桌面端的「设备与同步」页是同一个顺序，两端对得上。
+  分区图标统一带 android:tag="sectionIcon"，由 AppearanceStyler 按当前强调色染色。
 -->
 <androidx.coordinatorlayout.widget.CoordinatorLayout
     xmlns:android="http://schemas.android.com/apk/res/android"
@@ -31,6 +19,7 @@
     android:layout_height="match_parent">
 
     <com.google.android.material.appbar.AppBarLayout
+        android:id="@+id/appBar"
         android:layout_width="match_parent"
         android:layout_height="wrap_content">
 
@@ -42,1471 +31,2009 @@
     </com.google.android.material.appbar.AppBarLayout>
 
     <androidx.core.widget.NestedScrollView
+        android:id="@+id/scrollMain"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         app:layout_behavior="@string/appbar_scrolling_view_behavior">
 
-        <!-- 平板上限宽居中：内容铺满 10 吋屏会让每行文字长到需要来回扫视。
-             content_max_width 在手机上是 0dp（不限），在 sw600dp 上是 720dp。 -->
+        <!-- 手机单栏；平板限宽居中、横屏切左右两栏（AdaptiveLayout.kt 运行时处理）。 -->
         <LinearLayout
+            android:id="@+id/mainContent"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:gravity="center_horizontal"
+            android:baselineAligned="false"
             android:orientation="vertical"
             android:padding="@dimen/screen_padding">
 
-            <!-- ============ 「接着刚才」 ============
-                 别的设备上还有没做完的事。默认 gone，只有真的收到播报才出现。
-
-                 放在最顶上、且做成一条**很轻**的横条（不是卡片）：它说的不是
-                 "这一屏有什么"，而是"另一台设备上有什么"，跟当前页面无关。
-                 做成卡片会让它看起来像一个功能分区，占掉首屏最贵的位置；
-                 而这类跨设备提醒一旦变成噪音，用户就再也不读它了——包括真正
-                 重要的那一次。 -->
             <LinearLayout
-                android:id="@+id/rowContinuity"
+                android:id="@+id/colPrimary"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="12dp"
-                android:background="@color/app_surface_muted"
-                android:gravity="center_vertical"
-                android:orientation="horizontal"
-                android:paddingHorizontal="16dp"
-                android:paddingVertical="10dp"
-                android:visibility="gone">
+                android:orientation="vertical">
 
-                <TextView
-                    android:id="@+id/textContinuity"
-                    android:layout_width="0dp"
-                    android:layout_height="wrap_content"
-                    android:layout_weight="1"
-                    android:ellipsize="end"
-                    android:maxLines="2"
-                    android:textSize="15sp" />
+                <!-- ============ 「接着刚才」 ============
+                     别的设备上还有没做完的事。默认 gone，只有真的收到播报才出现。
 
-                <com.google.android.material.button.MaterialButton
-                    android:id="@+id/btnContinuityDismiss"
-                    style="@style/Widget.Material3.Button.TextButton"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:minWidth="0dp"
-                    android:text="@string/continuity_dismiss" />
-            </LinearLayout>
-
-            <!-- ============ 快速操作 ============
-                 四个最常用的动作。以前它们光着排在背景上，现在跟别的分区一样
-                 装进卡里；扫码是主按钮（实心），其余三个走描边样式，主次一眼分得出。 -->
-            <com.google.android.material.card.MaterialCardView
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="12dp"
-                app:cardCornerRadius="16dp">
-
+                     放在最顶上、且做成一条**很轻**的横条（不是卡片）：它说的不是
+                     "这一屏有什么"，而是"另一台设备上有什么"，跟当前页面无关。
+                     做成卡片会让它看起来像一个功能分区，占掉首屏最贵的位置；
+                     而这类跨设备提醒一旦变成噪音，用户就再也不读它了——包括真正
+                     重要的那一次。 -->
                 <LinearLayout
+                    android:id="@+id/rowContinuity"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:orientation="vertical"
-                    android:padding="16dp">
-
-                    <LinearLayout
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:gravity="center_vertical"
-                        android:orientation="horizontal">
-
-                        <ImageView
-                            android:layout_width="20dp"
-                            android:layout_height="20dp"
-                            android:layout_marginEnd="10dp"
-                            android:importantForAccessibility="no"
-                            android:src="@drawable/ic_transfer"
-                            android:tag="sectionIcon" />
-
-                        <TextView
-                            android:layout_width="0dp"
-                            android:layout_weight="1"
-                            android:layout_height="wrap_content"
-                            android:text="@string/quick_actions"
-                            android:textAppearance="?attr/textAppearanceTitleSmall" />
-                    </LinearLayout>
-
-                    <LinearLayout
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:layout_marginTop="12dp"
-                        android:orientation="horizontal">
-
-                        <com.google.android.material.button.MaterialButton
-                            android:id="@+id/btnScan"
-                            android:layout_width="0dp"
-                            android:layout_weight="1"
-                            android:layout_height="wrap_content"
-                            android:layout_marginEnd="6dp"
-                            android:text="@string/scan_to_pair"
-                            app:icon="@drawable/ic_scan" />
-
-                        <com.google.android.material.button.MaterialButton
-                            android:id="@+id/btnShowCode"
-                            style="?attr/materialButtonOutlinedStyle"
-                            android:layout_width="0dp"
-                            android:layout_weight="1"
-                            android:layout_height="wrap_content"
-                            android:layout_marginStart="6dp"
-                            android:text="@string/show_my_code"
-                            app:icon="@drawable/ic_qr" />
-                    </LinearLayout>
-
-                    <LinearLayout
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:layout_marginTop="8dp"
-                        android:orientation="horizontal">
-
-                        <com.google.android.material.button.MaterialButton
-                            android:id="@+id/btnSendClip"
-                            style="?attr/materialButtonOutlinedStyle"
-                            android:layout_width="0dp"
-                            android:layout_weight="1"
-                            android:layout_height="wrap_content"
-                            android:layout_marginEnd="6dp"
-                            android:text="@string/send_clipboard"
-                            app:icon="@drawable/ic_clipboard" />
-
-                        <com.google.android.material.button.MaterialButton
-                            android:id="@+id/btnSendFiles"
-                            style="?attr/materialButtonOutlinedStyle"
-                            android:layout_width="0dp"
-                            android:layout_weight="1"
-                            android:layout_height="wrap_content"
-                            android:layout_marginStart="6dp"
-                            android:text="@string/send_files"
-                            app:icon="@drawable/ic_upload" />
-                    </LinearLayout>
-
-                    <!-- 发给一台还是发给多台。
-                         这是**显式**的选择，不再是"没选目标就默认群发"——用户按下
-                         「发送文件」时必须知道这一份东西要去一台还是五台。
-                         跟桌面端的传输中心是同一套规则和同一套措辞。 -->
-                    <com.google.android.material.button.MaterialButtonToggleGroup
-                        android:id="@+id/groupFanout"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:layout_marginTop="10dp"
-                        app:selectionRequired="true"
-                        app:singleSelection="true">
-
-                        <com.google.android.material.button.MaterialButton
-                            android:id="@+id/btnFanoutOne"
-                            style="?attr/materialButtonOutlinedStyle"
-                            android:layout_width="0dp"
-                            android:layout_weight="1"
-                            android:layout_height="wrap_content"
-                            android:text="@string/fanout_one" />
-
-                        <com.google.android.material.button.MaterialButton
-                            android:id="@+id/btnFanoutMany"
-                            style="?attr/materialButtonOutlinedStyle"
-                            android:layout_width="0dp"
-                            android:layout_weight="1"
-                            android:layout_height="wrap_content"
-                            android:text="@string/fanout_many" />
-                    </com.google.android.material.button.MaterialButtonToggleGroup>
-
-                    <!-- 只在选了「发给多台」时出现。默认的一对一是不需要解释的，
-                         常驻一行说明只是噪音；而群发是**会把东西发错地方**的那一档，
-                         那一刻才值得把「这一份会去 N 台」摆出来。 -->
-                    <TextView
-                        android:id="@+id/textFanoutHint"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:layout_marginTop="6dp"
-                        android:visibility="gone"
-                        android:textAppearance="?attr/textAppearanceBodySmall"
-                        android:textColor="?attr/colorOnSurfaceVariant" />
-
-                    <!-- 剪贴板自动同步开关。
-                         说明文字**不常驻**：拨动开关的那一刻用 Snackbar 说一句
-                         （包括安卓 10 起只有前台能读剪贴板这条限制），说完就走。
-                         常年挂两行字在这里，第二天起就只是噪音了。 -->
-                    <LinearLayout
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:layout_marginTop="10dp"
-                        android:gravity="center_vertical"
-                        android:orientation="horizontal">
-
-                        <ImageView
-                            android:layout_width="20dp"
-                            android:layout_height="20dp"
-                            android:layout_marginEnd="10dp"
-                            android:importantForAccessibility="no"
-                            android:src="@drawable/ic_clipboard"
-                            android:tag="sectionIcon" />
-
-                        <LinearLayout
-                            android:layout_width="0dp"
-                            android:layout_weight="1"
-                            android:layout_height="wrap_content"
-                            android:orientation="vertical">
-
-                            <TextView
-                                android:layout_width="match_parent"
-                                android:layout_height="wrap_content"
-                                android:text="@string/clip_auto_title"
-                                android:textAppearance="?attr/textAppearanceBodyMedium" />
-                        </LinearLayout>
-
-                        <com.google.android.material.materialswitch.MaterialSwitch
-                            android:id="@+id/switchClipAuto"
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content" />
-                    </LinearLayout>
-
-                    <LinearLayout
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:layout_marginTop="6dp"
-                        android:gravity="center_vertical"
-                        android:orientation="horizontal">
-
-                        <TextView
-                            android:layout_width="0dp"
-                            android:layout_weight="1"
-                            android:layout_height="wrap_content"
-                            android:layout_marginStart="30dp"
-                            android:text="@string/clip_plain_only_title"
-                            android:textAppearance="?attr/textAppearanceBodyMedium" />
-
-                        <com.google.android.material.materialswitch.MaterialSwitch
-                            android:id="@+id/switchClipPlain"
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content" />
-                    </LinearLayout>
-
-                    <!-- 输入法模式：Tessera 键盘是默认输入法时后台读得到剪贴板，
-                         在任何应用里复制都会自动同步。状态三档：未启用 / 已启用未选用 / 正在使用。 -->
-                    <LinearLayout
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:layout_marginTop="6dp"
-                        android:gravity="center_vertical"
-                        android:orientation="horizontal">
-
-                        <LinearLayout
-                            android:layout_width="0dp"
-                            android:layout_weight="1"
-                            android:layout_height="wrap_content"
-                            android:layout_marginStart="30dp"
-                            android:orientation="vertical">
-
-                            <TextView
-                                android:layout_width="match_parent"
-                                android:layout_height="wrap_content"
-                                android:text="@string/ime_mode_title"
-                                android:textAppearance="?attr/textAppearanceBodyMedium" />
-
-                            <TextView
-                                android:id="@+id/textImeStatus"
-                                android:layout_width="match_parent"
-                                android:layout_height="wrap_content"
-                                android:textAppearance="?attr/textAppearanceBodySmall"
-                                android:textColor="?attr/colorOnSurfaceVariant" />
-                        </LinearLayout>
-
-                        <com.google.android.material.button.MaterialButton
-                            android:id="@+id/btnImeSetup"
-                            style="@style/Widget.Material3.Button.TonalButton"
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:text="@string/ime_enable" />
-                    </LinearLayout>
-                </LinearLayout>
-            </com.google.android.material.card.MaterialCardView>
-
-            <!-- ============ 进行中的传输 ============
-                 没有传输时整卡隐藏，不占位置。 -->
-            <com.google.android.material.card.MaterialCardView
-                android:id="@+id/cardProgress"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="12dp"
-                android:visibility="gone"
-                app:cardCornerRadius="16dp">
-
-                <LinearLayout
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:orientation="vertical"
-                    android:padding="16dp">
-
-                    <LinearLayout
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:gravity="center_vertical"
-                        android:orientation="horizontal">
-
-                        <ImageView
-                            android:layout_width="20dp"
-                            android:layout_height="20dp"
-                            android:layout_marginEnd="10dp"
-                            android:importantForAccessibility="no"
-                            android:src="@drawable/ic_transfer"
-                            android:tag="sectionIcon" />
-
-                        <TextView
-                            android:layout_width="0dp"
-                            android:layout_weight="1"
-                            android:layout_height="wrap_content"
-                            android:text="@string/transfer_in_progress"
-                            android:textAppearance="?attr/textAppearanceTitleSmall" />
-                    </LinearLayout>
-
-                    <!-- 一条传输一行，各自带暂停和取消。
-                         之前这里是单独一个 TextView 加一条进度条，同时传两个
-                         文件时两者会互相覆盖，看起来像进度条在来回跳，
-                         而"这是哪个文件的进度"根本无从判断。 -->
-                    <androidx.recyclerview.widget.RecyclerView
-                        android:id="@+id/listTransfers"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:layout_marginTop="6dp"
-                        android:nestedScrollingEnabled="false" />
-                </LinearLayout>
-            </com.google.android.material.card.MaterialCardView>
-
-            <!-- ============ 已配对设备 ============
-                 🔴 这张卡的 id 曾经写成 @+id/cardDiagnostics，而 MainActivity
-                 用那个 id 在**非专业模式**下把控件设成 GONE（本意是隐藏最下面
-                 那张「故障日志」卡）。默认就是非专业模式，于是**整张已配对设备
-                 卡在默认状态下根本不显示**——设备一直配着、Go 侧一直在回数据，
-                 只是那张卡被藏了。改 id 前请先读这段。 -->
-            <com.google.android.material.card.MaterialCardView
-                android:id="@+id/cardPairedDevices"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="12dp"
-                app:cardCornerRadius="16dp">
-
-                <LinearLayout
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:orientation="vertical"
-                    android:padding="16dp">
-
-                    <LinearLayout
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:gravity="center_vertical"
-                        android:orientation="horizontal">
-
-                        <ImageView
-                            android:layout_width="20dp"
-                            android:layout_height="20dp"
-                            android:layout_marginEnd="10dp"
-                            android:importantForAccessibility="no"
-                            android:src="@drawable/ic_devices"
-                            android:tag="sectionIcon" />
-
-                        <TextView
-                            android:layout_width="0dp"
-                            android:layout_weight="1"
-                            android:layout_height="wrap_content"
-                            android:text="@string/paired_devices"
-                            android:textAppearance="?attr/textAppearanceTitleSmall" />
-
-                        <!-- 「选择」是进入多选模式的入口。
-                             长按任意一行也能进（安卓上最符合直觉的手势），但只靠
-                             长按的话没人发现得了——一个看得见的按钮是必须的。 -->
-                        <com.google.android.material.button.MaterialButton
-                            android:id="@+id/btnSelectDevices"
-                            style="?attr/materialButtonOutlinedStyle"
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:minWidth="0dp"
-                            android:paddingHorizontal="12dp"
-                            android:text="@string/devices_select" />
-                    </LinearLayout>
-
-                    <!-- 多选工具条：全选 + 删除选中。整条平时隐藏。 -->
-                    <LinearLayout
-                        android:id="@+id/rowDeviceSelection"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:layout_marginTop="8dp"
-                        android:gravity="center_vertical"
-                        android:orientation="horizontal"
-                        android:visibility="gone">
-
-                        <com.google.android.material.checkbox.MaterialCheckBox
-                            android:id="@+id/checkSelectAllDevices"
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:text="@string/devices_select_all" />
-
-                        <View
-                            android:layout_width="0dp"
-                            android:layout_weight="1"
-                            android:layout_height="1dp" />
-
-                        <com.google.android.material.button.MaterialButton
-                            android:id="@+id/btnDeleteDevices"
-                            style="?attr/materialButtonOutlinedStyle"
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:enabled="false"
-                            android:minWidth="0dp"
-                            android:paddingHorizontal="12dp"
-                            android:text="@string/devices_delete"
-                            app:icon="@drawable/ic_delete" />
-                    </LinearLayout>
-
-                    <!-- 空态提示。初始就是 gone：不这么写的话，界面渲染完到
-                         第一次 status 回来之间会先闪一下"还没有配对任何设备"，
-                         而那句话恰恰是用户最不想看到的误报。 -->
-                    <TextView
-                        android:id="@+id/textNoDevices"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:paddingVertical="10dp"
-                        android:visibility="gone"
-                        android:text="@string/no_devices"
-                        android:textAppearance="?attr/textAppearanceBodySmall"
-                        android:textColor="?attr/colorOnSurfaceVariant" />
-
-                    <androidx.recyclerview.widget.RecyclerView
-                        android:id="@+id/listDevices"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:nestedScrollingEnabled="false" />
-                </LinearLayout>
-            </com.google.android.material.card.MaterialCardView>
-
-            <!-- ============ 我的配对码 ============
-                 可展开 / 折叠。二维码占掉大半屏，配完设备之后就是纯占位置的东西，
-                 但又不能藏进菜单——「出示我的码」是两台设备第一次见面时最常按的
-                 那一个。折叠起来只剩一行标题，需要时点一下就回来。 -->
-            <com.google.android.material.card.MaterialCardView
-                android:id="@+id/cardMyCode"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="12dp"
-                android:visibility="gone"
-                app:cardCornerRadius="16dp">
-
-                <LinearLayout
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:orientation="vertical"
-                    android:padding="16dp">
-
-                    <LinearLayout
-                        android:id="@+id/headerMyCode"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:background="?attr/selectableItemBackground"
-                        android:gravity="center_vertical"
-                        android:minHeight="40dp"
-                        android:orientation="horizontal">
-
-                        <ImageView
-                            android:layout_width="20dp"
-                            android:layout_height="20dp"
-                            android:layout_marginEnd="10dp"
-                            android:importantForAccessibility="no"
-                            android:src="@drawable/ic_qr"
-                            android:tag="sectionIcon" />
-
-                        <TextView
-                            android:layout_width="0dp"
-                            android:layout_weight="1"
-                            android:layout_height="wrap_content"
-                            android:text="@string/my_code_section"
-                            android:textAppearance="?attr/textAppearanceTitleSmall" />
-
-                        <ImageView
-                            android:id="@+id/chevronMyCode"
-                            android:layout_width="24dp"
-                            android:layout_height="24dp"
-                            android:importantForAccessibility="no"
-                            android:src="@drawable/ic_chevron" />
-                    </LinearLayout>
-
-                    <LinearLayout
-                        android:id="@+id/bodyMyCode"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:gravity="center_horizontal"
-                        android:orientation="vertical"
-                        android:paddingTop="12dp">
-
-                        <ImageView
-                            android:id="@+id/imageQr"
-                            android:layout_width="@dimen/qr_size"
-                            android:layout_height="@dimen/qr_size"
-                            android:background="#FFFFFF"
-                            android:contentDescription="@string/show_my_code"
-                            android:padding="8dp" />
-
-                        <TextView
-                            android:id="@+id/textCodeExpiry"
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:layout_marginTop="10dp"
-                            android:textAppearance="?attr/textAppearanceBodySmall"
-                            android:textColor="?attr/colorOnSurfaceVariant" />
-                    </LinearLayout>
-                </LinearLayout>
-            </com.google.android.material.card.MaterialCardView>
-
-            <!-- ============ 附近设备 ============
-                 第三种配对方式：不用扫码、不用复制粘贴，直接从列表里点。 -->
-            <com.google.android.material.card.MaterialCardView
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="12dp"
-                app:cardCornerRadius="16dp">
-
-                <LinearLayout
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:orientation="vertical"
-                    android:padding="16dp">
-
-                    <LinearLayout
-                        android:id="@+id/headerNearby"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:background="?attr/selectableItemBackground"
-                        android:gravity="center_vertical"
-                        android:minHeight="40dp"
-                        android:orientation="horizontal">
-
-                        <ImageView
-                            android:layout_width="20dp"
-                            android:layout_height="20dp"
-                            android:layout_marginEnd="10dp"
-                            android:importantForAccessibility="no"
-                            android:src="@drawable/ic_scan"
-                            android:tag="sectionIcon" />
-
-                        <TextView
-                            android:layout_width="0dp"
-                            android:layout_weight="1"
-                            android:layout_height="wrap_content"
-                            android:text="@string/nearby_devices"
-                            android:textAppearance="?attr/textAppearanceTitleSmall" />
-
-                        <!-- 刷新留在标题栏里：它是这张卡最常按的动作，折叠状态下
-                             也该点得到。点它不会连带展开/折叠——两个动作分开。 -->
-                        <com.google.android.material.button.MaterialButton
-                            android:id="@+id/btnRefreshNearby"
-                            style="?attr/materialButtonOutlinedStyle"
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:layout_marginEnd="4dp"
-                            android:minWidth="0dp"
-                            android:text="@string/refresh"
-                            app:icon="@drawable/ic_refresh" />
-
-                        <ImageView
-                            android:id="@+id/chevronNearby"
-                            android:layout_width="24dp"
-                            android:layout_height="24dp"
-                            android:importantForAccessibility="no"
-                            android:src="@drawable/ic_chevron" />
-                    </LinearLayout>
-
-                  <LinearLayout
-                    android:id="@+id/bodyNearby"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:orientation="vertical">
+                    android:layout_marginTop="12dp"
+                    android:background="@color/app_surface_muted"
+                    android:gravity="center_vertical"
+                    android:orientation="horizontal"
+                    android:paddingHorizontal="16dp"
+                    android:paddingVertical="10dp"
+                    android:visibility="gone">
 
                     <TextView
-                        android:id="@+id/textNoNearby"
-                        android:layout_width="match_parent"
+                        android:id="@+id/textContinuity"
+                        android:layout_width="0dp"
                         android:layout_height="wrap_content"
-                        android:paddingVertical="10dp"
-                        android:text="@string/nearby_empty"
-                        android:textAppearance="?attr/textAppearanceBodySmall"
-                        android:textColor="?attr/colorOnSurfaceVariant" />
-
-                    <androidx.recyclerview.widget.RecyclerView
-                        android:id="@+id/listNearby"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:nestedScrollingEnabled="false" />
-
-                    <!-- 三条兜底路径。
-                         「刷新」只是把已经被动听到的东西读一遍——路由器丢掉组播时
-                         刷一百次也还是空的，所以真正解决问题的是下面这三个：
-                         主动扫描绕开组播，手动地址绕开一切自动发现，诊断告诉用户
-                         到底卡在哪一步。它们和列表放在同一张卡里，因为用户是在
-                         "列表是空的"这个时刻才需要它们。 -->
-                    <com.google.android.material.divider.MaterialDivider
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:layout_marginTop="10dp" />
-
-                    <LinearLayout
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:layout_marginTop="10dp"
-                        android:orientation="horizontal">
-
-                        <com.google.android.material.button.MaterialButton
-                            android:id="@+id/btnScanLan"
-                            android:layout_width="0dp"
-                            android:layout_weight="1"
-                            android:layout_height="wrap_content"
-                            android:minWidth="0dp"
-                            android:text="@string/scan_lan"
-                            app:icon="@drawable/ic_scan" />
-
-                        <com.google.android.material.button.MaterialButton
-                            android:id="@+id/btnManualAddress"
-                            style="?attr/materialButtonOutlinedStyle"
-                            android:layout_width="0dp"
-                            android:layout_weight="1"
-                            android:layout_height="wrap_content"
-                            android:layout_marginStart="8dp"
-                            android:minWidth="0dp"
-                            android:text="@string/manual_address" />
-                    </LinearLayout>
-
-                    <!-- 数字码放在最显眼的整行按钮上：其它三条路各有前提（摄像头 /
-                         组播 / 知道 IP 和端口），只有这条在哪儿都成立。 -->
-                    <com.google.android.material.button.MaterialButton
-                        android:id="@+id/btnShortCode"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:layout_marginTop="8dp"
-                        android:text="@string/short_code" />
+                        android:layout_weight="1"
+                        android:ellipsize="end"
+                        android:maxLines="2"
+                        android:textSize="15sp" />
 
                     <com.google.android.material.button.MaterialButton
-                        android:id="@+id/btnDiagnose"
+                        android:id="@+id/btnContinuityDismiss"
                         style="@style/Widget.Material3.Button.TextButton"
-                        android:layout_width="match_parent"
+                        android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:layout_marginTop="2dp"
-                        android:text="@string/diag_run" />
-
-                    <TextView
-                        android:id="@+id/textDiagResult"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:paddingTop="4dp"
-                        android:textAppearance="?attr/textAppearanceBodySmall"
-                        android:textColor="?attr/colorOnSurfaceVariant"
-                        android:visibility="gone" />
-                  </LinearLayout>
+                        android:minWidth="0dp"
+                        android:text="@string/continuity_dismiss" />
                 </LinearLayout>
-            </com.google.android.material.card.MaterialCardView>
 
-            <!-- ============ 本机身份 ============ -->
-            <com.google.android.material.card.MaterialCardView
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                app:cardCornerRadius="16dp">
-
-                <LinearLayout
+                <!-- ============ 状态头 + 主动作 ============
+                     本机名、在线概况和四个最常用的动作同在一张卡：打开第一眼就知道「现在能不能传」并直接动手。 -->
+                <com.google.android.material.card.MaterialCardView
+                    android:id="@+id/cardHero"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:orientation="vertical"
-                    android:padding="16dp">
+                    android:layout_marginTop="12dp"
+                    app:cardCornerRadius="22dp">
 
                     <LinearLayout
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:gravity="center_vertical"
-                        android:orientation="horizontal">
-
-                        <ImageView
-                            android:layout_width="20dp"
-                            android:layout_height="20dp"
-                            android:layout_marginEnd="10dp"
-                            android:importantForAccessibility="no"
-                            android:src="@drawable/ic_devices"
-                            android:tag="sectionIcon" />
-
-                        <TextView
-                            android:layout_width="0dp"
-                            android:layout_weight="1"
-                            android:layout_height="wrap_content"
-                            android:text="@string/this_device"
-                            android:textAppearance="?attr/textAppearanceTitleSmall" />
-
-                        <com.google.android.material.button.MaterialButton
-                            android:id="@+id/btnAppearance"
-                            style="?attr/materialButtonOutlinedStyle"
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:minWidth="0dp"
-                            android:text="@string/appearance_button"
-                            app:icon="@drawable/ic_palette" />
-
-                        <!-- 使用指南。放在这里而不是藏进设置：需要看它的人
-                             正是还不熟悉这个应用的人，而那种人不会去翻设置。 -->
-                        <com.google.android.material.button.MaterialButton
-                            android:id="@+id/btnGuide"
-                            style="?attr/materialButtonOutlinedStyle"
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:layout_marginStart="8dp"
-                            android:minWidth="0dp"
-                            android:text="@string/guide_button" />
-                    </LinearLayout>
-
-                    <!-- 本机名字 + 改名按钮。改完不用重连，名字随心跳捎带给
-                         已配对设备，约十秒内对方就会显示新名字。 -->
-                    <LinearLayout
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:layout_marginTop="10dp"
-                        android:gravity="center_vertical"
-                        android:orientation="horizontal">
-
-                        <TextView
-                            android:id="@+id/textDeviceName"
-                            android:layout_width="0dp"
-                            android:layout_weight="1"
-                            android:layout_height="wrap_content"
-                            android:text="@string/starting"
-                            android:textAppearance="?attr/textAppearanceTitleMedium" />
-
-                        <com.google.android.material.button.MaterialButton
-                            android:id="@+id/btnRenameDevice"
-                            style="?attr/materialButtonOutlinedStyle"
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:minWidth="0dp"
-                            android:text="@string/rename_device" />
-                    </LinearLayout>
-
-                    <!-- 安装包是不是官方签名的（AppIntegrity.kt）。
-                         摆在设备指纹旁边：两条都是"这台设备/这份包到底是什么"的
-                         身份信息，读的时候是同一件事。 -->
-                    <TextView
-                        android:id="@+id/textIntegrity"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:layout_marginTop="6dp"
-                        android:textAppearance="?attr/textAppearanceBodySmall"
-                        android:textColor="?attr/colorOnSurfaceVariant" />
-
-                    <TextView
-                        android:id="@+id/textFingerprint"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:layout_marginTop="4dp"
-                        android:fontFamily="monospace"
-                        android:textAppearance="?attr/textAppearanceBodySmall"
-                        android:textColor="?attr/colorOnSurfaceVariant" />
-                </LinearLayout>
-            </com.google.android.material.card.MaterialCardView>
-
-            <!-- ============ 剪贴板时间线 ============
-                 任一设备最近复制过的内容（含对方断线期间复制、连上后取回的），
-                 点一下放进本机剪贴板，或重新发给所有设备。只在内存里，退出即清空。
-
-                 排在「本机身份」之后：它是翻看历史用的，不是天天要点的动作；
-                 排在前面只会把「已配对设备」「附近设备」这些配对用的卡片挤到屏幕外。
-
-                 内容区是一个**固定高度**的窗口（手机 @dimen/clip_timeline_height，
-                 平板更高）：条数再多也不会把整页越撑越长，要看更多就在窗口里滑动。
-                 右上角的全屏按钮把同一份内容铺满整个屏幕（见页面末尾的
-                 overlayClipTimeline），按返回键或键盘 Esc 退出。 -->
-            <com.google.android.material.card.MaterialCardView
-                android:id="@+id/cardClipTimeline"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="12dp"
-                app:cardCornerRadius="16dp">
-
-                <LinearLayout
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:orientation="vertical"
-                    android:padding="16dp">
-
-                    <LinearLayout
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:gravity="center_vertical"
-                        android:orientation="horizontal">
-
-                        <ImageView
-                            android:layout_width="20dp"
-                            android:layout_height="20dp"
-                            android:layout_marginEnd="10dp"
-                            android:importantForAccessibility="no"
-                            android:src="@drawable/ic_clipboard"
-                            android:tag="sectionIcon" />
-
-                        <TextView
-                            android:layout_width="0dp"
-                            android:layout_weight="1"
-                            android:layout_height="wrap_content"
-                            android:text="@string/clip_timeline_title"
-                            android:textAppearance="?attr/textAppearanceTitleSmall" />
-
-                        <com.google.android.material.button.MaterialButton
-                            android:id="@+id/btnTimelineRefresh"
-                            style="@style/Widget.Material3.Button.IconButton"
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:contentDescription="@string/clip_timeline_refresh"
-                            android:tooltipText="@string/clip_timeline_refresh"
-                            app:icon="@drawable/ic_refresh" />
-
-                        <com.google.android.material.button.MaterialButton
-                            android:id="@+id/btnTimelineClear"
-                            style="@style/Widget.Material3.Button.IconButton"
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:contentDescription="@string/clip_timeline_clear"
-                            android:tooltipText="@string/clip_timeline_clear"
-                            app:icon="@drawable/ic_delete" />
-
-                        <com.google.android.material.button.MaterialButton
-                            android:id="@+id/btnTimelineFullscreen"
-                            style="@style/Widget.Material3.Button.IconButton"
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:contentDescription="@string/clip_timeline_fullscreen"
-                            android:tooltipText="@string/clip_timeline_fullscreen"
-                            app:icon="@drawable/ic_fullscreen" />
-                    </LinearLayout>
-
-                    <!-- 固定大小的窗口。NestedScrollView 放在外层的 NestedScrollView 里
-                         也能各自滑动：手指落在窗口里，窗口先滑；滑到头再交还给整页。 -->
-                    <androidx.core.widget.NestedScrollView
-                        android:id="@+id/scrollClipTimeline"
-                        android:layout_width="match_parent"
-                        android:layout_height="@dimen/clip_timeline_height"
-                        android:layout_marginTop="8dp"
-                        android:background="@drawable/bg_clip_window"
-                        android:fadeScrollbars="false"
-                        android:overScrollMode="ifContentScrolls"
-                        android:paddingHorizontal="12dp"
-                        android:scrollbars="vertical">
+                        android:orientation="vertical"
+                        android:paddingHorizontal="14dp"
+                        android:paddingTop="16dp"
+                        android:paddingBottom="14dp">
 
                         <LinearLayout
                             android:layout_width="match_parent"
                             android:layout_height="wrap_content"
-                            android:orientation="vertical">
+                            android:gravity="center_vertical"
+                            android:orientation="horizontal"
+                            android:paddingHorizontal="4dp">
 
-                            <TextView
-                                android:id="@+id/textTimelineEmpty"
-                                android:layout_width="match_parent"
-                                android:layout_height="wrap_content"
-                                android:paddingVertical="12dp"
-                                android:text="@string/clip_timeline_empty"
-                                android:textAppearance="?attr/textAppearanceBodySmall"
-                                android:textColor="?attr/colorOnSurfaceVariant" />
+                            <!-- 在线指示灯：有设备在线为绿，在线数变化时跳一下。 -->
+                            <View
+                                android:id="@+id/dotOnline"
+                                android:layout_width="12dp"
+                                android:layout_height="12dp"
+                                android:layout_marginEnd="14dp"
+                                android:background="@drawable/bg_dot"
+                                android:backgroundTint="@color/hero_idle" />
 
                             <LinearLayout
-                                android:id="@+id/listClipTimeline"
-                                android:layout_width="match_parent"
+                                android:layout_width="0dp"
                                 android:layout_height="wrap_content"
-                                android:orientation="vertical" />
+                                android:layout_weight="1"
+                                android:orientation="vertical">
+
+                                <TextView
+                                    android:id="@+id/textDeviceName"
+                                    android:layout_width="match_parent"
+                                    android:layout_height="wrap_content"
+                                    android:ellipsize="end"
+                                    android:singleLine="true"
+                                    android:text="@string/starting"
+                                    android:textAppearance="?attr/textAppearanceTitleLarge" />
+
+                                <TextView
+                                    android:id="@+id/textHeroStatus"
+                                    android:layout_width="match_parent"
+                                    android:layout_height="wrap_content"
+                                    android:layout_marginTop="2dp"
+                                    android:text="@string/hero_waiting"
+                                    android:textAppearance="?attr/textAppearanceBodySmall"
+                                    android:textColor="?attr/colorOnSurfaceVariant" />
+                            </LinearLayout>
+
+                            <!-- 改名不用重连，名字随心跳（≤10 秒）捎给已配对设备。 -->
+                            <com.google.android.material.button.MaterialButton
+                                android:id="@+id/btnRenameDevice"
+                                style="?attr/materialButtonOutlinedStyle"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:minWidth="0dp"
+                                android:text="@string/rename_device" />
                         </LinearLayout>
-                    </androidx.core.widget.NestedScrollView>
-                </LinearLayout>
-            </com.google.android.material.card.MaterialCardView>
 
-            <!-- ============ 实时指标（仅专业模式） ============ -->
-            <com.google.android.material.card.MaterialCardView
-                android:id="@+id/cardMetrics"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="12dp"
-                android:visibility="gone"
-                app:cardCornerRadius="16dp">
+                        <!-- 四个主动作：图标在上、短字在下，一行排开；无障碍读完整名称。 -->
+                        <LinearLayout
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="14dp"
+                            android:baselineAligned="false"
+                            android:orientation="horizontal">
 
-                <LinearLayout
+                            <com.google.android.material.button.MaterialButton
+                                android:id="@+id/btnScan"
+                                android:layout_width="0dp"
+                                android:layout_height="match_parent"
+                                android:layout_weight="1"
+                                android:layout_marginEnd="3dp"
+                                android:contentDescription="@string/scan_to_pair"
+                                android:insetTop="0dp"
+                                android:insetBottom="0dp"
+                                android:minHeight="80dp"
+                                android:paddingHorizontal="2dp"
+                                android:paddingVertical="10dp"
+                                android:text="@string/action_scan"
+                                app:cornerRadius="18dp"
+                                app:icon="@drawable/ic_scan"
+                                app:iconGravity="top"
+                                app:iconPadding="6dp"
+                                app:iconSize="26dp" />
+                            <com.google.android.material.button.MaterialButton
+                                android:id="@+id/btnShowCode"
+                                style="?attr/materialButtonOutlinedStyle"
+                                android:layout_width="0dp"
+                                android:layout_height="match_parent"
+                                android:layout_weight="1"
+                                android:layout_marginHorizontal="3dp"
+                                android:contentDescription="@string/show_my_code"
+                                android:insetTop="0dp"
+                                android:insetBottom="0dp"
+                                android:minHeight="80dp"
+                                android:paddingHorizontal="2dp"
+                                android:paddingVertical="10dp"
+                                android:text="@string/action_code"
+                                app:cornerRadius="18dp"
+                                app:icon="@drawable/ic_qr"
+                                app:iconGravity="top"
+                                app:iconPadding="6dp"
+                                app:iconSize="26dp" />
+                            <com.google.android.material.button.MaterialButton
+                                android:id="@+id/btnSendClip"
+                                style="?attr/materialButtonOutlinedStyle"
+                                android:layout_width="0dp"
+                                android:layout_height="match_parent"
+                                android:layout_weight="1"
+                                android:layout_marginHorizontal="3dp"
+                                android:contentDescription="@string/send_clipboard"
+                                android:insetTop="0dp"
+                                android:insetBottom="0dp"
+                                android:minHeight="80dp"
+                                android:paddingHorizontal="2dp"
+                                android:paddingVertical="10dp"
+                                android:text="@string/action_clip"
+                                app:cornerRadius="18dp"
+                                app:icon="@drawable/ic_clipboard"
+                                app:iconGravity="top"
+                                app:iconPadding="6dp"
+                                app:iconSize="26dp" />
+                            <com.google.android.material.button.MaterialButton
+                                android:id="@+id/btnSendFiles"
+                                style="?attr/materialButtonOutlinedStyle"
+                                android:layout_width="0dp"
+                                android:layout_height="match_parent"
+                                android:layout_weight="1"
+                                android:layout_marginStart="3dp"
+                                android:contentDescription="@string/send_files"
+                                android:insetTop="0dp"
+                                android:insetBottom="0dp"
+                                android:minHeight="80dp"
+                                android:paddingHorizontal="2dp"
+                                android:paddingVertical="10dp"
+                                android:text="@string/action_files"
+                                app:cornerRadius="18dp"
+                                app:icon="@drawable/ic_upload"
+                                app:iconGravity="top"
+                                app:iconPadding="6dp"
+                                app:iconSize="26dp" />
+                        </LinearLayout>
+
+                        <!-- 发给一台还是发给多台：显式选择，不默认群发。与桌面端传输中心同一规则。 -->
+                        <com.google.android.material.button.MaterialButtonToggleGroup
+                            android:id="@+id/groupFanout"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="10dp"
+                            app:selectionRequired="true"
+                            app:singleSelection="true">
+
+                            <com.google.android.material.button.MaterialButton
+                                android:id="@+id/btnFanoutOne"
+                                style="?attr/materialButtonOutlinedStyle"
+                                android:layout_width="0dp"
+                                android:layout_weight="1"
+                                android:layout_height="wrap_content"
+                                android:text="@string/fanout_one" />
+
+                            <com.google.android.material.button.MaterialButton
+                                android:id="@+id/btnFanoutMany"
+                                style="?attr/materialButtonOutlinedStyle"
+                                android:layout_width="0dp"
+                                android:layout_weight="1"
+                                android:layout_height="wrap_content"
+                                android:text="@string/fanout_many" />
+                        </com.google.android.material.button.MaterialButtonToggleGroup>
+
+                        <!-- 只在「发给多台」时出现：那一刻才值得说「这一份会去 N 台」。 -->
+                        <TextView
+                            android:id="@+id/textFanoutHint"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="6dp"
+                            android:paddingHorizontal="4dp"
+                            android:visibility="gone"
+                            android:textAppearance="?attr/textAppearanceBodySmall"
+                            android:textColor="?attr/colorOnSurfaceVariant" />
+                    </LinearLayout>
+                </com.google.android.material.card.MaterialCardView>
+
+                <!-- ============ 进行中的传输 ============
+                     没有传输时整卡隐藏，不占位置。 -->
+                <com.google.android.material.card.MaterialCardView
+                    android:id="@+id/cardProgress"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:orientation="vertical"
-                    android:padding="16dp">
+                    android:layout_marginTop="12dp"
+                    android:visibility="gone"
+                    app:cardCornerRadius="16dp">
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="vertical"
+                        android:padding="16dp">
+
+                        <LinearLayout
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:gravity="center_vertical"
+                            android:orientation="horizontal">
+
+                            <ImageView
+                                android:layout_width="20dp"
+                                android:layout_height="20dp"
+                                android:layout_marginEnd="10dp"
+                                android:importantForAccessibility="no"
+                                android:src="@drawable/ic_transfer"
+                                android:tag="sectionIcon" />
+
+                            <TextView
+                                android:layout_width="0dp"
+                                android:layout_weight="1"
+                                android:layout_height="wrap_content"
+                                android:text="@string/transfer_in_progress"
+                                android:textAppearance="?attr/textAppearanceTitleSmall" />
+                        </LinearLayout>
+
+                        <!-- 一条传输一行，各自带暂停和取消。
+                             之前这里是单独一个 TextView 加一条进度条，同时传两个
+                             文件时两者会互相覆盖，看起来像进度条在来回跳，
+                             而"这是哪个文件的进度"根本无从判断。 -->
+                        <androidx.recyclerview.widget.RecyclerView
+                            android:id="@+id/listTransfers"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="6dp"
+                            android:nestedScrollingEnabled="false" />
+                    </LinearLayout>
+                </com.google.android.material.card.MaterialCardView>
+
+                <!-- ============ 全部功能 ============
+                     一格一个主功能，格上带实时小结；点开是该功能的全屏面板，次功能都在里面。
+                     格子由 FeatureTiles.kt 生成；横屏平板上整块被 AdaptiveLayout 挪到右栏。 -->
+                <LinearLayout
+                    android:id="@+id/boxFeatures"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="18dp"
+                    android:orientation="vertical">
 
                     <TextView
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="@string/metrics_live_title"
-                        android:textAppearance="?attr/textAppearanceLabelMedium"
+                        android:layout_marginStart="4dp"
+                        android:text="@string/features_title"
+                        android:textAppearance="?attr/textAppearanceTitleSmall"
                         android:textColor="?attr/colorOnSurfaceVariant" />
 
-                    <TextView
-                        android:id="@+id/textRuntimeMetrics"
+                    <androidx.recyclerview.widget.RecyclerView
+                        android:id="@+id/gridFeatures"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:layout_marginTop="8dp"
-                        android:fontFamily="monospace"
-                        android:text="@string/metrics_loading"
-                        android:textAppearance="?attr/textAppearanceBodyMedium"
-                        android:textIsSelectable="true" />
+                        android:layout_marginHorizontal="-5dp"
+                        android:layout_marginTop="4dp"
+                        android:layoutAnimation="@anim/layout_tiles"
+                        android:nestedScrollingEnabled="false"
+                        android:overScrollMode="never" />
                 </LinearLayout>
-            </com.google.android.material.card.MaterialCardView>
 
-            <!-- ============ 跨网络连接 ============
-                 默认收起：绝大多数时候两台设备就在同一个 Wi-Fi 下，局域网直连
-                 全自动、不需要任何配置。这张卡是"在外面也想连上"时才来找的。 -->
-            <com.google.android.material.card.MaterialCardView
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="12dp"
-                app:cardCornerRadius="16dp">
-
-                <LinearLayout
+                <!-- ============ 已配对设备 ============
+                     🔴 这张卡的 id 曾经写成 @+id/cardDiagnostics，而 MainActivity
+                     用那个 id 在**非专业模式**下把控件设成 GONE（本意是隐藏最下面
+                     那张「故障日志」卡）。默认就是非专业模式，于是**整张已配对设备
+                     卡在默认状态下根本不显示**——设备一直配着、Go 侧一直在回数据，
+                     只是那张卡被藏了。改 id 前请先读这段。 -->
+                <com.google.android.material.card.MaterialCardView
+                    android:id="@+id/cardPairedDevices"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:orientation="vertical"
-                    android:padding="16dp">
+                    android:layout_marginTop="12dp"
+                    app:cardCornerRadius="16dp">
 
                     <LinearLayout
-                        android:id="@+id/headerCrossnet"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:background="?attr/selectableItemBackground"
-                        android:gravity="center_vertical"
-                        android:minHeight="40dp"
-                        android:orientation="horizontal">
+                        android:orientation="vertical"
+                        android:padding="16dp">
 
-                        <ImageView
-                            android:layout_width="20dp"
-                            android:layout_height="20dp"
-                            android:layout_marginEnd="10dp"
-                            android:importantForAccessibility="no"
-                            android:src="@drawable/ic_transfer"
-                            android:tag="sectionIcon" />
-
-                        <TextView
-                            android:layout_width="0dp"
-                            android:layout_weight="1"
+                        <LinearLayout
+                            android:layout_width="match_parent"
                             android:layout_height="wrap_content"
-                            android:text="@string/crossnet_section"
-                            android:textAppearance="?attr/textAppearanceTitleSmall" />
+                            android:gravity="center_vertical"
+                            android:orientation="horizontal">
 
-                        <ImageView
-                            android:id="@+id/chevronCrossnet"
-                            android:layout_width="24dp"
-                            android:layout_height="24dp"
-                            android:importantForAccessibility="no"
-                            android:src="@drawable/ic_chevron" />
+                            <ImageView
+                                android:layout_width="20dp"
+                                android:layout_height="20dp"
+                                android:layout_marginEnd="10dp"
+                                android:importantForAccessibility="no"
+                                android:src="@drawable/ic_devices"
+                                android:tag="sectionIcon" />
+
+                            <TextView
+                                android:layout_width="0dp"
+                                android:layout_weight="1"
+                                android:layout_height="wrap_content"
+                                android:text="@string/paired_devices"
+                                android:textAppearance="?attr/textAppearanceTitleSmall" />
+
+                            <!-- 「选择」是进入多选模式的入口。
+                                 长按任意一行也能进（安卓上最符合直觉的手势），但只靠
+                                 长按的话没人发现得了——一个看得见的按钮是必须的。 -->
+                            <com.google.android.material.button.MaterialButton
+                                android:id="@+id/btnSelectDevices"
+                                style="?attr/materialButtonOutlinedStyle"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:minWidth="0dp"
+                                android:paddingHorizontal="12dp"
+                                android:text="@string/devices_select" />
+                        </LinearLayout>
+
+                        <!-- 多选工具条：全选 + 删除选中。整条平时隐藏。 -->
+                        <LinearLayout
+                            android:id="@+id/rowDeviceSelection"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="8dp"
+                            android:gravity="center_vertical"
+                            android:orientation="horizontal"
+                            android:visibility="gone">
+
+                            <com.google.android.material.checkbox.MaterialCheckBox
+                                android:id="@+id/checkSelectAllDevices"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="@string/devices_select_all" />
+
+                            <View
+                                android:layout_width="0dp"
+                                android:layout_weight="1"
+                                android:layout_height="1dp" />
+
+                            <com.google.android.material.button.MaterialButton
+                                android:id="@+id/btnDeleteDevices"
+                                style="?attr/materialButtonOutlinedStyle"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:enabled="false"
+                                android:minWidth="0dp"
+                                android:paddingHorizontal="12dp"
+                                android:text="@string/devices_delete"
+                                app:icon="@drawable/ic_delete" />
+                        </LinearLayout>
+
+                        <!-- 空态提示。初始就是 gone：不这么写的话，界面渲染完到
+                             第一次 status 回来之间会先闪一下"还没有配对任何设备"，
+                             而那句话恰恰是用户最不想看到的误报。 -->
+                        <TextView
+                            android:id="@+id/textNoDevices"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:paddingVertical="10dp"
+                            android:visibility="gone"
+                            android:text="@string/no_devices"
+                            android:textAppearance="?attr/textAppearanceBodySmall"
+                            android:textColor="?attr/colorOnSurfaceVariant" />
+
+                        <androidx.recyclerview.widget.RecyclerView
+                            android:id="@+id/listDevices"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:nestedScrollingEnabled="false" />
                     </LinearLayout>
+                </com.google.android.material.card.MaterialCardView>
+            </LinearLayout>
+
+            <LinearLayout
+                android:id="@+id/colSecondary"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical" />
+        </LinearLayout>
+    </androidx.core.widget.NestedScrollView>
+
+    <!-- ============ 全屏面板 · 配对 ============ -->
+    <LinearLayout
+        android:id="@+id/panelPair"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:clickable="true"
+        android:elevation="12dp"
+        android:focusable="true"
+        android:orientation="vertical"
+        android:tag="panelRoot"
+        android:visibility="gone">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center_vertical"
+            android:minHeight="?attr/actionBarSize"
+            android:orientation="horizontal"
+            android:paddingStart="4dp"
+            android:paddingEnd="16dp"
+            android:tag="panelBar">
+
+            <com.google.android.material.button.MaterialButton
+                style="@style/Widget.Material3.Button.IconButton"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:contentDescription="@string/panel_back"
+                android:tag="panelBack"
+                android:tooltipText="@string/panel_back"
+                app:icon="@drawable/ic_arrow_back" />
+
+            <ImageView
+                android:layout_width="22dp"
+                android:layout_height="22dp"
+                android:layout_marginStart="4dp"
+                android:layout_marginEnd="10dp"
+                android:importantForAccessibility="no"
+                android:src="@drawable/ic_qr"
+                android:tag="sectionIcon" />
+
+            <TextView
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:ellipsize="end"
+                android:singleLine="true"
+                android:text="@string/panel_pair"
+                android:textAppearance="?attr/textAppearanceTitleLarge" />
+        </LinearLayout>
+
+        <androidx.core.widget.NestedScrollView
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1"
+            android:overScrollMode="ifContentScrolls">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:paddingHorizontal="@dimen/screen_padding"
+                android:paddingBottom="24dp"
+                android:tag="panelBody">
+
+                <!-- ============ 我的配对码 ============
+                     可展开 / 折叠。二维码占掉大半屏，配完设备之后就是纯占位置的东西，
+                     但又不能藏进菜单——「出示我的码」是两台设备第一次见面时最常按的
+                     那一个。折叠起来只剩一行标题，需要时点一下就回来。 -->
+                <com.google.android.material.card.MaterialCardView
+                    android:id="@+id/cardMyCode"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="12dp"
+                    android:visibility="gone"
+                    app:cardCornerRadius="16dp">
 
                     <LinearLayout
-                        android:id="@+id/bodyCrossnet"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="vertical"
+                        android:padding="16dp">
+
+                        <LinearLayout
+                            android:id="@+id/headerMyCode"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:background="?attr/selectableItemBackground"
+                            android:gravity="center_vertical"
+                            android:minHeight="40dp"
+                            android:orientation="horizontal">
+
+                            <ImageView
+                                android:layout_width="20dp"
+                                android:layout_height="20dp"
+                                android:layout_marginEnd="10dp"
+                                android:importantForAccessibility="no"
+                                android:src="@drawable/ic_qr"
+                                android:tag="sectionIcon" />
+
+                            <TextView
+                                android:layout_width="0dp"
+                                android:layout_weight="1"
+                                android:layout_height="wrap_content"
+                                android:text="@string/my_code_section"
+                                android:textAppearance="?attr/textAppearanceTitleSmall" />
+
+                            <ImageView
+                                android:id="@+id/chevronMyCode"
+                                android:layout_width="24dp"
+                                android:layout_height="24dp"
+                                android:importantForAccessibility="no"
+                                android:src="@drawable/ic_chevron" />
+                        </LinearLayout>
+
+                        <LinearLayout
+                            android:id="@+id/bodyMyCode"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:gravity="center_horizontal"
+                            android:orientation="vertical"
+                            android:paddingTop="12dp">
+
+                            <ImageView
+                                android:id="@+id/imageQr"
+                                android:layout_width="@dimen/qr_size"
+                                android:layout_height="@dimen/qr_size"
+                                android:background="#FFFFFF"
+                                android:contentDescription="@string/show_my_code"
+                                android:padding="8dp" />
+
+                            <TextView
+                                android:id="@+id/textCodeExpiry"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:layout_marginTop="10dp"
+                                android:textAppearance="?attr/textAppearanceBodySmall"
+                                android:textColor="?attr/colorOnSurfaceVariant" />
+                        </LinearLayout>
+                    </LinearLayout>
+                </com.google.android.material.card.MaterialCardView>
+
+                <!-- ============ 附近设备 ============
+                     第三种配对方式：不用扫码、不用复制粘贴，直接从列表里点。 -->
+                <com.google.android.material.card.MaterialCardView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="12dp"
+                    app:cardCornerRadius="16dp">
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="vertical"
+                        android:padding="16dp">
+
+                        <LinearLayout
+                            android:id="@+id/headerNearby"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:background="?attr/selectableItemBackground"
+                            android:gravity="center_vertical"
+                            android:minHeight="40dp"
+                            android:orientation="horizontal">
+
+                            <ImageView
+                                android:layout_width="20dp"
+                                android:layout_height="20dp"
+                                android:layout_marginEnd="10dp"
+                                android:importantForAccessibility="no"
+                                android:src="@drawable/ic_scan"
+                                android:tag="sectionIcon" />
+
+                            <TextView
+                                android:layout_width="0dp"
+                                android:layout_weight="1"
+                                android:layout_height="wrap_content"
+                                android:text="@string/nearby_devices"
+                                android:textAppearance="?attr/textAppearanceTitleSmall" />
+
+                            <!-- 刷新留在标题栏里：它是这张卡最常按的动作，折叠状态下
+                                 也该点得到。点它不会连带展开/折叠——两个动作分开。 -->
+                            <com.google.android.material.button.MaterialButton
+                                android:id="@+id/btnRefreshNearby"
+                                style="?attr/materialButtonOutlinedStyle"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:layout_marginEnd="4dp"
+                                android:minWidth="0dp"
+                                android:text="@string/refresh"
+                                app:icon="@drawable/ic_refresh" />
+
+                            <ImageView
+                                android:id="@+id/chevronNearby"
+                                android:layout_width="24dp"
+                                android:layout_height="24dp"
+                                android:importantForAccessibility="no"
+                                android:src="@drawable/ic_chevron" />
+                        </LinearLayout>
+
+                      <LinearLayout
+                        android:id="@+id/bodyNearby"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
                         android:orientation="vertical">
 
                         <TextView
-                            android:id="@+id/textCrossnetStatus"
+                            android:id="@+id/textNoNearby"
                             android:layout_width="match_parent"
                             android:layout_height="wrap_content"
-                            android:paddingTop="8dp"
-                            android:text="@string/crossnet_status_off"
+                            android:paddingVertical="10dp"
+                            android:text="@string/nearby_empty"
                             android:textAppearance="?attr/textAppearanceBodySmall"
                             android:textColor="?attr/colorOnSurfaceVariant" />
 
-                        <TextView
+                        <androidx.recyclerview.widget.RecyclerView
+                            android:id="@+id/listNearby"
                             android:layout_width="match_parent"
                             android:layout_height="wrap_content"
-                            android:paddingTop="8dp"
-                            android:text="@string/crossnet_explain"
-                            android:textAppearance="?attr/textAppearanceBodySmall"
-                            android:textColor="?attr/colorOnSurfaceVariant" />
+                            android:nestedScrollingEnabled="false" />
 
-                        <com.google.android.material.textfield.TextInputLayout
+                        <!-- 三条兜底路径。
+                             「刷新」只是把已经被动听到的东西读一遍——路由器丢掉组播时
+                             刷一百次也还是空的，所以真正解决问题的是下面这三个：
+                             主动扫描绕开组播，手动地址绕开一切自动发现，诊断告诉用户
+                             到底卡在哪一步。它们和列表放在同一张卡里，因为用户是在
+                             "列表是空的"这个时刻才需要它们。 -->
+                        <com.google.android.material.divider.MaterialDivider
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="10dp" />
+
+                        <LinearLayout
                             android:layout_width="match_parent"
                             android:layout_height="wrap_content"
                             android:layout_marginTop="10dp"
-                            android:hint="@string/crossnet_addr_hint"
-                            app:helperText="@string/crossnet_addr_helper">
+                            android:orientation="horizontal">
 
-                            <com.google.android.material.textfield.TextInputEditText
-                                android:id="@+id/inputRendezvousAddr"
-                                android:layout_width="match_parent"
+                            <com.google.android.material.button.MaterialButton
+                                android:id="@+id/btnScanLan"
+                                android:layout_width="0dp"
+                                android:layout_weight="1"
                                 android:layout_height="wrap_content"
-                                android:inputType="textUri"
-                                android:maxLines="1" />
-                        </com.google.android.material.textfield.TextInputLayout>
+                                android:minWidth="0dp"
+                                android:text="@string/scan_lan"
+                                app:icon="@drawable/ic_scan" />
 
-                        <com.google.android.material.textfield.TextInputLayout
-                            android:layout_width="match_parent"
-                            android:layout_height="wrap_content"
-                            android:layout_marginTop="4dp"
-                            android:hint="@string/crossnet_secret_hint"
-                            app:endIconMode="password_toggle"
-                            app:helperText="@string/crossnet_secret_helper">
-
-                            <com.google.android.material.textfield.TextInputEditText
-                                android:id="@+id/inputRendezvousSecret"
-                                android:layout_width="match_parent"
+                            <com.google.android.material.button.MaterialButton
+                                android:id="@+id/btnManualAddress"
+                                style="?attr/materialButtonOutlinedStyle"
+                                android:layout_width="0dp"
+                                android:layout_weight="1"
                                 android:layout_height="wrap_content"
-                                android:inputType="textPassword"
-                                android:maxLines="1" />
-                        </com.google.android.material.textfield.TextInputLayout>
+                                android:layout_marginStart="8dp"
+                                android:minWidth="0dp"
+                                android:text="@string/manual_address" />
+                        </LinearLayout>
 
-                        <com.google.android.material.materialswitch.MaterialSwitch
-                            android:id="@+id/switchRelayOnMetered"
+                        <!-- 数字码放在最显眼的整行按钮上：其它三条路各有前提（摄像头 /
+                             组播 / 知道 IP 和端口），只有这条在哪儿都成立。 -->
+                        <com.google.android.material.button.MaterialButton
+                            android:id="@+id/btnShortCode"
                             android:layout_width="match_parent"
                             android:layout_height="wrap_content"
                             android:layout_marginTop="8dp"
-                            android:checked="false"
-                            android:text="@string/crossnet_metered_label" />
+                            android:text="@string/short_code" />
+
+                        <com.google.android.material.button.MaterialButton
+                            android:id="@+id/btnDiagnose"
+                            style="@style/Widget.Material3.Button.TextButton"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="2dp"
+                            android:text="@string/diag_run" />
 
                         <TextView
-                            android:id="@+id/textMeteredNow"
+                            android:id="@+id/textDiagResult"
                             android:layout_width="match_parent"
                             android:layout_height="wrap_content"
                             android:paddingTop="4dp"
                             android:textAppearance="?attr/textAppearanceBodySmall"
                             android:textColor="?attr/colorOnSurfaceVariant"
                             android:visibility="gone" />
+                      </LinearLayout>
+                    </LinearLayout>
+                </com.google.android.material.card.MaterialCardView>
+            </LinearLayout>
+        </androidx.core.widget.NestedScrollView>
+    </LinearLayout>
+
+    <!-- ============ 全屏面板 · 剪贴板 ============ -->
+    <LinearLayout
+        android:id="@+id/panelClip"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:clickable="true"
+        android:elevation="12dp"
+        android:focusable="true"
+        android:orientation="vertical"
+        android:tag="panelRoot"
+        android:visibility="gone">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center_vertical"
+            android:minHeight="?attr/actionBarSize"
+            android:orientation="horizontal"
+            android:paddingStart="4dp"
+            android:paddingEnd="16dp"
+            android:tag="panelBar">
+
+            <com.google.android.material.button.MaterialButton
+                style="@style/Widget.Material3.Button.IconButton"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:contentDescription="@string/panel_back"
+                android:tag="panelBack"
+                android:tooltipText="@string/panel_back"
+                app:icon="@drawable/ic_arrow_back" />
+
+            <ImageView
+                android:layout_width="22dp"
+                android:layout_height="22dp"
+                android:layout_marginStart="4dp"
+                android:layout_marginEnd="10dp"
+                android:importantForAccessibility="no"
+                android:src="@drawable/ic_clipboard"
+                android:tag="sectionIcon" />
+
+            <TextView
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:ellipsize="end"
+                android:singleLine="true"
+                android:text="@string/panel_clip"
+                android:textAppearance="?attr/textAppearanceTitleLarge" />
+        </LinearLayout>
+
+        <androidx.core.widget.NestedScrollView
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1"
+            android:overScrollMode="ifContentScrolls">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:paddingHorizontal="@dimen/screen_padding"
+                android:paddingBottom="24dp"
+                android:tag="panelBody">
+
+                <!-- ============ 自动同步 ============
+                     原在首页快捷操作卡里的三行（自动同步 / 只同步纯文本 / 输入法模式），原样搬来。 -->
+                <com.google.android.material.card.MaterialCardView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="12dp"
+                    app:cardCornerRadius="16dp">
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="vertical"
+                        android:paddingHorizontal="16dp"
+                        android:paddingTop="6dp"
+                        android:paddingBottom="16dp">
+                        <!-- 剪贴板自动同步开关。
+                             说明文字**不常驻**：拨动开关的那一刻用 Snackbar 说一句
+                             （包括安卓 10 起只有前台能读剪贴板这条限制），说完就走。
+                             常年挂两行字在这里，第二天起就只是噪音了。 -->
+                        <LinearLayout
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="10dp"
+                            android:gravity="center_vertical"
+                            android:orientation="horizontal">
+
+                            <ImageView
+                                android:layout_width="20dp"
+                                android:layout_height="20dp"
+                                android:layout_marginEnd="10dp"
+                                android:importantForAccessibility="no"
+                                android:src="@drawable/ic_clipboard"
+                                android:tag="sectionIcon" />
+
+                            <LinearLayout
+                                android:layout_width="0dp"
+                                android:layout_weight="1"
+                                android:layout_height="wrap_content"
+                                android:orientation="vertical">
+
+                                <TextView
+                                    android:layout_width="match_parent"
+                                    android:layout_height="wrap_content"
+                                    android:text="@string/clip_auto_title"
+                                    android:textAppearance="?attr/textAppearanceBodyMedium" />
+                            </LinearLayout>
+
+                            <com.google.android.material.materialswitch.MaterialSwitch
+                                android:id="@+id/switchClipAuto"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content" />
+                        </LinearLayout>
 
                         <LinearLayout
                             android:layout_width="match_parent"
                             android:layout_height="wrap_content"
-                            android:layout_marginTop="4dp"
+                            android:layout_marginTop="6dp"
+                            android:gravity="center_vertical"
                             android:orientation="horizontal">
 
-                            <com.google.android.material.button.MaterialButton
-                                android:id="@+id/btnSaveCrossnet"
+                            <TextView
                                 android:layout_width="0dp"
                                 android:layout_weight="1"
                                 android:layout_height="wrap_content"
-                                android:text="@string/crossnet_save" />
+                                android:layout_marginStart="30dp"
+                                android:text="@string/clip_plain_only_title"
+                                android:textAppearance="?attr/textAppearanceBodyMedium" />
+
+                            <com.google.android.material.materialswitch.MaterialSwitch
+                                android:id="@+id/switchClipPlain"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content" />
+                        </LinearLayout>
+
+                        <!-- 输入法模式：Tessera 键盘是默认输入法时后台读得到剪贴板，
+                             在任何应用里复制都会自动同步。状态三档：未启用 / 已启用未选用 / 正在使用。 -->
+                        <LinearLayout
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="6dp"
+                            android:gravity="center_vertical"
+                            android:orientation="horizontal">
+
+                            <LinearLayout
+                                android:layout_width="0dp"
+                                android:layout_weight="1"
+                                android:layout_height="wrap_content"
+                                android:layout_marginStart="30dp"
+                                android:orientation="vertical">
+
+                                <TextView
+                                    android:layout_width="match_parent"
+                                    android:layout_height="wrap_content"
+                                    android:text="@string/ime_mode_title"
+                                    android:textAppearance="?attr/textAppearanceBodyMedium" />
+
+                                <TextView
+                                    android:id="@+id/textImeStatus"
+                                    android:layout_width="match_parent"
+                                    android:layout_height="wrap_content"
+                                    android:textAppearance="?attr/textAppearanceBodySmall"
+                                    android:textColor="?attr/colorOnSurfaceVariant" />
+                            </LinearLayout>
 
                             <com.google.android.material.button.MaterialButton
-                                android:id="@+id/btnDisableCrossnet"
-                                style="?attr/materialButtonOutlinedStyle"
-                                android:layout_width="0dp"
-                                android:layout_weight="1"
+                                android:id="@+id/btnImeSetup"
+                                style="@style/Widget.Material3.Button.TonalButton"
+                                android:layout_width="wrap_content"
                                 android:layout_height="wrap_content"
-                                android:layout_marginStart="8dp"
-                                android:text="@string/crossnet_disable" />
+                                android:text="@string/ime_enable" />
                         </LinearLayout>
                     </LinearLayout>
-                </LinearLayout>
-            </com.google.android.material.card.MaterialCardView>
+                </com.google.android.material.card.MaterialCardView>
 
-            <!-- ============ 应用更新 ============
-                 从「附近设备和发送动作之间」挪到这里。它是设置类内容，
-                 夹在两组传输动作中间会把一件事劈成两半。 -->
-            <com.google.android.material.card.MaterialCardView
+                <!-- ============ 剪贴板时间线 ============
+                     任一设备最近复制过的内容（含对方断线期间复制、连上后取回的），
+                     点一下放进本机剪贴板，或重新发给所有设备。只在内存里，退出即清空。
+
+                     排在「本机身份」之后：它是翻看历史用的，不是天天要点的动作；
+                     排在前面只会把「已配对设备」「附近设备」这些配对用的卡片挤到屏幕外。
+
+                     内容区是一个**固定高度**的窗口（手机 @dimen/clip_timeline_height，
+                     平板更高）：条数再多也不会把整页越撑越长，要看更多就在窗口里滑动。
+                     右上角的全屏按钮把同一份内容铺满整个屏幕（见页面末尾的
+                     overlayClipTimeline），按返回键或键盘 Esc 退出。 -->
+                <com.google.android.material.card.MaterialCardView
+                    android:id="@+id/cardClipTimeline"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="12dp"
+                    app:cardCornerRadius="16dp">
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="vertical"
+                        android:padding="16dp">
+
+                        <LinearLayout
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:gravity="center_vertical"
+                            android:orientation="horizontal">
+
+                            <ImageView
+                                android:layout_width="20dp"
+                                android:layout_height="20dp"
+                                android:layout_marginEnd="10dp"
+                                android:importantForAccessibility="no"
+                                android:src="@drawable/ic_clipboard"
+                                android:tag="sectionIcon" />
+
+                            <TextView
+                                android:layout_width="0dp"
+                                android:layout_weight="1"
+                                android:layout_height="wrap_content"
+                                android:text="@string/clip_timeline_title"
+                                android:textAppearance="?attr/textAppearanceTitleSmall" />
+
+                            <com.google.android.material.button.MaterialButton
+                                android:id="@+id/btnTimelineRefresh"
+                                style="@style/Widget.Material3.Button.IconButton"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:contentDescription="@string/clip_timeline_refresh"
+                                android:tooltipText="@string/clip_timeline_refresh"
+                                app:icon="@drawable/ic_refresh" />
+
+                            <com.google.android.material.button.MaterialButton
+                                android:id="@+id/btnTimelineClear"
+                                style="@style/Widget.Material3.Button.IconButton"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:contentDescription="@string/clip_timeline_clear"
+                                android:tooltipText="@string/clip_timeline_clear"
+                                app:icon="@drawable/ic_delete" />
+
+                            <com.google.android.material.button.MaterialButton
+                                android:id="@+id/btnTimelineFullscreen"
+                                style="@style/Widget.Material3.Button.IconButton"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:contentDescription="@string/clip_timeline_fullscreen"
+                                android:tooltipText="@string/clip_timeline_fullscreen"
+                                app:icon="@drawable/ic_fullscreen" />
+                        </LinearLayout>
+
+                        <!-- 固定大小的窗口。NestedScrollView 放在外层的 NestedScrollView 里
+                             也能各自滑动：手指落在窗口里，窗口先滑；滑到头再交还给整页。 -->
+                        <androidx.core.widget.NestedScrollView
+                            android:id="@+id/scrollClipTimeline"
+                            android:layout_width="match_parent"
+                            android:layout_height="@dimen/clip_timeline_height"
+                            android:layout_marginTop="8dp"
+                            android:background="@drawable/bg_clip_window"
+                            android:fadeScrollbars="false"
+                            android:overScrollMode="ifContentScrolls"
+                            android:paddingHorizontal="12dp"
+                            android:scrollbars="vertical">
+
+                            <LinearLayout
+                                android:layout_width="match_parent"
+                                android:layout_height="wrap_content"
+                                android:orientation="vertical">
+
+                                <TextView
+                                    android:id="@+id/textTimelineEmpty"
+                                    android:layout_width="match_parent"
+                                    android:layout_height="wrap_content"
+                                    android:paddingVertical="12dp"
+                                    android:text="@string/clip_timeline_empty"
+                                    android:textAppearance="?attr/textAppearanceBodySmall"
+                                    android:textColor="?attr/colorOnSurfaceVariant" />
+
+                                <LinearLayout
+                                    android:id="@+id/listClipTimeline"
+                                    android:layout_width="match_parent"
+                                    android:layout_height="wrap_content"
+                                    android:orientation="vertical" />
+                            </LinearLayout>
+                        </androidx.core.widget.NestedScrollView>
+                    </LinearLayout>
+                </com.google.android.material.card.MaterialCardView>
+            </LinearLayout>
+        </androidx.core.widget.NestedScrollView>
+    </LinearLayout>
+
+    <!-- ============ 全屏面板 · 跨网络 ============ -->
+    <LinearLayout
+        android:id="@+id/panelCrossnet"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:clickable="true"
+        android:elevation="12dp"
+        android:focusable="true"
+        android:orientation="vertical"
+        android:tag="panelRoot"
+        android:visibility="gone">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center_vertical"
+            android:minHeight="?attr/actionBarSize"
+            android:orientation="horizontal"
+            android:paddingStart="4dp"
+            android:paddingEnd="16dp"
+            android:tag="panelBar">
+
+            <com.google.android.material.button.MaterialButton
+                style="@style/Widget.Material3.Button.IconButton"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:contentDescription="@string/panel_back"
+                android:tag="panelBack"
+                android:tooltipText="@string/panel_back"
+                app:icon="@drawable/ic_arrow_back" />
+
+            <ImageView
+                android:layout_width="22dp"
+                android:layout_height="22dp"
+                android:layout_marginStart="4dp"
+                android:layout_marginEnd="10dp"
+                android:importantForAccessibility="no"
+                android:src="@drawable/ic_globe"
+                android:tag="sectionIcon" />
+
+            <TextView
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:ellipsize="end"
+                android:singleLine="true"
+                android:text="@string/panel_crossnet"
+                android:textAppearance="?attr/textAppearanceTitleLarge" />
+        </LinearLayout>
+
+        <androidx.core.widget.NestedScrollView
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1"
+            android:overScrollMode="ifContentScrolls">
+
+            <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="12dp"
-                app:cardCornerRadius="16dp">
+                android:orientation="vertical"
+                android:paddingHorizontal="@dimen/screen_padding"
+                android:paddingBottom="24dp"
+                android:tag="panelBody">
 
-                <LinearLayout
+                <!-- ============ 跨网络连接 ============
+                     默认收起：绝大多数时候两台设备就在同一个 Wi-Fi 下，局域网直连
+                     全自动、不需要任何配置。这张卡是"在外面也想连上"时才来找的。 -->
+                <com.google.android.material.card.MaterialCardView
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:orientation="vertical"
-                    android:padding="16dp">
+                    android:layout_marginTop="12dp"
+                    app:cardCornerRadius="16dp">
 
                     <LinearLayout
-                        android:id="@+id/headerUpdate"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:background="?attr/selectableItemBackground"
-                        android:gravity="center_vertical"
-                        android:minHeight="40dp"
-                        android:orientation="horizontal">
+                        android:orientation="vertical"
+                        android:padding="16dp">
 
-                        <ImageView
-                            android:layout_width="20dp"
-                            android:layout_height="20dp"
-                            android:layout_marginEnd="10dp"
-                            android:importantForAccessibility="no"
-                            android:src="@drawable/ic_update"
-                            android:tag="sectionIcon" />
-
-                        <TextView
-                            android:layout_width="0dp"
-                            android:layout_weight="1"
+                        <LinearLayout
+                            android:id="@+id/headerCrossnet"
+                            android:layout_width="match_parent"
                             android:layout_height="wrap_content"
-                            android:text="@string/update_section"
-                            android:textAppearance="?attr/textAppearanceTitleSmall" />
+                            android:background="?attr/selectableItemBackground"
+                            android:gravity="center_vertical"
+                            android:minHeight="40dp"
+                            android:orientation="horizontal">
 
-                        <ImageView
-                            android:id="@+id/chevronUpdate"
-                            android:layout_width="24dp"
-                            android:layout_height="24dp"
-                            android:importantForAccessibility="no"
-                            android:src="@drawable/ic_chevron" />
+                            <ImageView
+                                android:layout_width="20dp"
+                                android:layout_height="20dp"
+                                android:layout_marginEnd="10dp"
+                                android:importantForAccessibility="no"
+                                android:src="@drawable/ic_transfer"
+                                android:tag="sectionIcon" />
+
+                            <TextView
+                                android:layout_width="0dp"
+                                android:layout_weight="1"
+                                android:layout_height="wrap_content"
+                                android:text="@string/crossnet_section"
+                                android:textAppearance="?attr/textAppearanceTitleSmall" />
+
+                        </LinearLayout>
+
+                        <LinearLayout
+                            android:id="@+id/bodyCrossnet"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:orientation="vertical">
+
+                            <TextView
+                                android:id="@+id/textCrossnetStatus"
+                                android:layout_width="match_parent"
+                                android:layout_height="wrap_content"
+                                android:paddingTop="8dp"
+                                android:text="@string/crossnet_status_off"
+                                android:textAppearance="?attr/textAppearanceBodySmall"
+                                android:textColor="?attr/colorOnSurfaceVariant" />
+
+                            <TextView
+                                android:layout_width="match_parent"
+                                android:layout_height="wrap_content"
+                                android:paddingTop="8dp"
+                                android:text="@string/crossnet_explain"
+                                android:textAppearance="?attr/textAppearanceBodySmall"
+                                android:textColor="?attr/colorOnSurfaceVariant" />
+
+                            <com.google.android.material.textfield.TextInputLayout
+                                android:layout_width="match_parent"
+                                android:layout_height="wrap_content"
+                                android:layout_marginTop="10dp"
+                                android:hint="@string/crossnet_addr_hint"
+                                app:helperText="@string/crossnet_addr_helper">
+
+                                <com.google.android.material.textfield.TextInputEditText
+                                    android:id="@+id/inputRendezvousAddr"
+                                    android:layout_width="match_parent"
+                                    android:layout_height="wrap_content"
+                                    android:inputType="textUri"
+                                    android:maxLines="1" />
+                            </com.google.android.material.textfield.TextInputLayout>
+
+                            <com.google.android.material.textfield.TextInputLayout
+                                android:layout_width="match_parent"
+                                android:layout_height="wrap_content"
+                                android:layout_marginTop="4dp"
+                                android:hint="@string/crossnet_secret_hint"
+                                app:endIconMode="password_toggle"
+                                app:helperText="@string/crossnet_secret_helper">
+
+                                <com.google.android.material.textfield.TextInputEditText
+                                    android:id="@+id/inputRendezvousSecret"
+                                    android:layout_width="match_parent"
+                                    android:layout_height="wrap_content"
+                                    android:inputType="textPassword"
+                                    android:maxLines="1" />
+                            </com.google.android.material.textfield.TextInputLayout>
+
+                            <com.google.android.material.materialswitch.MaterialSwitch
+                                android:id="@+id/switchRelayOnMetered"
+                                android:layout_width="match_parent"
+                                android:layout_height="wrap_content"
+                                android:layout_marginTop="8dp"
+                                android:checked="false"
+                                android:text="@string/crossnet_metered_label" />
+
+                            <TextView
+                                android:id="@+id/textMeteredNow"
+                                android:layout_width="match_parent"
+                                android:layout_height="wrap_content"
+                                android:paddingTop="4dp"
+                                android:textAppearance="?attr/textAppearanceBodySmall"
+                                android:textColor="?attr/colorOnSurfaceVariant"
+                                android:visibility="gone" />
+
+                            <LinearLayout
+                                android:layout_width="match_parent"
+                                android:layout_height="wrap_content"
+                                android:layout_marginTop="4dp"
+                                android:orientation="horizontal">
+
+                                <com.google.android.material.button.MaterialButton
+                                    android:id="@+id/btnSaveCrossnet"
+                                    android:layout_width="0dp"
+                                    android:layout_weight="1"
+                                    android:layout_height="wrap_content"
+                                    android:text="@string/crossnet_save" />
+
+                                <com.google.android.material.button.MaterialButton
+                                    android:id="@+id/btnDisableCrossnet"
+                                    style="?attr/materialButtonOutlinedStyle"
+                                    android:layout_width="0dp"
+                                    android:layout_weight="1"
+                                    android:layout_height="wrap_content"
+                                    android:layout_marginStart="8dp"
+                                    android:text="@string/crossnet_disable" />
+                            </LinearLayout>
+                        </LinearLayout>
                     </LinearLayout>
+                </com.google.android.material.card.MaterialCardView>
+            </LinearLayout>
+        </androidx.core.widget.NestedScrollView>
+    </LinearLayout>
 
-                  <LinearLayout
-                    android:id="@+id/bodyUpdate"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:orientation="vertical">
+    <!-- ============ 全屏面板 · 本机与外观 ============ -->
+    <LinearLayout
+        android:id="@+id/panelDevice"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:clickable="true"
+        android:elevation="12dp"
+        android:focusable="true"
+        android:orientation="vertical"
+        android:tag="panelRoot"
+        android:visibility="gone">
 
-                    <TextView
-                        android:id="@+id/textUpdateStatus"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:paddingTop="8dp"
-                        android:textAppearance="?attr/textAppearanceBodySmall"
-                        android:textColor="?attr/colorOnSurfaceVariant" />
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center_vertical"
+            android:minHeight="?attr/actionBarSize"
+            android:orientation="horizontal"
+            android:paddingStart="4dp"
+            android:paddingEnd="16dp"
+            android:tag="panelBar">
 
-                    <com.google.android.material.materialswitch.MaterialSwitch
-                        android:id="@+id/switchAutoUpdate"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:layout_marginTop="8dp"
-                        android:checked="true"
-                        android:text="@string/update_auto_label" />
+            <com.google.android.material.button.MaterialButton
+                style="@style/Widget.Material3.Button.IconButton"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:contentDescription="@string/panel_back"
+                android:tag="panelBack"
+                android:tooltipText="@string/panel_back"
+                app:icon="@drawable/ic_arrow_back" />
 
-                    <com.google.android.material.materialswitch.MaterialSwitch
-                        android:id="@+id/switchUpdateMirror"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:text="@string/update_mirror_label" />
+            <ImageView
+                android:layout_width="22dp"
+                android:layout_height="22dp"
+                android:layout_marginStart="4dp"
+                android:layout_marginEnd="10dp"
+                android:importantForAccessibility="no"
+                android:src="@drawable/ic_devices"
+                android:tag="sectionIcon" />
 
-                    <!-- 「自动只自动到检查这一步」那句解释挪进了拨开关时的 Snackbar。
-                         它是**打开开关的那一刻**才需要知道的事，不是每次滚到这里
-                         都要重读一遍的事。 -->
+            <TextView
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:ellipsize="end"
+                android:singleLine="true"
+                android:text="@string/panel_device"
+                android:textAppearance="?attr/textAppearanceTitleLarge" />
+        </LinearLayout>
 
-                    <com.google.android.material.button.MaterialButton
-                        android:id="@+id/btnCheckUpdate"
-                        style="?attr/materialButtonOutlinedStyle"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:layout_marginTop="4dp"
-                        android:text="@string/update_check"
-                        app:icon="@drawable/ic_update" />
-                  </LinearLayout>
-                </LinearLayout>
-            </com.google.android.material.card.MaterialCardView>
+        <androidx.core.widget.NestedScrollView
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1"
+            android:overScrollMode="ifContentScrolls">
 
-            <!-- ============ 故障日志（仅专业模式） ============
-                 cardDiagnostics 这个 id 现在指的是这张卡，跟 MainActivity 里
-                 「非专业模式隐藏」的那行对上了。见上面已配对设备卡的说明。 -->
-            <com.google.android.material.card.MaterialCardView
-                android:id="@+id/cardDiagnostics"
+            <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="12dp"
-                android:visibility="gone"
-                app:cardCornerRadius="16dp">
+                android:orientation="vertical"
+                android:paddingHorizontal="@dimen/screen_padding"
+                android:paddingBottom="24dp"
+                android:tag="panelBody">
 
-                <LinearLayout
+                <!-- ============ 本机身份 ============ -->
+                <com.google.android.material.card.MaterialCardView
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:orientation="vertical"
-                    android:padding="16dp">
+                    app:cardCornerRadius="16dp">
 
                     <LinearLayout
-                        android:id="@+id/headerDiag"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:background="?attr/selectableItemBackground"
-                        android:gravity="center_vertical"
-                        android:minHeight="40dp"
-                        android:orientation="horizontal">
+                        android:orientation="vertical"
+                        android:padding="16dp">
 
-                        <ImageView
-                            android:layout_width="20dp"
-                            android:layout_height="20dp"
-                            android:layout_marginEnd="10dp"
-                            android:importantForAccessibility="no"
-                            android:src="@drawable/ic_log"
-                            android:tag="sectionIcon" />
+                        <LinearLayout
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:gravity="center_vertical"
+                            android:orientation="horizontal">
+
+                            <ImageView
+                                android:layout_width="20dp"
+                                android:layout_height="20dp"
+                                android:layout_marginEnd="10dp"
+                                android:importantForAccessibility="no"
+                                android:src="@drawable/ic_devices"
+                                android:tag="sectionIcon" />
+
+                            <TextView
+                                android:layout_width="0dp"
+                                android:layout_weight="1"
+                                android:layout_height="wrap_content"
+                                android:text="@string/this_device"
+                                android:textAppearance="?attr/textAppearanceTitleSmall" />
+
+                            <com.google.android.material.button.MaterialButton
+                                android:id="@+id/btnAppearance"
+                                style="?attr/materialButtonOutlinedStyle"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:minWidth="0dp"
+                                android:text="@string/appearance_button"
+                                app:icon="@drawable/ic_palette" />
+
+                            <!-- 使用指南。放在这里而不是藏进设置：需要看它的人
+                                 正是还不熟悉这个应用的人，而那种人不会去翻设置。 -->
+                            <com.google.android.material.button.MaterialButton
+                                android:id="@+id/btnGuide"
+                                style="?attr/materialButtonOutlinedStyle"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:layout_marginStart="8dp"
+                                android:minWidth="0dp"
+                                android:text="@string/guide_button" />
+                        </LinearLayout>
+
+                        <!-- 安装包是不是官方签名的（AppIntegrity.kt）。
+                             摆在设备指纹旁边：两条都是"这台设备/这份包到底是什么"的
+                             身份信息，读的时候是同一件事。 -->
+                        <TextView
+                            android:id="@+id/textIntegrity"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="6dp"
+                            android:textAppearance="?attr/textAppearanceBodySmall"
+                            android:textColor="?attr/colorOnSurfaceVariant" />
 
                         <TextView
-                            android:layout_width="0dp"
-                            android:layout_weight="1"
+                            android:id="@+id/textFingerprint"
+                            android:layout_width="match_parent"
                             android:layout_height="wrap_content"
-                            android:text="@string/diag_title"
-                            android:textAppearance="?attr/textAppearanceTitleSmall" />
-
-                        <com.google.android.material.materialswitch.MaterialSwitch
-                            android:id="@+id/switchDiag"
-                            android:layout_width="wrap_content"
-                            android:layout_marginEnd="4dp"
-                            android:layout_height="wrap_content" />
-
-                        <ImageView
-                            android:id="@+id/chevronDiag"
-                            android:layout_width="24dp"
-                            android:layout_height="24dp"
-                            android:importantForAccessibility="no"
-                            android:src="@drawable/ic_chevron" />
+                            android:layout_marginTop="4dp"
+                            android:fontFamily="monospace"
+                            android:textAppearance="?attr/textAppearanceBodySmall"
+                            android:textColor="?attr/colorOnSurfaceVariant" />
                     </LinearLayout>
+                </com.google.android.material.card.MaterialCardView>
 
-                  <LinearLayout
-                    android:id="@+id/bodyDiag"
+                <!-- ============ 接收文件的保存位置 ============ -->
+                <com.google.android.material.card.MaterialCardView
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:orientation="vertical">
+                    android:layout_marginTop="12dp"
+                    app:cardCornerRadius="16dp">
 
                     <LinearLayout
-                        android:id="@+id/diagActions"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:layout_marginTop="8dp"
                         android:gravity="center_vertical"
                         android:orientation="horizontal"
-                        android:visibility="gone">
+                        android:padding="16dp">
 
-                        <CheckBox
-                            android:id="@+id/diagSelectAll"
+                        <ImageView
+                            android:layout_width="20dp"
+                            android:layout_height="20dp"
+                            android:layout_marginEnd="10dp"
+                            android:importantForAccessibility="no"
+                            android:src="@drawable/ic_folder"
+                            android:tag="sectionIcon" />
+
+                        <LinearLayout
                             android:layout_width="0dp"
                             android:layout_weight="1"
                             android:layout_height="wrap_content"
-                            android:text="@string/diag_select_all" />
+                            android:orientation="vertical">
+
+                            <TextView
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="@string/save_to"
+                                android:textAppearance="?attr/textAppearanceTitleSmall" />
+
+                            <TextView
+                                android:id="@+id/textSaveTo"
+                                android:layout_width="match_parent"
+                                android:layout_height="wrap_content"
+                                android:ellipsize="middle"
+                                android:singleLine="true"
+                                android:text="@string/save_to_default"
+                                android:textAppearance="?attr/textAppearanceBodyMedium"
+                                android:textColor="?attr/colorOnSurfaceVariant" />
+                        </LinearLayout>
 
                         <com.google.android.material.button.MaterialButton
-                            android:id="@+id/btnDiagShare"
+                            android:id="@+id/btnPickSaveDir"
                             style="?attr/materialButtonOutlinedStyle"
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
-                            android:layout_marginEnd="6dp"
-                            android:text="@string/diag_share" />
+                            android:text="@string/change" />
+                    </LinearLayout>
+                </com.google.android.material.card.MaterialCardView>
+            </LinearLayout>
+        </androidx.core.widget.NestedScrollView>
+    </LinearLayout>
+
+    <!-- ============ 全屏面板 · 应用更新 ============ -->
+    <LinearLayout
+        android:id="@+id/panelUpdate"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:clickable="true"
+        android:elevation="12dp"
+        android:focusable="true"
+        android:orientation="vertical"
+        android:tag="panelRoot"
+        android:visibility="gone">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center_vertical"
+            android:minHeight="?attr/actionBarSize"
+            android:orientation="horizontal"
+            android:paddingStart="4dp"
+            android:paddingEnd="16dp"
+            android:tag="panelBar">
+
+            <com.google.android.material.button.MaterialButton
+                style="@style/Widget.Material3.Button.IconButton"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:contentDescription="@string/panel_back"
+                android:tag="panelBack"
+                android:tooltipText="@string/panel_back"
+                app:icon="@drawable/ic_arrow_back" />
+
+            <ImageView
+                android:layout_width="22dp"
+                android:layout_height="22dp"
+                android:layout_marginStart="4dp"
+                android:layout_marginEnd="10dp"
+                android:importantForAccessibility="no"
+                android:src="@drawable/ic_update"
+                android:tag="sectionIcon" />
+
+            <TextView
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:ellipsize="end"
+                android:singleLine="true"
+                android:text="@string/panel_update"
+                android:textAppearance="?attr/textAppearanceTitleLarge" />
+        </LinearLayout>
+
+        <androidx.core.widget.NestedScrollView
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1"
+            android:overScrollMode="ifContentScrolls">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:paddingHorizontal="@dimen/screen_padding"
+                android:paddingBottom="24dp"
+                android:tag="panelBody">
+
+                <!-- ============ 应用更新 ============
+                     从「附近设备和发送动作之间」挪到这里。它是设置类内容，
+                     夹在两组传输动作中间会把一件事劈成两半。 -->
+                <com.google.android.material.card.MaterialCardView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="12dp"
+                    app:cardCornerRadius="16dp">
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="vertical"
+                        android:padding="16dp">
+
+                        <LinearLayout
+                            android:id="@+id/headerUpdate"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:background="?attr/selectableItemBackground"
+                            android:gravity="center_vertical"
+                            android:minHeight="40dp"
+                            android:orientation="horizontal">
+
+                            <ImageView
+                                android:layout_width="20dp"
+                                android:layout_height="20dp"
+                                android:layout_marginEnd="10dp"
+                                android:importantForAccessibility="no"
+                                android:src="@drawable/ic_update"
+                                android:tag="sectionIcon" />
+
+                            <TextView
+                                android:layout_width="0dp"
+                                android:layout_weight="1"
+                                android:layout_height="wrap_content"
+                                android:text="@string/update_section"
+                                android:textAppearance="?attr/textAppearanceTitleSmall" />
+
+                        </LinearLayout>
+
+                      <LinearLayout
+                        android:id="@+id/bodyUpdate"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="vertical">
+
+                        <TextView
+                            android:id="@+id/textUpdateStatus"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:paddingTop="8dp"
+                            android:textAppearance="?attr/textAppearanceBodySmall"
+                            android:textColor="?attr/colorOnSurfaceVariant" />
+
+                        <com.google.android.material.materialswitch.MaterialSwitch
+                            android:id="@+id/switchAutoUpdate"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="8dp"
+                            android:checked="true"
+                            android:text="@string/update_auto_label" />
+
+                        <com.google.android.material.materialswitch.MaterialSwitch
+                            android:id="@+id/switchUpdateMirror"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:text="@string/update_mirror_label" />
+
+                        <!-- 「自动只自动到检查这一步」那句解释挪进了拨开关时的 Snackbar。
+                             它是**打开开关的那一刻**才需要知道的事，不是每次滚到这里
+                             都要重读一遍的事。 -->
 
                         <com.google.android.material.button.MaterialButton
-                            android:id="@+id/btnDiagClear"
-                            android:layout_width="wrap_content"
+                            android:id="@+id/btnCheckUpdate"
+                            style="?attr/materialButtonOutlinedStyle"
+                            android:layout_width="match_parent"
                             android:layout_height="wrap_content"
-                            android:enabled="false"
-                            android:text="@string/diag_clear" />
+                            android:layout_marginTop="4dp"
+                            android:text="@string/update_check"
+                            app:icon="@drawable/ic_update" />
+                      </LinearLayout>
                     </LinearLayout>
+                </com.google.android.material.card.MaterialCardView>
+            </LinearLayout>
+        </androidx.core.widget.NestedScrollView>
+    </LinearLayout>
 
-                    <!-- 日志正文。字体按要求：中文宋体，英文与标点 Times New Roman。
-                         Android 的 fontFamily 只接受一个族名，做不到 CSS 那样按字符
-                         逐个回退，所以用 serif —— 系统的 serif 在中文环境下解析到宋体，
-                         拉丁部分解析到衬线体，是这个平台上最接近要求的做法。 -->
-                    <TextView
-                        android:id="@+id/textDiagLog"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:layout_marginTop="8dp"
-                        android:fontFamily="serif"
-                        android:textAppearance="?attr/textAppearanceBodySmall"
-                        android:textIsSelectable="true" />
-                  </LinearLayout>
-                </LinearLayout>
-            </com.google.android.material.card.MaterialCardView>
+    <!-- ============ 全屏面板 · 安全与权限 ============ -->
+    <LinearLayout
+        android:id="@+id/panelSecurity"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:clickable="true"
+        android:elevation="12dp"
+        android:focusable="true"
+        android:orientation="vertical"
+        android:tag="panelRoot"
+        android:visibility="gone">
 
-            <!-- ============ 应用锁 ============ -->
-            <com.google.android.material.card.MaterialCardView
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center_vertical"
+            android:minHeight="?attr/actionBarSize"
+            android:orientation="horizontal"
+            android:paddingStart="4dp"
+            android:paddingEnd="16dp"
+            android:tag="panelBar">
+
+            <com.google.android.material.button.MaterialButton
+                style="@style/Widget.Material3.Button.IconButton"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:contentDescription="@string/panel_back"
+                android:tag="panelBack"
+                android:tooltipText="@string/panel_back"
+                app:icon="@drawable/ic_arrow_back" />
+
+            <ImageView
+                android:layout_width="22dp"
+                android:layout_height="22dp"
+                android:layout_marginStart="4dp"
+                android:layout_marginEnd="10dp"
+                android:importantForAccessibility="no"
+                android:src="@drawable/ic_shield"
+                android:tag="sectionIcon" />
+
+            <TextView
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:ellipsize="end"
+                android:singleLine="true"
+                android:text="@string/panel_security"
+                android:textAppearance="?attr/textAppearanceTitleLarge" />
+        </LinearLayout>
+
+        <androidx.core.widget.NestedScrollView
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1"
+            android:overScrollMode="ifContentScrolls">
+
+            <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="12dp"
-                app:cardCornerRadius="16dp">
+                android:orientation="vertical"
+                android:paddingHorizontal="@dimen/screen_padding"
+                android:paddingBottom="24dp"
+                android:tag="panelBody">
 
-                <LinearLayout
+                <!-- ============ 应用锁 ============ -->
+                <com.google.android.material.card.MaterialCardView
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:orientation="vertical"
-                    android:padding="16dp">
-
-                    <LinearLayout
-                        android:id="@+id/headerLock"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:background="?attr/selectableItemBackground"
-                        android:gravity="center_vertical"
-                        android:minHeight="40dp"
-                        android:orientation="horizontal">
-
-                        <ImageView
-                            android:layout_width="20dp"
-                            android:layout_height="20dp"
-                            android:layout_marginEnd="10dp"
-                            android:importantForAccessibility="no"
-                            android:src="@drawable/ic_shield"
-                            android:tag="sectionIcon" />
-
-                        <TextView
-                            android:layout_width="0dp"
-                            android:layout_weight="1"
-                            android:layout_height="wrap_content"
-                            android:text="@string/lock_title"
-                            android:textAppearance="?attr/textAppearanceTitleSmall" />
-
-                        <ImageView
-                            android:id="@+id/chevronLock"
-                            android:layout_width="24dp"
-                            android:layout_height="24dp"
-                            android:importantForAccessibility="no"
-                            android:src="@drawable/ic_chevron" />
-                    </LinearLayout>
-
-                    <RadioGroup
-                        android:id="@+id/groupLock"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:layout_marginTop="4dp"
-                        android:orientation="vertical">
-
-                        <RadioButton
-                            android:id="@+id/lockNone"
-                            android:layout_width="match_parent"
-                            android:layout_height="wrap_content"
-                            android:text="@string/lock_none" />
-
-                        <RadioButton
-                            android:id="@+id/lockPassword"
-                            android:layout_width="match_parent"
-                            android:layout_height="wrap_content"
-                            android:text="@string/lock_password" />
-
-                        <RadioButton
-                            android:id="@+id/lockBiometric"
-                            android:layout_width="match_parent"
-                            android:layout_height="wrap_content"
-                            android:text="@string/lock_biometric" />
-                    </RadioGroup>
-                </LinearLayout>
-            </com.google.android.material.card.MaterialCardView>
-
-            <!-- ============ 系统权限与后台运行 ============
-                 通知权限关掉、电池优化没豁免，这两条系统限制都不会报错、也不会在
-                 App 里有任何提示——服务照样"运行成功"，用户只会觉得"同步不稳定"。
-                 首次启动时各弹过一次系统对话框，但用户随手关掉之后就再也没有
-                 入口能补救，这张卡片就是补的这个口子：随时能看、随时能改。 -->
-            <com.google.android.material.card.MaterialCardView
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="12dp"
-                app:cardCornerRadius="16dp">
-
-                <LinearLayout
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:orientation="vertical"
-                    android:padding="16dp">
+                    android:layout_marginTop="12dp"
+                    app:cardCornerRadius="16dp">
 
                     <LinearLayout
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:gravity="center_vertical"
-                        android:minHeight="40dp"
-                        android:orientation="horizontal">
+                        android:orientation="vertical"
+                        android:padding="16dp">
 
-                        <ImageView
-                            android:layout_width="20dp"
-                            android:layout_height="20dp"
-                            android:layout_marginEnd="10dp"
-                            android:importantForAccessibility="no"
-                            android:src="@drawable/ic_shield"
-                            android:tag="sectionIcon" />
-
-                        <TextView
-                            android:layout_width="0dp"
-                            android:layout_weight="1"
-                            android:layout_height="wrap_content"
-                            android:text="@string/system_permissions_title"
-                            android:textAppearance="?attr/textAppearanceTitleSmall" />
-                    </LinearLayout>
-
-                    <TextView
-                        android:id="@+id/statusNotifPerm"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:layout_marginTop="8dp"
-                        android:textAppearance="?attr/textAppearanceBodySmall"
-                        android:textColor="?attr/colorOnSurfaceVariant" />
-
-                    <com.google.android.material.button.MaterialButton
-                        android:id="@+id/btnNotifPermFix"
-                        style="@style/Widget.Material3.Button.TextButton"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:layout_marginTop="2dp"
-                        android:text="@string/notif_perm_fix_button" />
-
-                    <TextView
-                        android:id="@+id/statusBatteryOpt"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:layout_marginTop="8dp"
-                        android:textAppearance="?attr/textAppearanceBodySmall"
-                        android:textColor="?attr/colorOnSurfaceVariant" />
-
-                    <com.google.android.material.button.MaterialButton
-                        android:id="@+id/btnBatteryOptFix"
-                        style="@style/Widget.Material3.Button.TextButton"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:layout_marginTop="2dp"
-                        android:text="@string/battery_opt_fix_button" />
-
-                    <!-- 没有按钮：厂商的"应用启动管理"没有能从代码里可靠跳转过去的
-                         公开方式，写按钮等于给一个大概率打不开的死链接。只能把路
-                         讲清楚，让用户自己按图找过去。 -->
-                    <TextView
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:layout_marginTop="10dp"
-                        android:text="@string/launch_mgmt_hint"
-                        android:textAppearance="?attr/textAppearanceBodySmall"
-                        android:textColor="?attr/colorOnSurfaceVariant" />
-                </LinearLayout>
-            </com.google.android.material.card.MaterialCardView>
-
-            <!-- ============ 接收文件的保存位置 ============ -->
-            <com.google.android.material.card.MaterialCardView
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="12dp"
-                android:layout_marginBottom="24dp"
-                app:cardCornerRadius="16dp">
-
-                <LinearLayout
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:gravity="center_vertical"
-                    android:orientation="horizontal"
-                    android:padding="16dp">
-
-                    <ImageView
-                        android:layout_width="20dp"
-                        android:layout_height="20dp"
-                        android:layout_marginEnd="10dp"
-                        android:importantForAccessibility="no"
-                        android:src="@drawable/ic_folder"
-                        android:tag="sectionIcon" />
-
-                    <LinearLayout
-                        android:layout_width="0dp"
-                        android:layout_weight="1"
-                        android:layout_height="wrap_content"
-                        android:orientation="vertical">
-
-                        <TextView
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:text="@string/save_to"
-                            android:textAppearance="?attr/textAppearanceTitleSmall" />
-
-                        <TextView
-                            android:id="@+id/textSaveTo"
+                        <LinearLayout
+                            android:id="@+id/headerLock"
                             android:layout_width="match_parent"
                             android:layout_height="wrap_content"
-                            android:ellipsize="middle"
-                            android:singleLine="true"
-                            android:text="@string/save_to_default"
-                            android:textAppearance="?attr/textAppearanceBodyMedium"
+                            android:background="?attr/selectableItemBackground"
+                            android:gravity="center_vertical"
+                            android:minHeight="40dp"
+                            android:orientation="horizontal">
+
+                            <ImageView
+                                android:layout_width="20dp"
+                                android:layout_height="20dp"
+                                android:layout_marginEnd="10dp"
+                                android:importantForAccessibility="no"
+                                android:src="@drawable/ic_shield"
+                                android:tag="sectionIcon" />
+
+                            <TextView
+                                android:layout_width="0dp"
+                                android:layout_weight="1"
+                                android:layout_height="wrap_content"
+                                android:text="@string/lock_title"
+                                android:textAppearance="?attr/textAppearanceTitleSmall" />
+
+                        </LinearLayout>
+
+                        <RadioGroup
+                            android:id="@+id/groupLock"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="4dp"
+                            android:orientation="vertical">
+
+                            <RadioButton
+                                android:id="@+id/lockNone"
+                                android:layout_width="match_parent"
+                                android:layout_height="wrap_content"
+                                android:text="@string/lock_none" />
+
+                            <RadioButton
+                                android:id="@+id/lockPassword"
+                                android:layout_width="match_parent"
+                                android:layout_height="wrap_content"
+                                android:text="@string/lock_password" />
+
+                            <RadioButton
+                                android:id="@+id/lockBiometric"
+                                android:layout_width="match_parent"
+                                android:layout_height="wrap_content"
+                                android:text="@string/lock_biometric" />
+                        </RadioGroup>
+                    </LinearLayout>
+                </com.google.android.material.card.MaterialCardView>
+
+                <!-- ============ 系统权限与后台运行 ============
+                     通知权限关掉、电池优化没豁免，这两条系统限制都不会报错、也不会在
+                     App 里有任何提示——服务照样"运行成功"，用户只会觉得"同步不稳定"。
+                     首次启动时各弹过一次系统对话框，但用户随手关掉之后就再也没有
+                     入口能补救，这张卡片就是补的这个口子：随时能看、随时能改。 -->
+                <com.google.android.material.card.MaterialCardView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="12dp"
+                    app:cardCornerRadius="16dp">
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="vertical"
+                        android:padding="16dp">
+
+                        <LinearLayout
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:gravity="center_vertical"
+                            android:minHeight="40dp"
+                            android:orientation="horizontal">
+
+                            <ImageView
+                                android:layout_width="20dp"
+                                android:layout_height="20dp"
+                                android:layout_marginEnd="10dp"
+                                android:importantForAccessibility="no"
+                                android:src="@drawable/ic_shield"
+                                android:tag="sectionIcon" />
+
+                            <TextView
+                                android:layout_width="0dp"
+                                android:layout_weight="1"
+                                android:layout_height="wrap_content"
+                                android:text="@string/system_permissions_title"
+                                android:textAppearance="?attr/textAppearanceTitleSmall" />
+                        </LinearLayout>
+
+                        <TextView
+                            android:id="@+id/statusNotifPerm"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="8dp"
+                            android:textAppearance="?attr/textAppearanceBodySmall"
+                            android:textColor="?attr/colorOnSurfaceVariant" />
+
+                        <com.google.android.material.button.MaterialButton
+                            android:id="@+id/btnNotifPermFix"
+                            style="@style/Widget.Material3.Button.TextButton"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="2dp"
+                            android:text="@string/notif_perm_fix_button" />
+
+                        <TextView
+                            android:id="@+id/statusBatteryOpt"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="8dp"
+                            android:textAppearance="?attr/textAppearanceBodySmall"
+                            android:textColor="?attr/colorOnSurfaceVariant" />
+
+                        <com.google.android.material.button.MaterialButton
+                            android:id="@+id/btnBatteryOptFix"
+                            style="@style/Widget.Material3.Button.TextButton"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="2dp"
+                            android:text="@string/battery_opt_fix_button" />
+
+                        <!-- 没有按钮：厂商的"应用启动管理"没有能从代码里可靠跳转过去的
+                             公开方式，写按钮等于给一个大概率打不开的死链接。只能把路
+                             讲清楚，让用户自己按图找过去。 -->
+                        <TextView
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="10dp"
+                            android:text="@string/launch_mgmt_hint"
+                            android:textAppearance="?attr/textAppearanceBodySmall"
                             android:textColor="?attr/colorOnSurfaceVariant" />
                     </LinearLayout>
+                </com.google.android.material.card.MaterialCardView>
+            </LinearLayout>
+        </androidx.core.widget.NestedScrollView>
+    </LinearLayout>
 
-                    <com.google.android.material.button.MaterialButton
-                        android:id="@+id/btnPickSaveDir"
-                        style="?attr/materialButtonOutlinedStyle"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:text="@string/change" />
-                </LinearLayout>
-            </com.google.android.material.card.MaterialCardView>
+    <!-- ============ 全屏面板 · 运行诊断（专业模式） ============ -->
+    <LinearLayout
+        android:id="@+id/panelPro"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:clickable="true"
+        android:elevation="12dp"
+        android:focusable="true"
+        android:orientation="vertical"
+        android:tag="panelRoot"
+        android:visibility="gone">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center_vertical"
+            android:minHeight="?attr/actionBarSize"
+            android:orientation="horizontal"
+            android:paddingStart="4dp"
+            android:paddingEnd="16dp"
+            android:tag="panelBar">
+
+            <com.google.android.material.button.MaterialButton
+                style="@style/Widget.Material3.Button.IconButton"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:contentDescription="@string/panel_back"
+                android:tag="panelBack"
+                android:tooltipText="@string/panel_back"
+                app:icon="@drawable/ic_arrow_back" />
+
+            <ImageView
+                android:layout_width="22dp"
+                android:layout_height="22dp"
+                android:layout_marginStart="4dp"
+                android:layout_marginEnd="10dp"
+                android:importantForAccessibility="no"
+                android:src="@drawable/ic_log"
+                android:tag="sectionIcon" />
+
+            <TextView
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:ellipsize="end"
+                android:singleLine="true"
+                android:text="@string/panel_pro"
+                android:textAppearance="?attr/textAppearanceTitleLarge" />
         </LinearLayout>
-    </androidx.core.widget.NestedScrollView>
+
+        <androidx.core.widget.NestedScrollView
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1"
+            android:overScrollMode="ifContentScrolls">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:paddingHorizontal="@dimen/screen_padding"
+                android:paddingBottom="24dp"
+                android:tag="panelBody">
+
+                <!-- ============ 实时指标（仅专业模式） ============ -->
+                <com.google.android.material.card.MaterialCardView
+                    android:id="@+id/cardMetrics"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="12dp"
+                    android:visibility="gone"
+                    app:cardCornerRadius="16dp">
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="vertical"
+                        android:padding="16dp">
+
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="@string/metrics_live_title"
+                            android:textAppearance="?attr/textAppearanceLabelMedium"
+                            android:textColor="?attr/colorOnSurfaceVariant" />
+
+                        <TextView
+                            android:id="@+id/textRuntimeMetrics"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="8dp"
+                            android:fontFamily="monospace"
+                            android:text="@string/metrics_loading"
+                            android:textAppearance="?attr/textAppearanceBodyMedium"
+                            android:textIsSelectable="true" />
+                    </LinearLayout>
+                </com.google.android.material.card.MaterialCardView>
+
+                <!-- ============ 故障日志（仅专业模式） ============
+                     cardDiagnostics 这个 id 现在指的是这张卡，跟 MainActivity 里
+                     「非专业模式隐藏」的那行对上了。见上面已配对设备卡的说明。 -->
+                <com.google.android.material.card.MaterialCardView
+                    android:id="@+id/cardDiagnostics"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="12dp"
+                    android:visibility="gone"
+                    app:cardCornerRadius="16dp">
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="vertical"
+                        android:padding="16dp">
+
+                        <LinearLayout
+                            android:id="@+id/headerDiag"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:background="?attr/selectableItemBackground"
+                            android:gravity="center_vertical"
+                            android:minHeight="40dp"
+                            android:orientation="horizontal">
+
+                            <ImageView
+                                android:layout_width="20dp"
+                                android:layout_height="20dp"
+                                android:layout_marginEnd="10dp"
+                                android:importantForAccessibility="no"
+                                android:src="@drawable/ic_log"
+                                android:tag="sectionIcon" />
+
+                            <TextView
+                                android:layout_width="0dp"
+                                android:layout_weight="1"
+                                android:layout_height="wrap_content"
+                                android:text="@string/diag_title"
+                                android:textAppearance="?attr/textAppearanceTitleSmall" />
+
+                            <com.google.android.material.materialswitch.MaterialSwitch
+                                android:id="@+id/switchDiag"
+                                android:layout_width="wrap_content"
+                                android:layout_marginEnd="4dp"
+                                android:layout_height="wrap_content" />
+
+                        </LinearLayout>
+
+                      <LinearLayout
+                        android:id="@+id/bodyDiag"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="vertical">
+
+                        <LinearLayout
+                            android:id="@+id/diagActions"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="8dp"
+                            android:gravity="center_vertical"
+                            android:orientation="horizontal"
+                            android:visibility="gone">
+
+                            <CheckBox
+                                android:id="@+id/diagSelectAll"
+                                android:layout_width="0dp"
+                                android:layout_weight="1"
+                                android:layout_height="wrap_content"
+                                android:text="@string/diag_select_all" />
+
+                            <com.google.android.material.button.MaterialButton
+                                android:id="@+id/btnDiagShare"
+                                style="?attr/materialButtonOutlinedStyle"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:layout_marginEnd="6dp"
+                                android:text="@string/diag_share" />
+
+                            <com.google.android.material.button.MaterialButton
+                                android:id="@+id/btnDiagClear"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:enabled="false"
+                                android:text="@string/diag_clear" />
+                        </LinearLayout>
+
+                        <!-- 日志正文。字体按要求：中文宋体，英文与标点 Times New Roman。
+                             Android 的 fontFamily 只接受一个族名，做不到 CSS 那样按字符
+                             逐个回退，所以用 serif —— 系统的 serif 在中文环境下解析到宋体，
+                             拉丁部分解析到衬线体，是这个平台上最接近要求的做法。 -->
+                        <TextView
+                            android:id="@+id/textDiagLog"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="8dp"
+                            android:fontFamily="serif"
+                            android:textAppearance="?attr/textAppearanceBodySmall"
+                            android:textIsSelectable="true" />
+                      </LinearLayout>
+                    </LinearLayout>
+                </com.google.android.material.card.MaterialCardView>
+            </LinearLayout>
+        </androidx.core.widget.NestedScrollView>
+    </LinearLayout>
+
     <!-- ============ 剪贴板时间线 · 全屏 ============
          盖在整个界面（含顶栏）之上。默认 gone；点时间线卡片右上角的全屏按钮出现，
          返回键 / 键盘 Esc / 右上角按钮退出。内容和卡片里那一份是同一批数据，

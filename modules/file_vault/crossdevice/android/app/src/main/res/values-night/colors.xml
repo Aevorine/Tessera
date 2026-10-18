@@ -30,4 +30,6 @@
     <color name="status_info">#6AA9E0</color>
 
     <color name="decorative_gold">#DFBD73</color>
+
+    <color name="hero_idle">#6E6A62</color>
 </resources>
