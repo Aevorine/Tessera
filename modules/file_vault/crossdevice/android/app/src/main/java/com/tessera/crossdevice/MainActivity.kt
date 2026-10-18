@@ -3,6 +3,7 @@ package com.tessera.crossdevice
 import android.Manifest
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.content.res.ColorStateList
 import android.graphics.Bitmap
 import android.graphics.Color
 import android.net.Uri
@@ -17,9 +18,12 @@ import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
+import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
+import androidx.core.view.updatePadding
+import androidx.recyclerview.widget.GridLayoutManager
 import androidx.recyclerview.widget.LinearLayoutManager
 import com.google.android.material.snackbar.Snackbar
 import com.google.zxing.BarcodeFormat
@@ -44,6 +48,15 @@ class MainActivity : AppCompatActivity() {
          *  所以不必像以前那样只留 20 条；上限只是为了不在一次刷新里一口气铺出上千个视图。 */
         const val TIMELINE_INLINE_ROWS = 50
         const val TIMELINE_FULLSCREEN_ROWS = 200
+
+        /** 全屏次功能面板的 key，同时是功能格的 key。 */
+        const val P_PAIR = "pair"
+        const val P_CLIP = "clip"
+        const val P_CROSSNET = "crossnet"
+        const val P_DEVICE = "device"
+        const val P_UPDATE = "update"
+        const val P_SECURITY = "security"
+        const val P_PRO = "pro"
     }
 
     private lateinit var ui: ActivityMainBinding
@@ -53,6 +66,17 @@ class MainActivity : AppCompatActivity() {
     private lateinit var pairedDeviceAdapter: PairedDeviceAdapter
     private lateinit var nearbyDeviceAdapter: NearbyDeviceAdapter
     private lateinit var transferAdapter: TransferAdapter
+    private lateinit var tileAdapter: FeatureTileAdapter
+    private lateinit var panels: PanelHost
+
+    /** 功能格小结用的几样状态，由各自的渲染函数顺手记下。 */
+    private var crossnetOn = false
+    private var integrityBadge = ""
+    private var updateBadge = ""
+    private var updateAttention = false
+    private var permIssues = 0
+    private var lastTiles: List<FeatureTile> = emptyList()
+    private var heroOnline = -1
 
     /**
      * 进行中的传输，按 transfer_id 索引。用 LinkedHashMap 保序，否则进度刷新会让用户要点的「取消」挪位
@@ -98,7 +122,10 @@ class MainActivity : AppCompatActivity() {
     private val metricsHandler = Handler(Looper.getMainLooper())
     private val refreshMetrics = object : Runnable {
         override fun run() {
-            if (!activityVisible || appearanceConfig.interfaceMode != InterfaceMode.PROFESSIONAL) return
+            // 只在诊断面板开着时采：关着时没人看，省掉每 2.5 秒一次的系统指标读取。
+            if (!activityVisible || appearanceConfig.interfaceMode != InterfaceMode.PROFESSIONAL ||
+                !panels.isOpen(P_PRO)
+            ) return
             val snapshot = RuntimeMetricsCollector.collect(this@MainActivity)
             ui.textRuntimeMetrics.text = RuntimeMetricsCollector.format(
                 this@MainActivity,
@@ -211,6 +238,13 @@ class MainActivity : AppCompatActivity() {
         // 进度每 250 ms 刷一次，默认的增删动画会让整行抖动。
         ui.listTransfers.itemAnimator = null
 
+        // 面板宿主要先于剪贴板时间线建：返回键回调后注册的先响应，时间线全屏应先收。
+        setupTiles()
+        panels = PanelHost(this, ui.root)
+        wirePanels()
+        wireEdgeToEdge()
+        AdaptiveLayout.applyMain(ui.mainContent, ui.colPrimary, ui.colSecondary, ui.boxFeatures)
+
         wireDeviceSelection()
         wireFanout()
         wireClipAutoSync()
@@ -245,6 +279,8 @@ class MainActivity : AppCompatActivity() {
             scanForPairing.launch(Intent(this, ScanActivity::class.java))
         }
         ui.btnShowCode.setOnClickListener {
+            // 码在「配对」面板里显示：先展开面板，码回来就填进去。
+            panels.open(P_PAIR, it)
             send("show_pairing_code", JSONObject().put("mode", "long"))
         }
         ui.btnSendClip.setOnClickListener { sendClipboard() }
@@ -277,15 +313,141 @@ class MainActivity : AppCompatActivity() {
         setupUpdates()
         refreshSaveTo()
         renderIntegrity()
+        panels.restore(savedInstanceState)
         send("status")
+    }
+
+    // ---- 主界面：功能格 + 全屏面板 ----
+
+    private fun setupTiles() {
+        tileAdapter = FeatureTileAdapter { tile, view -> panels.open(tile.key, view) }
+        ui.gridFeatures.layoutManager = GridLayoutManager(this, AdaptiveLayout.tileSpan(this))
+        ui.gridFeatures.adapter = tileAdapter
+        ui.gridFeatures.isNestedScrollingEnabled = false
+        // 小结原地换字，默认的交叉淡入会让格子闪一下。
+        ui.gridFeatures.itemAnimator = null
+        updateBadge = getString(R.string.badge_update_current, Updater.currentVersion(this))
+    }
+
+    /** 每个面板打开 / 收起时顺带做的事；只在面板开着时才渲染的内容在这里补画。 */
+    private fun wirePanels() {
+        panels.register(P_PAIR, ui.panelPair, onOpen = {
+            if (nearbyCache.isEmpty()) send("list_nearby")
+        })
+        panels.register(P_CLIP, ui.panelClip, onOpen = {
+            refreshImeStatus()
+            renderTimeline(lastTimeline)
+            loadTimeline(false)
+        })
+        panels.register(P_CROSSNET, ui.panelCrossnet)
+        panels.register(P_DEVICE, ui.panelDevice)
+        panels.register(P_UPDATE, ui.panelUpdate)
+        panels.register(
+            P_SECURITY, ui.panelSecurity,
+            onOpen = { refreshSystemPermissionsStatus() },
+            // 锁的方式在面板里改，收起时格上小结跟上。
+            onClose = { refreshTiles() },
+        )
+        panels.register(
+            P_PRO, ui.panelPro,
+            onOpen = {
+                metricsHandler.removeCallbacks(refreshMetrics)
+                if (activityVisible) metricsHandler.post(refreshMetrics)
+            },
+            onClose = { metricsHandler.removeCallbacks(refreshMetrics) },
+        )
+    }
+
+    /** 功能格小结。与上次相同就不提交，状态每秒轮询时不做无用的差分。 */
+    private fun refreshTiles() {
+        if (!::tileAdapter.isInitialized) return
+        val nearby = nearbyCache.size
+        val clipCount = lastTimeline.length()
+        val tiles = buildList {
+            add(FeatureTile(
+                P_PAIR, R.drawable.ic_qr, R.string.tile_pair,
+                if (nearby > 0) getString(R.string.badge_nearby, nearby) else getString(R.string.badge_nearby_none),
+            ))
+            add(FeatureTile(
+                P_CLIP, R.drawable.ic_clipboard, R.string.tile_clip,
+                when {
+                    !clipAutoSync -> getString(R.string.badge_clip_off)
+                    clipCount > 0 -> getString(R.string.badge_clip_on_count, clipCount)
+                    else -> getString(R.string.badge_clip_on)
+                },
+            ))
+            add(FeatureTile(
+                P_CROSSNET, R.drawable.ic_globe, R.string.tile_crossnet,
+                getString(if (crossnetOn) R.string.badge_crossnet_on else R.string.badge_crossnet_off),
+            ))
+            add(FeatureTile(P_DEVICE, R.drawable.ic_devices, R.string.tile_device, integrityBadge))
+            add(FeatureTile(P_UPDATE, R.drawable.ic_update, R.string.tile_update, updateBadge, updateAttention))
+            add(FeatureTile(
+                P_SECURITY, R.drawable.ic_shield, R.string.tile_security,
+                if (permIssues > 0) {
+                    getString(R.string.badge_attention, permIssues)
+                } else {
+                    getString(
+                        when (AppLock.mode(this@MainActivity)) {
+                            AppLock.Mode.NONE -> R.string.badge_lock_none
+                            AppLock.Mode.PASSWORD -> R.string.badge_lock_password
+                            AppLock.Mode.BIOMETRIC -> R.string.badge_lock_biometric
+                        }
+                    )
+                },
+                attention = permIssues > 0,
+            ))
+            if (appearanceConfig.interfaceMode == InterfaceMode.PROFESSIONAL) {
+                add(FeatureTile(P_PRO, R.drawable.ic_log, R.string.tile_pro, getString(R.string.badge_pro)))
+            }
+        }
+        if (tiles == lastTiles) return
+        lastTiles = tiles
+        tileAdapter.submitList(tiles)
+    }
+
+    /**
+     * 安卓 15 起 targetSdk 35 强制沉浸式：顶栏让出状态栏、主界面底部让出导航栏。
+     * 非沉浸式时系统已替内容让位，这里拿到的是 0，不会重复留白。
+     */
+    private fun wireEdgeToEdge() {
+        val basePad = ui.mainContent.paddingBottom
+        ViewCompat.setOnApplyWindowInsetsListener(ui.appBar) { v, insets ->
+            v.updatePadding(top = insets.getInsets(WindowInsetsCompat.Type.systemBars()).top)
+            insets
+        }
+        ViewCompat.setOnApplyWindowInsetsListener(ui.mainContent) { v, insets ->
+            v.updatePadding(bottom = basePad + insets.getInsets(WindowInsetsCompat.Type.systemBars()).bottom)
+            insets
+        }
+    }
+
+    /** 状态头：在线概况一句话 + 在线灯；在线数变了灯跳一下。 */
+    private fun renderHero(online: Int, paired: Int, rtt: Long) {
+        val text = when {
+            paired == 0 -> getString(R.string.hero_no_devices)
+            rtt >= 0 -> getString(R.string.hero_status_rtt, online, paired, rtt)
+            else -> getString(R.string.hero_status, online, paired)
+        }
+        // 每秒都会轮询到这里，文字没变就不碰 TextView，免得白白重新布局。
+        if (ui.textHeroStatus.text.toString() != text) ui.textHeroStatus.text = text
+        if (online == heroOnline) return
+        val first = heroOnline < 0
+        heroOnline = online
+        ui.dotOnline.backgroundTintList = ColorStateList.valueOf(
+            getColor(if (online > 0) R.color.status_success else R.color.hero_idle)
+        )
+        if (first) return
+        ui.dotOnline.animate().scaleX(1.8f).scaleY(1.8f).setDuration(140).withEndAction {
+            ui.dotOnline.animate().scaleX(1f).scaleY(1f).setDuration(220).start()
+        }.start()
     }
 
     // ---- 可展开 / 折叠的分区 ----
 
     /**
-     * 把五张卡接成可折叠的。
-     * 「快捷操作」和「已配对设备」永远摊开（天天要用）；「进行中的传输」按有无传输自己显示。
-     * 默认展开附近设备（未配对时要用），更新 / 日志 / 应用锁默认收起。
+     * 「配对」面板里的两张卡可折叠：二维码占大半屏，配完设备后收起只剩一行标题。
+     * 跨网络 / 更新 / 应用锁 / 日志各自独占一个全屏面板，打开就是为了看它，不再折叠。
      */
     private fun wireSections() {
         fun section(key: String, header: android.view.View, body: android.view.View,
@@ -301,22 +463,6 @@ class MainActivity : AppCompatActivity() {
         section(
             "nearby", ui.headerNearby, ui.bodyNearby, ui.chevronNearby,
             R.string.nearby_devices, defaultExpanded = true,
-        )
-        section(
-            "crossnet", ui.headerCrossnet, ui.bodyCrossnet, ui.chevronCrossnet,
-            R.string.crossnet_section, defaultExpanded = false,
-        )
-        section(
-            "update", ui.headerUpdate, ui.bodyUpdate, ui.chevronUpdate,
-            R.string.update_section, defaultExpanded = false,
-        )
-        section(
-            "lock", ui.headerLock, ui.groupLock, ui.chevronLock,
-            R.string.lock_title, defaultExpanded = false,
-        )
-        section(
-            "diag", ui.headerDiag, ui.bodyDiag, ui.chevronDiag,
-            R.string.diag_title, defaultExpanded = false,
         )
     }
 
@@ -374,6 +520,8 @@ class MainActivity : AppCompatActivity() {
     /** 把 Go 侧回来的跨网设置画到界面上。以存档为准，本地输入框只是草稿。 */
     private fun renderCrossnetOptions(opts: JSONObject) {
         val addr = opts.optString("rendezvous_addr")
+        crossnetOn = addr.isNotEmpty()
+        refreshTiles()
         // 只有当输入框没在被编辑时才回填，否则用户正打字时会被覆盖掉。
         if (!ui.inputRendezvousAddr.hasFocus()) ui.inputRendezvousAddr.setText(addr)
         ui.textCrossnetStatus.text =
@@ -510,6 +658,7 @@ class MainActivity : AppCompatActivity() {
     private fun refreshClipAutoUi() {
         ui.switchClipAuto.isChecked = clipAutoSync
         ui.switchClipPlain.isChecked = clipPlainOnly
+        refreshTiles()
     }
 
     private fun wireClipPlainOnly() {
@@ -622,12 +771,14 @@ class MainActivity : AppCompatActivity() {
             if (event.action == KeyEvent.ACTION_UP) setTimelineFullscreen(false)
             return true
         }
+        if (panels.handleKey(event)) return true
         return super.dispatchKeyEvent(event)
     }
 
     override fun onSaveInstanceState(outState: Bundle) {
         super.onSaveInstanceState(outState)
         outState.putBoolean(STATE_TIMELINE_FULLSCREEN, timelineFullscreen)
+        panels.save(outState)
     }
 
     private fun loadTimeline(refresh: Boolean) {
@@ -642,10 +793,14 @@ class MainActivity : AppCompatActivity() {
         val hasAny = arr.length() > 0
         ui.btnTimelineClear.isEnabled = hasAny
         ui.btnTimelineClearFull.isEnabled = hasAny
-        renderTimelineInto(
-            ui.listClipTimeline, ui.textTimelineEmpty, arr,
-            maxRows = TIMELINE_INLINE_ROWS, previewLines = 2,
-        )
+        // 面板里那份只在「剪贴板」面板开着时画，打开时由 onOpen 补画；收着时每来一条就铺 50 行是白费。
+        if (panels.isOpen(P_CLIP)) {
+            renderTimelineInto(
+                ui.listClipTimeline, ui.textTimelineEmpty, arr,
+                maxRows = TIMELINE_INLINE_ROWS, previewLines = 2,
+            )
+        }
+        refreshTiles()
         // 全屏那份只在全屏期间画：平时画了也没人看，白白多铺几百个视图。
         if (timelineFullscreen) {
             renderTimelineInto(
@@ -750,8 +905,10 @@ class MainActivity : AppCompatActivity() {
         ui.cardMetrics.visibility = if (professional) android.view.View.VISIBLE else android.view.View.GONE
         ui.cardDiagnostics.visibility = if (professional) android.view.View.VISIBLE else android.view.View.GONE
         AppearanceStyler.apply(this, ui, appearanceConfig)
+        tileAdapter.restyle()
+        refreshTiles()
         metricsHandler.removeCallbacks(refreshMetrics)
-        if (activityVisible && professional) metricsHandler.post(refreshMetrics)
+        if (activityVisible && professional && panels.isOpen(P_PRO)) metricsHandler.post(refreshMetrics)
     }
 
     /** 给本机改名；不用重连，名字随下一次心跳（≤10 秒）捎给已配对设备，重连会打断传输。 */
@@ -1082,6 +1239,9 @@ class MainActivity : AppCompatActivity() {
         ui.statusBatteryOpt.text = getString(
             if (batteryOk) R.string.battery_opt_status_on else R.string.battery_opt_status_off
         )
+        // 两条里没开的数目挂到「安全」格上，不打开面板也看得见。
+        permIssues = (if (notifOn) 0 else 1) + (if (batteryOk) 0 else 1)
+        refreshTiles()
 
         // 两个按钮常驻显示：厂商系统的通知折叠、横幅、锁屏显示等开关查不出来，权限已开时按钮仍是调这些细节
         // 的入口。
@@ -1240,6 +1400,14 @@ class MainActivity : AppCompatActivity() {
             AppIntegrity.Status.UNOFFICIAL -> getString(R.string.integrity_unofficial)
             AppIntegrity.Status.UNKNOWN -> getString(R.string.integrity_unknown)
         }
+        integrityBadge = getString(
+            when (result.status) {
+                AppIntegrity.Status.OFFICIAL -> R.string.badge_official
+                AppIntegrity.Status.UNOFFICIAL -> R.string.badge_unofficial
+                AppIntegrity.Status.UNKNOWN -> R.string.badge_unknown
+            }
+        )
+        refreshTiles()
         // 非官方时显示指纹：用户可对照官方发布页的值自行判断是自编译还是被换过，而不是要求无条件相信提示。
         ui.textIntegrity.text = if (result.status == AppIntegrity.Status.UNOFFICIAL && result.fingerprint != null) {
             label + "\n" + getString(R.string.integrity_fingerprint, result.fingerprint)
@@ -1708,6 +1876,8 @@ class MainActivity : AppCompatActivity() {
                     val leftSec = ((expiresAt - System.currentTimeMillis()) / 1000).coerceAtLeast(0)
                     shortCodeExpiryView?.text = getString(R.string.short_code_expires_in, leftSec / 60, leftSec % 60)
                 }
+                // 不落到下面的通用分支：那里见到 code 就当配对二维码画，6 位数字码会被画成一张扫不通的码。
+                return
             }
 
             "pair_with_short_code" -> {
@@ -1835,6 +2005,7 @@ class MainActivity : AppCompatActivity() {
         LinkStats.onlineDevices = onlineNow.size
         LinkStats.pairedDevices = items.size
         LinkStats.bestRttMs = bestRtt
+        renderHero(onlineNow.size, items.size, bestRtt)
         refreshFanoutHint()
         // 分享进来时设备表可能还没到，那份待发内容就攒在这里等这一刻。
         flushPendingShare()
@@ -1925,6 +2096,10 @@ class MainActivity : AppCompatActivity() {
             runOnUiThread {
                 ui.btnCheckUpdate.isEnabled = true
                 outcome.onSuccess { r ->
+                    updateAttention = r.available
+                    updateBadge = if (r.available) getString(R.string.badge_update_found, r.version)
+                    else getString(R.string.badge_update_current, r.currentVersion)
+                    refreshTiles()
                     if (r.available) {
                         ui.textUpdateStatus.text = getString(R.string.update_found_title, r.version)
                         promptUpdate(r)
@@ -2032,6 +2207,7 @@ class MainActivity : AppCompatActivity() {
             )
         }
         LinkStats.discovered = nearbyCache.size
+        refreshTiles()
         val empty = nearbyCache.isEmpty()
         ui.textNoNearby.visibility = if (empty) android.view.View.VISIBLE else android.view.View.GONE
         ui.textNoNearby.text = getString(if (empty) R.string.nearby_empty_hint else R.string.nearby_empty)
@@ -2213,12 +2389,13 @@ class MainActivity : AppCompatActivity() {
     private fun showQr(code: String, expiresAt: Long) {
         val size = 560
         val matrix = QRCodeWriter().encode(code, BarcodeFormat.QR_CODE, size, size)
-        val bmp = Bitmap.createBitmap(size, size, Bitmap.Config.RGB_565)
-        for (x in 0 until size) {
-            for (y in 0 until size) {
-                bmp.setPixel(x, y, if (matrix.get(x, y)) Color.BLACK else Color.WHITE)
-            }
+        // 先填整块像素数组再一次建图：逐点 setPixel 是 31 万次 JNI 调用，按行写数组快一个数量级。
+        val pixels = IntArray(size * size)
+        for (y in 0 until size) {
+            val row = y * size
+            for (x in 0 until size) pixels[row + x] = if (matrix.get(x, y)) Color.BLACK else Color.WHITE
         }
+        val bmp = Bitmap.createBitmap(pixels, size, size, Bitmap.Config.RGB_565)
         ui.imageQr.setImageBitmap(bmp)
         ui.cardMyCode.visibility = android.view.View.VISIBLE
         // 刚生成的码要是折叠着，等于白生成——用户按了「出示我的码」，
@@ -2261,12 +2438,15 @@ class MainActivity : AppCompatActivity() {
         else String.format("%d %s", v.toLong(), units[i])
     }
 
-    private fun snack(text: String) = Snackbar.make(ui.root, text, Snackbar.LENGTH_SHORT).show()
+    /** 提示条抬到全屏面板与时间线全屏层之上，否则开着面板时看不见。 */
+    private fun snack(text: String) = Snackbar.make(ui.root, text, Snackbar.LENGTH_SHORT).apply {
+        view.elevation = 32 * view.resources.displayMetrics.density
+    }.show()
 
     override fun onStart() {
         super.onStart()
         activityVisible = true
-        if (appearanceConfig.interfaceMode == InterfaceMode.PROFESSIONAL) {
+        if (appearanceConfig.interfaceMode == InterfaceMode.PROFESSIONAL && panels.isOpen(P_PRO)) {
             metricsHandler.post(refreshMetrics)
         }
         statusPollHandler.post(refreshStatusPoll)

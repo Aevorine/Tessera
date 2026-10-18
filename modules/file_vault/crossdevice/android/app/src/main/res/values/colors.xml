@@ -42,4 +42,7 @@
     <color name="status_info">#2F6EA8</color>
 
     <color name="decorative_gold">#C99A45</color>
+
+    <!-- 状态头在线灯：无设备在线时的灰。 -->
+    <color name="hero_idle">#A39E93</color>
 </resources>
