@@ -1,47 +1,16 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!--
-  应用主题。
-
-  为什么必须自己定一个，而不是直接用 Theme.Material3.DayNight：
-
-  1. **NoActionBar**。Material3.DayNight 自带一条系统 ActionBar，而布局里已经有
-     一条 MaterialToolbar 了。两条都显示应用名，于是界面顶部出现两个「Tessera
-     跨设备」——上面那条还是 Material3 基线调色板的紫色，跟本应用的强调色毫无
-     关系。这不是配色没调好，是多了一个本就不该出现的控件。
-
-  2. **颜色对齐**。不指定 colorPrimary 时，Material3 会用它自己的基线紫。
-     应用其余部分由 AppearanceStyler 按用户选的强调色在运行时染色，只有主题
-     属性是启动时就定死的——不覆盖的话，启动那一瞬间和所有主题色控件
-     （开关、进度条、涟漪）都会是紫色，跟其余部分对不上。
-
-  强调色默认取 forest（与桌面端默认一致）；用户改选别的强调色时，
-  AppearanceStyler 会把运行时的控件染成对应颜色。
--->
+<!-- 排版与配色放在 Base 里，深色只覆盖状态栏图标明暗，两套模式字体一致。 -->
 <resources xmlns:tools="http://schemas.android.com/tools">
 
-    <style name="Theme.Tessera" parent="Theme.Material3.DayNight.NoActionBar">
+    <style name="Base.Theme.Tessera" parent="Theme.Material3.DayNight.NoActionBar">
         <item name="colorPrimary">@color/accent_forest</item>
         <item name="colorOnPrimary">#FFFFFF</item>
         <item name="colorSecondary">@color/accent_forest</item>
         <item name="colorError">@color/status_danger</item>
-
-        <!-- 状态栏交给系统按明暗模式配，图标对比度才不会在深色模式下糊掉。 -->
         <item name="android:statusBarColor">?attr/colorSurface</item>
-        <item name="android:windowLightStatusBar" tools:targetApi="m">true</item>
 
-        <!--
-          排版（定义见 values/type.xml）。
-
-          为什么在主题里覆盖这一整组、而不是给每个 TextView 写 fontFamily：
-          布局里的文字全都引用 ?attr/textAppearanceXxx，Material 组件（按钮、
-          工具栏、对话框、Snackbar）内部也走这几个属性。改这里是一处生效；
-          逐个控件写则必然漏掉对话框和组件内部自建的那些文字，界面就会变成
-          「大部分宋体、个别黑体」——恰恰是最刺眼的不统一。
-
-          布局里显式写了 android:fontFamily="monospace" 的地方不受影响
-          （控件自身的属性优先于样式），那是有意的：IP 地址、配对码、日志要
-          等宽才对得齐。
-        -->
+        <item name="fontFamily">@font/tessera_serif</item>
+        <item name="android:fontFamily">@font/tessera_serif</item>
         <item name="textAppearanceBodySmall">@style/TextAppearance.Tessera.BodySmall</item>
         <item name="textAppearanceBodyMedium">@style/TextAppearance.Tessera.BodyMedium</item>
         <item name="textAppearanceBodyLarge">@style/TextAppearance.Tessera.BodyLarge</item>
@@ -55,12 +24,11 @@
         <item name="android:textViewStyle">@style/Widget.Tessera.TextView</item>
     </style>
 
-    <!--
-      通知栏「同步剪贴板」按钮落地页专用主题：全透明、不画任何东西、没有进出场
-      动画。安卓的剪贴板读取权限判定的是「谁在拿着窗口焦点」，不是「谁看得见」——
-      所以只要这个 Activity 真的短暂拿到过焦点，读一次剪贴板就够了，用户不需要
-      也不应该看到它。见 ClipSyncTrampolineActivity 的说明。
-    -->
+    <style name="Theme.Tessera" parent="Base.Theme.Tessera">
+        <item name="android:windowLightStatusBar" tools:targetApi="m">true</item>
+    </style>
+
+    <!-- 通知栏「同步剪贴板」落地页：全透明、无动画，只为短暂拿到焦点读一次剪贴板。 -->
     <style name="Theme.Tessera.Transparent" parent="Theme.Tessera">
         <item name="android:windowIsTranslucent">true</item>
         <item name="android:windowBackground">@android:color/transparent</item>

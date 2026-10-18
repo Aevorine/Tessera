@@ -1,46 +1,22 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!--
-  首页 = 一屏主界面 + 若干全屏次功能面板。
-
-  主界面只放天天要看、天天要点的：状态头（本机名、在线概况、四个主动作）、进行中的传输、
-  「全部功能」格子、已配对设备。其余每一类功能（配对、剪贴板、跨网络、本机、更新、安全、诊断）
-  各收进一个全屏面板，由格子打开（FeaturePanels.kt：从格子处圆形展开，返回键 / Esc 收起）。
-
-  所有控件 id 与改版前一致，MainActivity 的逻辑不用跟着搬家；面板只是换了它们的容器。
-  面板用 tag 标出「根 / 标题栏 / 返回键 / 正文」，PanelHost 与 AppearanceStyler 按 tag 统一处理，
-  新增面板不用改这两处代码。
-
-  分区图标统一带 android:tag="sectionIcon"，由 AppearanceStyler 按当前强调色染色。
--->
+<!-- 主界面（状态头 + 功能格 + 设备）+ 全屏次功能面板；面板按 tag 识别（panelRoot / panelBar / panelBack / panelBody）。 -->
 <androidx.coordinatorlayout.widget.CoordinatorLayout
     xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent">
 
-    <com.google.android.material.appbar.AppBarLayout
-        android:id="@+id/appBar"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content">
-
-        <com.google.android.material.appbar.MaterialToolbar
-            android:id="@+id/toolbar"
-            android:layout_width="match_parent"
-            android:layout_height="?attr/actionBarSize"
-            app:title="@string/app_name" />
-    </com.google.android.material.appbar.AppBarLayout>
 
     <androidx.core.widget.NestedScrollView
         android:id="@+id/scrollMain"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
-        app:layout_behavior="@string/appbar_scrolling_view_behavior">
+        android:fillViewport="true">
 
-        <!-- 手机单栏；平板限宽居中、横屏切左右两栏（AdaptiveLayout.kt 运行时处理）。 -->
         <LinearLayout
             android:id="@+id/mainContent"
             android:layout_width="match_parent"
-            android:layout_height="wrap_content"
+            android:layout_height="match_parent"
             android:baselineAligned="false"
             android:orientation="vertical"
             android:padding="@dimen/screen_padding">
@@ -48,22 +24,15 @@
             <LinearLayout
                 android:id="@+id/colPrimary"
                 android:layout_width="match_parent"
-                android:layout_height="wrap_content"
+                android:layout_height="0dp"
+                android:layout_weight="1"
                 android:orientation="vertical">
 
-                <!-- ============ 「接着刚才」 ============
-                     别的设备上还有没做完的事。默认 gone，只有真的收到播报才出现。
-
-                     放在最顶上、且做成一条**很轻**的横条（不是卡片）：它说的不是
-                     "这一屏有什么"，而是"另一台设备上有什么"，跟当前页面无关。
-                     做成卡片会让它看起来像一个功能分区，占掉首屏最贵的位置；
-                     而这类跨设备提醒一旦变成噪音，用户就再也不读它了——包括真正
-                     重要的那一次。 -->
                 <LinearLayout
                     android:id="@+id/rowContinuity"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:layout_marginTop="12dp"
+                    android:layout_marginBottom="12dp"
                     android:background="@color/app_surface_muted"
                     android:gravity="center_vertical"
                     android:orientation="horizontal"
@@ -89,13 +58,10 @@
                         android:text="@string/continuity_dismiss" />
                 </LinearLayout>
 
-                <!-- ============ 状态头 + 主动作 ============
-                     本机名、在线概况和四个最常用的动作同在一张卡：打开第一眼就知道「现在能不能传」并直接动手。 -->
                 <com.google.android.material.card.MaterialCardView
                     android:id="@+id/cardHero"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:layout_marginTop="12dp"
                     app:cardCornerRadius="22dp">
 
                     <LinearLayout
@@ -113,7 +79,6 @@
                             android:orientation="horizontal"
                             android:paddingHorizontal="4dp">
 
-                            <!-- 在线指示灯：有设备在线为绿，在线数变化时跳一下。 -->
                             <View
                                 android:id="@+id/dotOnline"
                                 android:layout_width="12dp"
@@ -147,17 +112,16 @@
                                     android:textColor="?attr/colorOnSurfaceVariant" />
                             </LinearLayout>
 
-                            <!-- 改名不用重连，名字随心跳（≤10 秒）捎给已配对设备。 -->
                             <com.google.android.material.button.MaterialButton
                                 android:id="@+id/btnRenameDevice"
                                 style="?attr/materialButtonOutlinedStyle"
                                 android:layout_width="wrap_content"
                                 android:layout_height="wrap_content"
                                 android:minWidth="0dp"
-                                android:text="@string/rename_device" />
+                                android:text="@string/rename_device"
+                                android:tooltipText="@string/rename_device" />
                         </LinearLayout>
 
-                        <!-- 四个主动作：图标在上、短字在下，一行排开；无障碍读完整名称。 -->
                         <LinearLayout
                             android:layout_width="match_parent"
                             android:layout_height="wrap_content"
@@ -172,6 +136,7 @@
                                 android:layout_weight="1"
                                 android:layout_marginEnd="3dp"
                                 android:contentDescription="@string/scan_to_pair"
+                                android:tooltipText="@string/scan_to_pair"
                                 android:insetTop="0dp"
                                 android:insetBottom="0dp"
                                 android:minHeight="80dp"
@@ -191,6 +156,7 @@
                                 android:layout_weight="1"
                                 android:layout_marginHorizontal="3dp"
                                 android:contentDescription="@string/show_my_code"
+                                android:tooltipText="@string/show_my_code"
                                 android:insetTop="0dp"
                                 android:insetBottom="0dp"
                                 android:minHeight="80dp"
@@ -210,6 +176,7 @@
                                 android:layout_weight="1"
                                 android:layout_marginHorizontal="3dp"
                                 android:contentDescription="@string/send_clipboard"
+                                android:tooltipText="@string/send_clipboard"
                                 android:insetTop="0dp"
                                 android:insetBottom="0dp"
                                 android:minHeight="80dp"
@@ -229,6 +196,7 @@
                                 android:layout_weight="1"
                                 android:layout_marginStart="3dp"
                                 android:contentDescription="@string/send_files"
+                                android:tooltipText="@string/send_files"
                                 android:insetTop="0dp"
                                 android:insetBottom="0dp"
                                 android:minHeight="80dp"
@@ -242,7 +210,6 @@
                                 app:iconSize="26dp" />
                         </LinearLayout>
 
-                        <!-- 发给一台还是发给多台：显式选择，不默认群发。与桌面端传输中心同一规则。 -->
                         <com.google.android.material.button.MaterialButtonToggleGroup
                             android:id="@+id/groupFanout"
                             android:layout_width="match_parent"
@@ -268,7 +235,6 @@
                                 android:text="@string/fanout_many" />
                         </com.google.android.material.button.MaterialButtonToggleGroup>
 
-                        <!-- 只在「发给多台」时出现：那一刻才值得说「这一份会去 N 台」。 -->
                         <TextView
                             android:id="@+id/textFanoutHint"
                             android:layout_width="match_parent"
@@ -281,8 +247,6 @@
                     </LinearLayout>
                 </com.google.android.material.card.MaterialCardView>
 
-                <!-- ============ 进行中的传输 ============
-                     没有传输时整卡隐藏，不占位置。 -->
                 <com.google.android.material.card.MaterialCardView
                     android:id="@+id/cardProgress"
                     android:layout_width="match_parent"
@@ -319,10 +283,6 @@
                                 android:textAppearance="?attr/textAppearanceTitleSmall" />
                         </LinearLayout>
 
-                        <!-- 一条传输一行，各自带暂停和取消。
-                             之前这里是单独一个 TextView 加一条进度条，同时传两个
-                             文件时两者会互相覆盖，看起来像进度条在来回跳，
-                             而"这是哪个文件的进度"根本无从判断。 -->
                         <androidx.recyclerview.widget.RecyclerView
                             android:id="@+id/listTransfers"
                             android:layout_width="match_parent"
@@ -332,41 +292,14 @@
                     </LinearLayout>
                 </com.google.android.material.card.MaterialCardView>
 
-                <!-- ============ 全部功能 ============
-                     一格一个主功能，格上带实时小结；点开是该功能的全屏面板，次功能都在里面。
-                     格子由 FeatureTiles.kt 生成；横屏平板上整块被 AdaptiveLayout 挪到右栏。 -->
-                <LinearLayout
-                    android:id="@+id/boxFeatures"
+                <com.tessera.crossdevice.TileGrid
+                    android:id="@+id/gridFeatures"
                     android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="18dp"
-                    android:orientation="vertical">
+                    android:layout_height="0dp"
+                    android:layout_marginTop="12dp"
+                    android:layout_weight="1"
+                    android:layoutAnimation="@anim/layout_tiles" />
 
-                    <TextView
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:layout_marginStart="4dp"
-                        android:text="@string/features_title"
-                        android:textAppearance="?attr/textAppearanceTitleSmall"
-                        android:textColor="?attr/colorOnSurfaceVariant" />
-
-                    <androidx.recyclerview.widget.RecyclerView
-                        android:id="@+id/gridFeatures"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:layout_marginHorizontal="-5dp"
-                        android:layout_marginTop="4dp"
-                        android:layoutAnimation="@anim/layout_tiles"
-                        android:nestedScrollingEnabled="false"
-                        android:overScrollMode="never" />
-                </LinearLayout>
-
-                <!-- ============ 已配对设备 ============
-                     🔴 这张卡的 id 曾经写成 @+id/cardDiagnostics，而 MainActivity
-                     用那个 id 在**非专业模式**下把控件设成 GONE（本意是隐藏最下面
-                     那张「故障日志」卡）。默认就是非专业模式，于是**整张已配对设备
-                     卡在默认状态下根本不显示**——设备一直配着、Go 侧一直在回数据，
-                     只是那张卡被藏了。改 id 前请先读这段。 -->
                 <com.google.android.material.card.MaterialCardView
                     android:id="@+id/cardPairedDevices"
                     android:layout_width="match_parent"
@@ -401,9 +334,6 @@
                                 android:text="@string/paired_devices"
                                 android:textAppearance="?attr/textAppearanceTitleSmall" />
 
-                            <!-- 「选择」是进入多选模式的入口。
-                                 长按任意一行也能进（安卓上最符合直觉的手势），但只靠
-                                 长按的话没人发现得了——一个看得见的按钮是必须的。 -->
                             <com.google.android.material.button.MaterialButton
                                 android:id="@+id/btnSelectDevices"
                                 style="?attr/materialButtonOutlinedStyle"
@@ -414,7 +344,6 @@
                                 android:text="@string/devices_select" />
                         </LinearLayout>
 
-                        <!-- 多选工具条：全选 + 删除选中。整条平时隐藏。 -->
                         <LinearLayout
                             android:id="@+id/rowDeviceSelection"
                             android:layout_width="match_parent"
@@ -447,9 +376,6 @@
                                 app:icon="@drawable/ic_delete" />
                         </LinearLayout>
 
-                        <!-- 空态提示。初始就是 gone：不这么写的话，界面渲染完到
-                             第一次 status 回来之间会先闪一下"还没有配对任何设备"，
-                             而那句话恰恰是用户最不想看到的误报。 -->
                         <TextView
                             android:id="@+id/textNoDevices"
                             android:layout_width="match_parent"
@@ -477,9 +403,9 @@
         </LinearLayout>
     </androidx.core.widget.NestedScrollView>
 
-    <!-- ============ 全屏面板 · 配对 ============ -->
     <LinearLayout
         android:id="@+id/panelPair"
+        android:accessibilityPaneTitle="@string/panel_pair"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         android:clickable="true"
@@ -508,23 +434,6 @@
                 android:tooltipText="@string/panel_back"
                 app:icon="@drawable/ic_arrow_back" />
 
-            <ImageView
-                android:layout_width="22dp"
-                android:layout_height="22dp"
-                android:layout_marginStart="4dp"
-                android:layout_marginEnd="10dp"
-                android:importantForAccessibility="no"
-                android:src="@drawable/ic_qr"
-                android:tag="sectionIcon" />
-
-            <TextView
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:ellipsize="end"
-                android:singleLine="true"
-                android:text="@string/panel_pair"
-                android:textAppearance="?attr/textAppearanceTitleLarge" />
         </LinearLayout>
 
         <androidx.core.widget.NestedScrollView
@@ -541,10 +450,6 @@
                 android:paddingBottom="24dp"
                 android:tag="panelBody">
 
-                <!-- ============ 我的配对码 ============
-                     可展开 / 折叠。二维码占掉大半屏，配完设备之后就是纯占位置的东西，
-                     但又不能藏进菜单——「出示我的码」是两台设备第一次见面时最常按的
-                     那一个。折叠起来只剩一行标题，需要时点一下就回来。 -->
                 <com.google.android.material.card.MaterialCardView
                     android:id="@+id/cardMyCode"
                     android:layout_width="match_parent"
@@ -605,6 +510,7 @@
                                 android:layout_height="@dimen/qr_size"
                                 android:background="#FFFFFF"
                                 android:contentDescription="@string/show_my_code"
+                                android:tooltipText="@string/show_my_code"
                                 android:padding="8dp" />
 
                             <TextView
@@ -618,8 +524,6 @@
                     </LinearLayout>
                 </com.google.android.material.card.MaterialCardView>
 
-                <!-- ============ 附近设备 ============
-                     第三种配对方式：不用扫码、不用复制粘贴，直接从列表里点。 -->
                 <com.google.android.material.card.MaterialCardView
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
@@ -656,8 +560,6 @@
                                 android:text="@string/nearby_devices"
                                 android:textAppearance="?attr/textAppearanceTitleSmall" />
 
-                            <!-- 刷新留在标题栏里：它是这张卡最常按的动作，折叠状态下
-                                 也该点得到。点它不会连带展开/折叠——两个动作分开。 -->
                             <com.google.android.material.button.MaterialButton
                                 android:id="@+id/btnRefreshNearby"
                                 style="?attr/materialButtonOutlinedStyle"
@@ -697,12 +599,6 @@
                             android:layout_height="wrap_content"
                             android:nestedScrollingEnabled="false" />
 
-                        <!-- 三条兜底路径。
-                             「刷新」只是把已经被动听到的东西读一遍——路由器丢掉组播时
-                             刷一百次也还是空的，所以真正解决问题的是下面这三个：
-                             主动扫描绕开组播，手动地址绕开一切自动发现，诊断告诉用户
-                             到底卡在哪一步。它们和列表放在同一张卡里，因为用户是在
-                             "列表是空的"这个时刻才需要它们。 -->
                         <com.google.android.material.divider.MaterialDivider
                             android:layout_width="match_parent"
                             android:layout_height="wrap_content"
@@ -734,8 +630,6 @@
                                 android:text="@string/manual_address" />
                         </LinearLayout>
 
-                        <!-- 数字码放在最显眼的整行按钮上：其它三条路各有前提（摄像头 /
-                             组播 / 知道 IP 和端口），只有这条在哪儿都成立。 -->
                         <com.google.android.material.button.MaterialButton
                             android:id="@+id/btnShortCode"
                             android:layout_width="match_parent"
@@ -766,9 +660,9 @@
         </androidx.core.widget.NestedScrollView>
     </LinearLayout>
 
-    <!-- ============ 全屏面板 · 剪贴板 ============ -->
     <LinearLayout
         android:id="@+id/panelClip"
+        android:accessibilityPaneTitle="@string/panel_clip"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         android:clickable="true"
@@ -797,23 +691,6 @@
                 android:tooltipText="@string/panel_back"
                 app:icon="@drawable/ic_arrow_back" />
 
-            <ImageView
-                android:layout_width="22dp"
-                android:layout_height="22dp"
-                android:layout_marginStart="4dp"
-                android:layout_marginEnd="10dp"
-                android:importantForAccessibility="no"
-                android:src="@drawable/ic_clipboard"
-                android:tag="sectionIcon" />
-
-            <TextView
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:ellipsize="end"
-                android:singleLine="true"
-                android:text="@string/panel_clip"
-                android:textAppearance="?attr/textAppearanceTitleLarge" />
         </LinearLayout>
 
         <androidx.core.widget.NestedScrollView
@@ -830,8 +707,6 @@
                 android:paddingBottom="24dp"
                 android:tag="panelBody">
 
-                <!-- ============ 自动同步 ============
-                     原在首页快捷操作卡里的三行（自动同步 / 只同步纯文本 / 输入法模式），原样搬来。 -->
                 <com.google.android.material.card.MaterialCardView
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
@@ -845,10 +720,6 @@
                         android:paddingHorizontal="16dp"
                         android:paddingTop="6dp"
                         android:paddingBottom="16dp">
-                        <!-- 剪贴板自动同步开关。
-                             说明文字**不常驻**：拨动开关的那一刻用 Snackbar 说一句
-                             （包括安卓 10 起只有前台能读剪贴板这条限制），说完就走。
-                             常年挂两行字在这里，第二天起就只是噪音了。 -->
                         <LinearLayout
                             android:layout_width="match_parent"
                             android:layout_height="wrap_content"
@@ -904,8 +775,6 @@
                                 android:layout_height="wrap_content" />
                         </LinearLayout>
 
-                        <!-- 输入法模式：Tessera 键盘是默认输入法时后台读得到剪贴板，
-                             在任何应用里复制都会自动同步。状态三档：未启用 / 已启用未选用 / 正在使用。 -->
                         <LinearLayout
                             android:layout_width="match_parent"
                             android:layout_height="wrap_content"
@@ -944,17 +813,6 @@
                     </LinearLayout>
                 </com.google.android.material.card.MaterialCardView>
 
-                <!-- ============ 剪贴板时间线 ============
-                     任一设备最近复制过的内容（含对方断线期间复制、连上后取回的），
-                     点一下放进本机剪贴板，或重新发给所有设备。只在内存里，退出即清空。
-
-                     排在「本机身份」之后：它是翻看历史用的，不是天天要点的动作；
-                     排在前面只会把「已配对设备」「附近设备」这些配对用的卡片挤到屏幕外。
-
-                     内容区是一个**固定高度**的窗口（手机 @dimen/clip_timeline_height，
-                     平板更高）：条数再多也不会把整页越撑越长，要看更多就在窗口里滑动。
-                     右上角的全屏按钮把同一份内容铺满整个屏幕（见页面末尾的
-                     overlayClipTimeline），按返回键或键盘 Esc 退出。 -->
                 <com.google.android.material.card.MaterialCardView
                     android:id="@+id/cardClipTimeline"
                     android:layout_width="match_parent"
@@ -1017,8 +875,6 @@
                                 app:icon="@drawable/ic_fullscreen" />
                         </LinearLayout>
 
-                        <!-- 固定大小的窗口。NestedScrollView 放在外层的 NestedScrollView 里
-                             也能各自滑动：手指落在窗口里，窗口先滑；滑到头再交还给整页。 -->
                         <androidx.core.widget.NestedScrollView
                             android:id="@+id/scrollClipTimeline"
                             android:layout_width="match_parent"
@@ -1057,9 +913,9 @@
         </androidx.core.widget.NestedScrollView>
     </LinearLayout>
 
-    <!-- ============ 全屏面板 · 跨网络 ============ -->
     <LinearLayout
         android:id="@+id/panelCrossnet"
+        android:accessibilityPaneTitle="@string/panel_crossnet"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         android:clickable="true"
@@ -1088,23 +944,6 @@
                 android:tooltipText="@string/panel_back"
                 app:icon="@drawable/ic_arrow_back" />
 
-            <ImageView
-                android:layout_width="22dp"
-                android:layout_height="22dp"
-                android:layout_marginStart="4dp"
-                android:layout_marginEnd="10dp"
-                android:importantForAccessibility="no"
-                android:src="@drawable/ic_globe"
-                android:tag="sectionIcon" />
-
-            <TextView
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:ellipsize="end"
-                android:singleLine="true"
-                android:text="@string/panel_crossnet"
-                android:textAppearance="?attr/textAppearanceTitleLarge" />
         </LinearLayout>
 
         <androidx.core.widget.NestedScrollView
@@ -1121,9 +960,6 @@
                 android:paddingBottom="24dp"
                 android:tag="panelBody">
 
-                <!-- ============ 跨网络连接 ============
-                     默认收起：绝大多数时候两台设备就在同一个 Wi-Fi 下，局域网直连
-                     全自动、不需要任何配置。这张卡是"在外面也想连上"时才来找的。 -->
                 <com.google.android.material.card.MaterialCardView
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
@@ -1137,29 +973,27 @@
                         android:padding="16dp">
 
                         <LinearLayout
-                            android:id="@+id/headerCrossnet"
                             android:layout_width="match_parent"
                             android:layout_height="wrap_content"
-                            android:background="?attr/selectableItemBackground"
                             android:gravity="center_vertical"
-                            android:minHeight="40dp"
                             android:orientation="horizontal">
 
-                            <ImageView
-                                android:layout_width="20dp"
-                                android:layout_height="20dp"
-                                android:layout_marginEnd="10dp"
-                                android:importantForAccessibility="no"
-                                android:src="@drawable/ic_transfer"
-                                android:tag="sectionIcon" />
-
                             <TextView
+                                android:id="@+id/textCrossnetStatus"
                                 android:layout_width="0dp"
-                                android:layout_weight="1"
                                 android:layout_height="wrap_content"
-                                android:text="@string/crossnet_section"
-                                android:textAppearance="?attr/textAppearanceTitleSmall" />
+                                android:layout_weight="1"
+                                android:text="@string/crossnet_status_off"
+                                android:textAppearance="?attr/textAppearanceBodyMedium" />
 
+                            <com.google.android.material.button.MaterialButton
+                                android:id="@+id/btnCrossnetInfo"
+                                style="@style/Widget.Material3.Button.IconButton"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:contentDescription="@string/info_more"
+                                android:tooltipText="@string/info_more"
+                                app:icon="@drawable/ic_info" />
                         </LinearLayout>
 
                         <LinearLayout
@@ -1168,29 +1002,12 @@
                             android:layout_height="wrap_content"
                             android:orientation="vertical">
 
-                            <TextView
-                                android:id="@+id/textCrossnetStatus"
-                                android:layout_width="match_parent"
-                                android:layout_height="wrap_content"
-                                android:paddingTop="8dp"
-                                android:text="@string/crossnet_status_off"
-                                android:textAppearance="?attr/textAppearanceBodySmall"
-                                android:textColor="?attr/colorOnSurfaceVariant" />
-
-                            <TextView
-                                android:layout_width="match_parent"
-                                android:layout_height="wrap_content"
-                                android:paddingTop="8dp"
-                                android:text="@string/crossnet_explain"
-                                android:textAppearance="?attr/textAppearanceBodySmall"
-                                android:textColor="?attr/colorOnSurfaceVariant" />
-
                             <com.google.android.material.textfield.TextInputLayout
                                 android:layout_width="match_parent"
                                 android:layout_height="wrap_content"
                                 android:layout_marginTop="10dp"
                                 android:hint="@string/crossnet_addr_hint"
-                                app:helperText="@string/crossnet_addr_helper">
+                                app:placeholderText="@string/crossnet_addr_placeholder">
 
                                 <com.google.android.material.textfield.TextInputEditText
                                     android:id="@+id/inputRendezvousAddr"
@@ -1205,8 +1022,7 @@
                                 android:layout_height="wrap_content"
                                 android:layout_marginTop="4dp"
                                 android:hint="@string/crossnet_secret_hint"
-                                app:endIconMode="password_toggle"
-                                app:helperText="@string/crossnet_secret_helper">
+                                app:endIconMode="password_toggle">
 
                                 <com.google.android.material.textfield.TextInputEditText
                                     android:id="@+id/inputRendezvousSecret"
@@ -1262,9 +1078,9 @@
         </androidx.core.widget.NestedScrollView>
     </LinearLayout>
 
-    <!-- ============ 全屏面板 · 本机与外观 ============ -->
     <LinearLayout
         android:id="@+id/panelDevice"
+        android:accessibilityPaneTitle="@string/panel_device"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         android:clickable="true"
@@ -1293,23 +1109,6 @@
                 android:tooltipText="@string/panel_back"
                 app:icon="@drawable/ic_arrow_back" />
 
-            <ImageView
-                android:layout_width="22dp"
-                android:layout_height="22dp"
-                android:layout_marginStart="4dp"
-                android:layout_marginEnd="10dp"
-                android:importantForAccessibility="no"
-                android:src="@drawable/ic_devices"
-                android:tag="sectionIcon" />
-
-            <TextView
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:ellipsize="end"
-                android:singleLine="true"
-                android:text="@string/panel_device"
-                android:textAppearance="?attr/textAppearanceTitleLarge" />
         </LinearLayout>
 
         <androidx.core.widget.NestedScrollView
@@ -1326,7 +1125,6 @@
                 android:paddingBottom="24dp"
                 android:tag="panelBody">
 
-                <!-- ============ 本机身份 ============ -->
                 <com.google.android.material.card.MaterialCardView
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
@@ -1344,45 +1142,27 @@
                             android:gravity="center_vertical"
                             android:orientation="horizontal">
 
-                            <ImageView
-                                android:layout_width="20dp"
-                                android:layout_height="20dp"
-                                android:layout_marginEnd="10dp"
-                                android:importantForAccessibility="no"
-                                android:src="@drawable/ic_devices"
-                                android:tag="sectionIcon" />
-
-                            <TextView
-                                android:layout_width="0dp"
-                                android:layout_weight="1"
-                                android:layout_height="wrap_content"
-                                android:text="@string/this_device"
-                                android:textAppearance="?attr/textAppearanceTitleSmall" />
-
-                            <com.google.android.material.button.MaterialButton
+                                                        <com.google.android.material.button.MaterialButton
                                 android:id="@+id/btnAppearance"
                                 style="?attr/materialButtonOutlinedStyle"
-                                android:layout_width="wrap_content"
+                                android:layout_width="0dp"
+                                android:layout_weight="1"
                                 android:layout_height="wrap_content"
                                 android:minWidth="0dp"
                                 android:text="@string/appearance_button"
                                 app:icon="@drawable/ic_palette" />
 
-                            <!-- 使用指南。放在这里而不是藏进设置：需要看它的人
-                                 正是还不熟悉这个应用的人，而那种人不会去翻设置。 -->
                             <com.google.android.material.button.MaterialButton
                                 android:id="@+id/btnGuide"
                                 style="?attr/materialButtonOutlinedStyle"
-                                android:layout_width="wrap_content"
+                                android:layout_width="0dp"
+                                android:layout_weight="1"
                                 android:layout_height="wrap_content"
                                 android:layout_marginStart="8dp"
                                 android:minWidth="0dp"
                                 android:text="@string/guide_button" />
                         </LinearLayout>
 
-                        <!-- 安装包是不是官方签名的（AppIntegrity.kt）。
-                             摆在设备指纹旁边：两条都是"这台设备/这份包到底是什么"的
-                             身份信息，读的时候是同一件事。 -->
                         <TextView
                             android:id="@+id/textIntegrity"
                             android:layout_width="match_parent"
@@ -1396,13 +1176,11 @@
                             android:layout_width="match_parent"
                             android:layout_height="wrap_content"
                             android:layout_marginTop="4dp"
-                            android:fontFamily="monospace"
                             android:textAppearance="?attr/textAppearanceBodySmall"
                             android:textColor="?attr/colorOnSurfaceVariant" />
                     </LinearLayout>
                 </com.google.android.material.card.MaterialCardView>
 
-                <!-- ============ 接收文件的保存位置 ============ -->
                 <com.google.android.material.card.MaterialCardView
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
@@ -1459,9 +1237,9 @@
         </androidx.core.widget.NestedScrollView>
     </LinearLayout>
 
-    <!-- ============ 全屏面板 · 应用更新 ============ -->
     <LinearLayout
         android:id="@+id/panelUpdate"
+        android:accessibilityPaneTitle="@string/panel_update"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         android:clickable="true"
@@ -1490,23 +1268,6 @@
                 android:tooltipText="@string/panel_back"
                 app:icon="@drawable/ic_arrow_back" />
 
-            <ImageView
-                android:layout_width="22dp"
-                android:layout_height="22dp"
-                android:layout_marginStart="4dp"
-                android:layout_marginEnd="10dp"
-                android:importantForAccessibility="no"
-                android:src="@drawable/ic_update"
-                android:tag="sectionIcon" />
-
-            <TextView
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:ellipsize="end"
-                android:singleLine="true"
-                android:text="@string/panel_update"
-                android:textAppearance="?attr/textAppearanceTitleLarge" />
         </LinearLayout>
 
         <androidx.core.widget.NestedScrollView
@@ -1523,9 +1284,6 @@
                 android:paddingBottom="24dp"
                 android:tag="panelBody">
 
-                <!-- ============ 应用更新 ============
-                     从「附近设备和发送动作之间」挪到这里。它是设置类内容，
-                     夹在两组传输动作中间会把一件事劈成两半。 -->
                 <com.google.android.material.card.MaterialCardView
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
@@ -1539,32 +1297,6 @@
                         android:padding="16dp">
 
                         <LinearLayout
-                            android:id="@+id/headerUpdate"
-                            android:layout_width="match_parent"
-                            android:layout_height="wrap_content"
-                            android:background="?attr/selectableItemBackground"
-                            android:gravity="center_vertical"
-                            android:minHeight="40dp"
-                            android:orientation="horizontal">
-
-                            <ImageView
-                                android:layout_width="20dp"
-                                android:layout_height="20dp"
-                                android:layout_marginEnd="10dp"
-                                android:importantForAccessibility="no"
-                                android:src="@drawable/ic_update"
-                                android:tag="sectionIcon" />
-
-                            <TextView
-                                android:layout_width="0dp"
-                                android:layout_weight="1"
-                                android:layout_height="wrap_content"
-                                android:text="@string/update_section"
-                                android:textAppearance="?attr/textAppearanceTitleSmall" />
-
-                        </LinearLayout>
-
-                      <LinearLayout
                         android:id="@+id/bodyUpdate"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
@@ -1574,9 +1306,47 @@
                             android:id="@+id/textUpdateStatus"
                             android:layout_width="match_parent"
                             android:layout_height="wrap_content"
-                            android:paddingTop="8dp"
-                            android:textAppearance="?attr/textAppearanceBodySmall"
-                            android:textColor="?attr/colorOnSurfaceVariant" />
+                            android:textAppearance="?attr/textAppearanceTitleSmall" />
+
+                        <LinearLayout
+                            android:id="@+id/rowUpdateLink"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="10dp"
+                            android:background="@drawable/bg_link_row"
+                            android:clickable="true"
+                            android:focusable="true"
+                            android:gravity="center_vertical"
+                            android:minHeight="52dp"
+                            android:orientation="horizontal"
+                            android:paddingHorizontal="14dp"
+                            android:tooltipText="@string/update_link_open">
+
+                            <ImageView
+                                android:layout_width="22dp"
+                                android:layout_height="22dp"
+                                android:layout_marginEnd="12dp"
+                                android:importantForAccessibility="no"
+                                android:src="@drawable/ic_github"
+                                android:tag="sectionIcon" />
+
+                            <TextView
+                                android:id="@+id/textUpdateLink"
+                                android:layout_width="0dp"
+                                android:layout_height="wrap_content"
+                                android:layout_weight="1"
+                                android:ellipsize="middle"
+                                android:singleLine="true"
+                                android:textAppearance="?attr/textAppearanceBodyMedium" />
+
+                            <ImageView
+                                android:layout_width="20dp"
+                                android:layout_height="20dp"
+                                android:layout_marginStart="8dp"
+                                android:importantForAccessibility="no"
+                                android:src="@drawable/ic_open_in_new"
+                                android:tag="sectionIcon" />
+                        </LinearLayout>
 
                         <com.google.android.material.materialswitch.MaterialSwitch
                             android:id="@+id/switchAutoUpdate"
@@ -1592,9 +1362,6 @@
                             android:layout_height="wrap_content"
                             android:text="@string/update_mirror_label" />
 
-                        <!-- 「自动只自动到检查这一步」那句解释挪进了拨开关时的 Snackbar。
-                             它是**打开开关的那一刻**才需要知道的事，不是每次滚到这里
-                             都要重读一遍的事。 -->
 
                         <com.google.android.material.button.MaterialButton
                             android:id="@+id/btnCheckUpdate"
@@ -1611,9 +1378,9 @@
         </androidx.core.widget.NestedScrollView>
     </LinearLayout>
 
-    <!-- ============ 全屏面板 · 安全与权限 ============ -->
     <LinearLayout
         android:id="@+id/panelSecurity"
+        android:accessibilityPaneTitle="@string/panel_security"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         android:clickable="true"
@@ -1642,23 +1409,6 @@
                 android:tooltipText="@string/panel_back"
                 app:icon="@drawable/ic_arrow_back" />
 
-            <ImageView
-                android:layout_width="22dp"
-                android:layout_height="22dp"
-                android:layout_marginStart="4dp"
-                android:layout_marginEnd="10dp"
-                android:importantForAccessibility="no"
-                android:src="@drawable/ic_shield"
-                android:tag="sectionIcon" />
-
-            <TextView
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:ellipsize="end"
-                android:singleLine="true"
-                android:text="@string/panel_security"
-                android:textAppearance="?attr/textAppearanceTitleLarge" />
         </LinearLayout>
 
         <androidx.core.widget.NestedScrollView
@@ -1675,7 +1425,6 @@
                 android:paddingBottom="24dp"
                 android:tag="panelBody">
 
-                <!-- ============ 应用锁 ============ -->
                 <com.google.android.material.card.MaterialCardView
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
@@ -1742,11 +1491,6 @@
                     </LinearLayout>
                 </com.google.android.material.card.MaterialCardView>
 
-                <!-- ============ 系统权限与后台运行 ============
-                     通知权限关掉、电池优化没豁免，这两条系统限制都不会报错、也不会在
-                     App 里有任何提示——服务照样"运行成功"，用户只会觉得"同步不稳定"。
-                     首次启动时各弹过一次系统对话框，但用户随手关掉之后就再也没有
-                     入口能补救，这张卡片就是补的这个口子：随时能看、随时能改。 -->
                 <com.google.android.material.card.MaterialCardView
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
@@ -1780,6 +1524,14 @@
                                 android:layout_height="wrap_content"
                                 android:text="@string/system_permissions_title"
                                 android:textAppearance="?attr/textAppearanceTitleSmall" />
+                            <com.google.android.material.button.MaterialButton
+                                android:id="@+id/btnLaunchInfo"
+                                style="@style/Widget.Material3.Button.IconButton"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:contentDescription="@string/info_more"
+                                android:tooltipText="@string/info_more"
+                                app:icon="@drawable/ic_info" />
                         </LinearLayout>
 
                         <TextView
@@ -1813,26 +1565,15 @@
                             android:layout_height="wrap_content"
                             android:layout_marginTop="2dp"
                             android:text="@string/battery_opt_fix_button" />
-
-                        <!-- 没有按钮：厂商的"应用启动管理"没有能从代码里可靠跳转过去的
-                             公开方式，写按钮等于给一个大概率打不开的死链接。只能把路
-                             讲清楚，让用户自己按图找过去。 -->
-                        <TextView
-                            android:layout_width="match_parent"
-                            android:layout_height="wrap_content"
-                            android:layout_marginTop="10dp"
-                            android:text="@string/launch_mgmt_hint"
-                            android:textAppearance="?attr/textAppearanceBodySmall"
-                            android:textColor="?attr/colorOnSurfaceVariant" />
                     </LinearLayout>
                 </com.google.android.material.card.MaterialCardView>
             </LinearLayout>
         </androidx.core.widget.NestedScrollView>
     </LinearLayout>
 
-    <!-- ============ 全屏面板 · 运行诊断（专业模式） ============ -->
     <LinearLayout
         android:id="@+id/panelPro"
+        android:accessibilityPaneTitle="@string/panel_pro"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         android:clickable="true"
@@ -1861,23 +1602,6 @@
                 android:tooltipText="@string/panel_back"
                 app:icon="@drawable/ic_arrow_back" />
 
-            <ImageView
-                android:layout_width="22dp"
-                android:layout_height="22dp"
-                android:layout_marginStart="4dp"
-                android:layout_marginEnd="10dp"
-                android:importantForAccessibility="no"
-                android:src="@drawable/ic_log"
-                android:tag="sectionIcon" />
-
-            <TextView
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:ellipsize="end"
-                android:singleLine="true"
-                android:text="@string/panel_pro"
-                android:textAppearance="?attr/textAppearanceTitleLarge" />
         </LinearLayout>
 
         <androidx.core.widget.NestedScrollView
@@ -1894,7 +1618,6 @@
                 android:paddingBottom="24dp"
                 android:tag="panelBody">
 
-                <!-- ============ 实时指标（仅专业模式） ============ -->
                 <com.google.android.material.card.MaterialCardView
                     android:id="@+id/cardMetrics"
                     android:layout_width="match_parent"
@@ -1928,9 +1651,6 @@
                     </LinearLayout>
                 </com.google.android.material.card.MaterialCardView>
 
-                <!-- ============ 故障日志（仅专业模式） ============
-                     cardDiagnostics 这个 id 现在指的是这张卡，跟 MainActivity 里
-                     「非专业模式隐藏」的那行对上了。见上面已配对设备卡的说明。 -->
                 <com.google.android.material.card.MaterialCardView
                     android:id="@+id/cardDiagnostics"
                     android:layout_width="match_parent"
@@ -2015,16 +1735,11 @@
                                 android:text="@string/diag_clear" />
                         </LinearLayout>
 
-                        <!-- 日志正文。字体按要求：中文宋体，英文与标点 Times New Roman。
-                             Android 的 fontFamily 只接受一个族名，做不到 CSS 那样按字符
-                             逐个回退，所以用 serif —— 系统的 serif 在中文环境下解析到宋体，
-                             拉丁部分解析到衬线体，是这个平台上最接近要求的做法。 -->
                         <TextView
                             android:id="@+id/textDiagLog"
                             android:layout_width="match_parent"
                             android:layout_height="wrap_content"
                             android:layout_marginTop="8dp"
-                            android:fontFamily="serif"
                             android:textAppearance="?attr/textAppearanceBodySmall"
                             android:textIsSelectable="true" />
                       </LinearLayout>
@@ -2034,11 +1749,6 @@
         </androidx.core.widget.NestedScrollView>
     </LinearLayout>
 
-    <!-- ============ 剪贴板时间线 · 全屏 ============
-         盖在整个界面（含顶栏）之上。默认 gone；点时间线卡片右上角的全屏按钮出现，
-         返回键 / 键盘 Esc / 右上角按钮退出。内容和卡片里那一份是同一批数据，
-         只是排版更宽、每条预览能多显示几行。clickable 是为了吃掉触摸——
-         不吃的话，手指会穿过去滑动底下那一页。 -->
     <LinearLayout
         android:id="@+id/overlayClipTimeline"
         android:layout_width="match_parent"

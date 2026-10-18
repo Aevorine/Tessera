@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 拉丁字母与标点 = Tinos（Times New Roman 等宽替身），汉字 = Noto Serif SC（宋体）。合并脚本见 tools/fonts。 -->
+<font-family xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto">
+    <font
+        android:font="@font/tessera_serif_regular"
+        android:fontStyle="normal"
+        android:fontWeight="400"
+        app:font="@font/tessera_serif_regular"
+        app:fontStyle="normal"
+        app:fontWeight="400" />
+    <font
+        android:font="@font/tessera_serif_bold"
+        android:fontStyle="normal"
+        android:fontWeight="700"
+        app:font="@font/tessera_serif_bold"
+        app:fontStyle="normal"
+        app:fontWeight="700" />
+</font-family>

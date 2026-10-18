@@ -326,7 +326,7 @@ def handle(request: dict) -> Optional[dict]:
         return _result(request_id, {
             "protocolVersion": PROTOCOL_VERSION,
             "capabilities": {"tools": {}},
-            "serverInfo": {"name": SERVER_NAME, "version": "0.1.38"},
+            "serverInfo": {"name": SERVER_NAME, "version": "0.1.39"},
         })
 
     if method == "ping":

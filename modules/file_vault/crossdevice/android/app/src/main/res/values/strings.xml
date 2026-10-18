@@ -490,7 +490,12 @@
     <string name="action_code">我的码</string>
     <string name="action_clip">发剪贴板</string>
     <string name="action_files">发文件</string>
-    <string name="features_title">全部功能</string>
+    <string name="info_more">说明</string>
+    <string name="crossnet_addr_placeholder">example.com:47820</string>
+    <string name="launch_mgmt_title">应用启动管理</string>
+    <string name="update_link_open">在浏览器中打开 GitHub 发布页（长按复制链接）</string>
+    <string name="update_link_copied">GitHub 链接已复制</string>
+    <string name="update_view_github">GitHub</string>
     <string name="panel_back">返回</string>
     <string name="tile_pair">配对</string>
     <string name="tile_clip">剪贴板</string>

@@ -4,55 +4,64 @@ import android.content.Context
 import android.view.View
 import android.view.ViewGroup
 import android.widget.LinearLayout
-import kotlin.math.max
-import kotlin.math.min
 
 /**
- * 手机 / 平板 / 横屏的版式。只看 screenWidthDp：Activity 没声明 configChanges，转屏、分屏都会重建，
- * 所以在 onCreate 里算一次就对，不用监听布局变化。
- *
- * - 手机：单栏占满。
- * - 竖屏平板：单栏限宽 720dp 居中，一行文字不用来回扫。
- * - 横屏平板 / 折叠屏展开（≥ 840dp）：左栏状态与设备，右栏「全部功能」，整体限宽 1240dp。
+ * 手机 / 平板 / 横屏版式，内容一律铺满宽度。Activity 未声明 configChanges，转屏会重建，onCreate 里算一次即可。
+ * - 窄屏：单栏，状态头 → 功能格（撑满剩余高度）→ 设备。
+ * - 宽屏（≥ 840dp，或横屏且 ≥ 600dp）：左栏状态与设备，右栏功能格；面板正文分两栏。
  */
 object AdaptiveLayout {
     private const val TWO_PANE_DP = 840
-    private const val COLUMN_MAX_DP = 720
-    private const val TWO_PANE_MAX_DP = 1240
-    private const val TILE_MIN_DP = 112
-    private const val PANE_GAP_DP = 20
+    private const val LANDSCAPE_TWO_PANE_DP = 600
+    private const val PANE_GAP_DP = 16
 
-    fun isTwoPane(ctx: Context): Boolean = ctx.resources.configuration.screenWidthDp >= TWO_PANE_DP
-
-    /** 把容器左右内边距撑到内容不超过 maxDp 宽并居中；窄屏保持原内边距。 */
-    fun centerColumn(view: View, maxDp: Int = COLUMN_MAX_DP) {
-        val res = view.resources
-        val side = max(
-            res.getDimensionPixelSize(R.dimen.screen_padding),
-            ((res.configuration.screenWidthDp - maxDp) * res.displayMetrics.density / 2).toInt(),
-        )
-        view.setPadding(side, view.paddingTop, side, view.paddingBottom)
+    fun isTwoPane(ctx: Context): Boolean {
+        val c = ctx.resources.configuration
+        return c.screenWidthDp >= TWO_PANE_DP ||
+            (c.screenWidthDp >= LANDSCAPE_TWO_PANE_DP && c.screenWidthDp > c.screenHeightDp)
     }
 
-    /** 主界面：限宽，宽屏时切左右两栏并把功能格挪到右栏。 */
-    fun applyMain(content: LinearLayout, primary: View, secondary: ViewGroup, features: View) {
+    private fun gap(ctx: Context) = (PANE_GAP_DP * ctx.resources.displayMetrics.density).toInt()
+
+    fun applyMain(content: LinearLayout, primary: View, secondary: ViewGroup, features: View, devices: View) {
         val ctx = content.context
-        val twoPane = isTwoPane(ctx)
-        centerColumn(content, if (twoPane) TWO_PANE_MAX_DP else COLUMN_MAX_DP)
-        if (!twoPane) return
+        if (!isTwoPane(ctx)) {
+            secondary.visibility = View.GONE
+            return
+        }
         content.orientation = LinearLayout.HORIZONTAL
-        val gap = (PANE_GAP_DP * ctx.resources.displayMetrics.density).toInt()
-        primary.layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
-        secondary.layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
-            .apply { marginStart = gap }
+        primary.layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1f)
+        secondary.layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1.25f)
+            .apply { marginStart = gap(ctx) }
         (features.parent as? ViewGroup)?.removeView(features)
-        secondary.addView(features)
+        secondary.addView(features, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
+        // 左栏设备卡撑到底，与右栏等高。
+        (devices.layoutParams as LinearLayout.LayoutParams).apply { height = 0; weight = 1f }
     }
 
-    /** 功能格列数：按所在栏的宽度算，3–6 列。 */
-    fun tileSpan(ctx: Context): Int {
-        val w = ctx.resources.configuration.screenWidthDp
-        val column = if (isTwoPane(ctx)) min(w, TWO_PANE_MAX_DP) / 2 else min(w, COLUMN_MAX_DP)
-        return (column / TILE_MIN_DP).coerceIn(3, 6)
+    /** 宽屏面板正文：卡片交替分进两栏；一栏全隐藏时收起，另一栏占满。 */
+    fun applyPanelBody(body: View) {
+        val ctx = body.context
+        if (body !is LinearLayout || body.childCount < 2 || !isTwoPane(ctx)) return
+        val kids = (0 until body.childCount).map { body.getChildAt(it) }
+        val top = (kids[0].layoutParams as? ViewGroup.MarginLayoutParams)?.topMargin ?: 0
+        body.removeAllViews()
+        body.orientation = LinearLayout.HORIZONTAL
+        val cols = List(2) { LinearLayout(ctx).apply { orientation = LinearLayout.VERTICAL } }
+        kids.forEachIndexed { i, v ->
+            if (i < 2) (v.layoutParams as? ViewGroup.MarginLayoutParams)?.topMargin = top
+            cols[i % 2].addView(v)
+        }
+        cols.forEachIndexed { i, c ->
+            body.addView(c, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply {
+                if (i == 1) marginStart = gap(ctx)
+            })
+        }
+        body.viewTreeObserver.addOnGlobalLayoutListener {
+            cols.forEach { c ->
+                val vis = if ((0 until c.childCount).any { c.getChildAt(it).visibility == View.VISIBLE }) View.VISIBLE else View.GONE
+                if (c.visibility != vis) c.visibility = vis
+            }
+        }
     }
 }

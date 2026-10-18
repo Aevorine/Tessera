@@ -1,18 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!--
-  深色模式只需要改状态栏图标的明暗：windowLightStatusBar 在深色背景上必须是
-  false，否则深色状态栏配深色图标，时间和电量在通知栏里直接看不见。
-  颜色本身沿用 values-night/colors.xml，不在这里再定义一遍。
--->
 <resources xmlns:tools="http://schemas.android.com/tools">
 
-    <style name="Theme.Tessera" parent="Theme.Material3.DayNight.NoActionBar">
-        <item name="colorPrimary">@color/accent_forest</item>
-        <item name="colorOnPrimary">#FFFFFF</item>
-        <item name="colorSecondary">@color/accent_forest</item>
-        <item name="colorError">@color/status_danger</item>
-
-        <item name="android:statusBarColor">?attr/colorSurface</item>
+    <style name="Theme.Tessera" parent="Base.Theme.Tessera">
         <item name="android:windowLightStatusBar" tools:targetApi="m">false</item>
     </style>
 

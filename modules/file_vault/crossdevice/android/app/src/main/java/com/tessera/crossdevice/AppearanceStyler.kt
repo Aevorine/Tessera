@@ -60,17 +60,6 @@ object AppearanceStyler {
         val gold = ContextCompat.getColor(activity, R.color.decorative_gold)
 
         ui.root.setBackgroundColor(background)
-        ui.toolbar.setBackgroundColor(ColorUtils.blendARGB(surface, accent, 0.08f))
-        // 标题文字也吃强调色，跟桌面端页面标题左边那个强调色图标底片是同一个
-        // 用意：用户选了金色，整个应用（不是只有按钮）都该透着金色。
-        ui.toolbar.setTitleTextColor(accent)
-        ui.toolbar.subtitle = when {
-            config.interfaceMode == InterfaceMode.PROFESSIONAL ->
-                activity.getString(R.string.appearance_professional_mode)
-            config.visualStyle == VisualStyle.ORIENTAL_TECH ->
-                activity.getString(R.string.appearance_oriental)
-            else -> null
-        }
         ui.btnScan.backgroundTintList = ColorStateList.valueOf(accent)
         // 进度条在 RecyclerView 每一行里，visio() 走不到后建的行：存下强调色，由适配器绑定时取用。
         currentAccent = accent
@@ -91,18 +80,15 @@ object AppearanceStyler {
             if (view is ImageView && view.tag == SECTION_ICON_TAG) {
                 view.imageTintList = ColorStateList.valueOf(accent)
             }
-            // 全屏面板：底色同主界面，标题栏同顶栏。
-            when (view.tag) {
-                PANEL_ROOT_TAG -> view.setBackgroundColor(background)
-                PANEL_BAR_TAG -> view.setBackgroundColor(ColorUtils.blendARGB(surface, accent, 0.08f))
-            }
+            // 全屏面板与返回栏同主界面底色。
+            if (view.tag == PANEL_ROOT_TAG || view.tag == PANEL_BAR_TAG) view.setBackgroundColor(background)
         }
         // 状态头透一点强调色，一眼认出它是首页的「主角」。
         ui.cardHero.setCardBackgroundColor(ColorUtils.blendARGB(surface, accent, 0.10f))
         currentSurface = surface
         currentBorder = border
         currentBorderWidth = if (config.decoration == Decoration.OFF) 0 else 1
-        activity.window.statusBarColor = ColorUtils.blendARGB(background, accent, 0.08f)
+        activity.window.statusBarColor = background
         activity.window.navigationBarColor = background
     }
 

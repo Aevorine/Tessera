@@ -50,7 +50,7 @@ class PanelHost(private val activity: AppCompatActivity, private val root: ViewG
     fun register(key: String, panel: View, onOpen: (() -> Unit)? = null, onClose: (() -> Unit)? = null) {
         entries[key] = Entry(panel, onOpen, onClose)
         panel.findViewWithTag<View>(TAG_BACK)?.setOnClickListener { close() }
-        panel.findViewWithTag<View>(TAG_BODY)?.let { AdaptiveLayout.centerColumn(it) }
+        panel.findViewWithTag<View>(TAG_BODY)?.let { AdaptiveLayout.applyPanelBody(it) }
         // 沉浸式（安卓 15 起强制）下面板铺到状态栏下面，按系统栏让位；非沉浸式时这里拿到的是 0。
         ViewCompat.setOnApplyWindowInsetsListener(panel) { v, insets ->
             val bars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
