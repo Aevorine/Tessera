@@ -318,6 +318,7 @@ internal class TransferAdapter(
         holder.pauseResume.contentDescription = holder.itemView.context.getString(
             if (item.paused) R.string.transfer_resume else R.string.transfer_pause
         )
+        holder.pauseResume.tooltipText = holder.pauseResume.contentDescription
         holder.pauseResume.setOnClickListener { onPauseResume(item) }
         holder.cancel.setOnClickListener { onCancel(item) }
     }

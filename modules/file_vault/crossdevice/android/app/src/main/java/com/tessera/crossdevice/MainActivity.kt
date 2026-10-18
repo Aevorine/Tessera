@@ -22,8 +22,6 @@ import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
-import androidx.core.view.updatePadding
-import androidx.recyclerview.widget.GridLayoutManager
 import androidx.recyclerview.widget.LinearLayoutManager
 import com.google.android.material.snackbar.Snackbar
 import com.google.zxing.BarcodeFormat
@@ -66,7 +64,6 @@ class MainActivity : AppCompatActivity() {
     private lateinit var pairedDeviceAdapter: PairedDeviceAdapter
     private lateinit var nearbyDeviceAdapter: NearbyDeviceAdapter
     private lateinit var transferAdapter: TransferAdapter
-    private lateinit var tileAdapter: FeatureTileAdapter
     private lateinit var panels: PanelHost
 
     /** 功能格小结用的几样状态，由各自的渲染函数顺手记下。 */
@@ -243,7 +240,7 @@ class MainActivity : AppCompatActivity() {
         panels = PanelHost(this, ui.root)
         wirePanels()
         wireEdgeToEdge()
-        AdaptiveLayout.applyMain(ui.mainContent, ui.colPrimary, ui.colSecondary, ui.boxFeatures)
+        AdaptiveLayout.applyMain(ui.mainContent, ui.colPrimary, ui.colSecondary, ui.gridFeatures, ui.cardPairedDevices)
 
         wireDeviceSelection()
         wireFanout()
@@ -302,6 +299,14 @@ class MainActivity : AppCompatActivity() {
         wireSections()
 
         ui.btnRenameDevice.setOnClickListener { askRenameDevice() }
+        ui.btnCrossnetInfo.setOnClickListener {
+            showInfo(
+                R.string.panel_crossnet,
+                listOf(R.string.crossnet_explain, R.string.crossnet_addr_helper, R.string.crossnet_secret_helper)
+                    .joinToString("\n\n") { getString(it) },
+            )
+        }
+        ui.btnLaunchInfo.setOnClickListener { showInfo(R.string.launch_mgmt_title, getString(R.string.launch_mgmt_hint)) }
         wireCrossnetSetting()
         wireAppLockSetting()
         wireDiagnosticLog()
@@ -320,12 +325,7 @@ class MainActivity : AppCompatActivity() {
     // ---- 主界面：功能格 + 全屏面板 ----
 
     private fun setupTiles() {
-        tileAdapter = FeatureTileAdapter { tile, view -> panels.open(tile.key, view) }
-        ui.gridFeatures.layoutManager = GridLayoutManager(this, AdaptiveLayout.tileSpan(this))
-        ui.gridFeatures.adapter = tileAdapter
-        ui.gridFeatures.isNestedScrollingEnabled = false
-        // 小结原地换字，默认的交叉淡入会让格子闪一下。
-        ui.gridFeatures.itemAnimator = null
+        ui.gridFeatures.setOnOpen { tile, view -> panels.open(tile.key, view) }
         updateBadge = getString(R.string.badge_update_current, Updater.currentVersion(this))
     }
 
@@ -360,7 +360,7 @@ class MainActivity : AppCompatActivity() {
 
     /** 功能格小结。与上次相同就不提交，状态每秒轮询时不做无用的差分。 */
     private fun refreshTiles() {
-        if (!::tileAdapter.isInitialized) return
+        if (!::ui.isInitialized) return
         val nearby = nearbyCache.size
         val clipCount = lastTimeline.length()
         val tiles = buildList {
@@ -403,21 +403,16 @@ class MainActivity : AppCompatActivity() {
         }
         if (tiles == lastTiles) return
         lastTiles = tiles
-        tileAdapter.submitList(tiles)
+        ui.gridFeatures.submit(tiles)
     }
 
-    /**
-     * 安卓 15 起 targetSdk 35 强制沉浸式：顶栏让出状态栏、主界面底部让出导航栏。
-     * 非沉浸式时系统已替内容让位，这里拿到的是 0，不会重复留白。
-     */
+    /** 沉浸式（安卓 15 起强制）下主界面四边让出系统栏与刘海；非沉浸式时拿到 0。 */
     private fun wireEdgeToEdge() {
-        val basePad = ui.mainContent.paddingBottom
-        ViewCompat.setOnApplyWindowInsetsListener(ui.appBar) { v, insets ->
-            v.updatePadding(top = insets.getInsets(WindowInsetsCompat.Type.systemBars()).top)
-            insets
-        }
-        ViewCompat.setOnApplyWindowInsetsListener(ui.mainContent) { v, insets ->
-            v.updatePadding(bottom = basePad + insets.getInsets(WindowInsetsCompat.Type.systemBars()).bottom)
+        val c = ui.mainContent
+        val base = intArrayOf(c.paddingLeft, c.paddingTop, c.paddingRight, c.paddingBottom)
+        ViewCompat.setOnApplyWindowInsetsListener(c) { v, insets ->
+            val bars = insets.getInsets(WindowInsetsCompat.Type.systemBars() or WindowInsetsCompat.Type.displayCutout())
+            v.setPadding(base[0] + bars.left, base[1] + bars.top, base[2] + bars.right, base[3] + bars.bottom)
             insets
         }
     }
@@ -905,7 +900,7 @@ class MainActivity : AppCompatActivity() {
         ui.cardMetrics.visibility = if (professional) android.view.View.VISIBLE else android.view.View.GONE
         ui.cardDiagnostics.visibility = if (professional) android.view.View.VISIBLE else android.view.View.GONE
         AppearanceStyler.apply(this, ui, appearanceConfig)
-        tileAdapter.restyle()
+        ui.gridFeatures.restyle()
         refreshTiles()
         metricsHandler.removeCallbacks(refreshMetrics)
         if (activityVisible && professional && panels.isOpen(P_PRO)) metricsHandler.post(refreshMetrics)
@@ -2062,6 +2057,14 @@ class MainActivity : AppCompatActivity() {
      */
     private fun setupUpdates() {
         ui.textUpdateStatus.text = getString(R.string.update_current, Updater.currentVersion(this))
+        showUpdateLink(Updater.releasesPage(Updater.source(this)))
+        ui.rowUpdateLink.setOnClickListener { openUrl(updatePageUrl) }
+        ui.rowUpdateLink.setOnLongClickListener {
+            getSystemService(android.content.ClipboardManager::class.java)
+                ?.setPrimaryClip(android.content.ClipData.newRawUri("GitHub", Uri.parse(updatePageUrl)))
+            snack(getString(R.string.update_link_copied))
+            true
+        }
         ui.switchAutoUpdate.isChecked = Updater.isAutoCheck(this)
         ui.switchAutoUpdate.setOnCheckedChangeListener { view, checked ->
             Updater.setAutoCheck(this, checked)
@@ -2072,6 +2075,7 @@ class MainActivity : AppCompatActivity() {
         ui.switchUpdateMirror.isChecked = Updater.source(this) == Updater.SOURCE_MIRROR
         ui.switchUpdateMirror.setOnCheckedChangeListener { view, checked ->
             Updater.setSource(this, if (checked) Updater.SOURCE_MIRROR else Updater.SOURCE_MAIN)
+            showUpdateLink(Updater.releasesPage(Updater.source(this)))
             if (view.isPressed) snack(getString(R.string.update_mirror_hint))
         }
         ui.btnCheckUpdate.setOnClickListener { checkForUpdate(userInitiated = true) }
@@ -2096,6 +2100,7 @@ class MainActivity : AppCompatActivity() {
             runOnUiThread {
                 ui.btnCheckUpdate.isEnabled = true
                 outcome.onSuccess { r ->
+                    showUpdateLink(r.pageUrl.takeIf { r.available && it.isNotEmpty() } ?: Updater.releasesPage(Updater.source(this)))
                     updateAttention = r.available
                     updateBadge = if (r.available) getString(R.string.badge_update_found, r.version)
                     else getString(R.string.badge_update_current, r.currentVersion)
@@ -2113,6 +2118,24 @@ class MainActivity : AppCompatActivity() {
         }.start()
     }
 
+    /** 更新面板里显示、点开的 GitHub 地址：有新版指向该版本发布页，否则指向当前更新源的发布列表。 */
+    private var updatePageUrl = ""
+
+    private fun showUpdateLink(url: String) {
+        updatePageUrl = url
+        ui.textUpdateLink.text = url.removePrefix("https://")
+    }
+
+    private fun openUrl(url: String) {
+        runCatching { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))) }
+            .onFailure { snack(url) }
+    }
+
+    private fun showInfo(title: Int, message: String) {
+        AlertDialog.Builder(this).setTitle(title).setMessage(message)
+            .setPositiveButton(android.R.string.ok, null).show()
+    }
+
     /** 有新版才问，问完不点「更新」就什么都不做——不下载、不留文件。 */
     private fun promptUpdate(r: Updater.Result) {
         AlertDialog.Builder(this)
@@ -2127,6 +2150,7 @@ class MainActivity : AppCompatActivity() {
             )
             .setPositiveButton(R.string.update_now) { _, _ -> startUpdate(r) }
             .setNegativeButton(R.string.update_later, null)
+            .setNeutralButton(R.string.update_view_github) { _, _ -> openUrl(updatePageUrl) }
             .show()
     }
 

@@ -62,10 +62,12 @@ object Updater {
         prefs(c).edit().putString(KEY_SOURCE, known).apply()
     }
 
-    internal fun latestUrl(source: String): String {
-        val repo = if (source == SOURCE_MIRROR) REPO_MIRROR else REPO_MAIN
-        return "https://api.github.com/repos/$repo/releases/latest"
-    }
+    private fun repo(source: String) = if (source == SOURCE_MIRROR) REPO_MIRROR else REPO_MAIN
+
+    internal fun latestUrl(source: String): String = "https://api.github.com/repos/${repo(source)}/releases/latest"
+
+    /** 当前更新源在 GitHub 上的发布列表页。 */
+    fun releasesPage(source: String): String = "https://github.com/${repo(source)}/releases"
 
     /** 检查结果。`available` 为假时 `version`/`url` 无意义。 */
     data class Result(
@@ -75,6 +77,7 @@ object Updater {
         val url: String = "",
         val sizeBytes: Long = 0,
         val notes: String = "",
+        val pageUrl: String = "",
     )
 
     class UpdateError(val code: String, message: String) : Exception(message)
@@ -130,6 +133,7 @@ object Updater {
             url = url,
             sizeBytes = size,
             notes = json.optString("name").ifEmpty { tag },
+            pageUrl = json.optString("html_url").takeIf { isTrustedDownloadUrl(it) }.orEmpty(),
         )
     }
 

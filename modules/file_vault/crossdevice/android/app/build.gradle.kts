@@ -45,8 +45,8 @@ android {
         minSdk = 26          // 跟 gomobile bind 的 -androidapi 26 对齐
         targetSdk = 35
         // versionCode 每次发版必须递增（与 versionName 一起改）：忘了递增时安装包正常却被系统拒装。
-        versionCode = 39
-        versionName = "0.1.38"
+        versionCode = 40
+        versionName = "0.1.39"
         // .aar 里只有 arm64 和 x86_64（真机基本都是 arm64，x86_64 给模拟器）。
         ndk { abiFilters += listOf("arm64-v8a", "x86_64") }
     }
@@ -88,6 +88,8 @@ android {
     }
     kotlinOptions { jvmTarget = "17" }
     buildFeatures { viewBinding = true }
+    // 字体不压缩：系统直接 mmap，首帧不用先解压 3 MB。
+    androidResources { noCompress += "ttf" }
 }
 
 dependencies {

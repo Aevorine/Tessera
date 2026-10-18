@@ -303,12 +303,16 @@ class TesseraImeService : InputMethodService() {
         }
     }
 
+    private val keyFont: Typeface by lazy {
+        androidx.core.content.res.ResourcesCompat.getFont(this, R.font.tessera_serif) ?: Typeface.SERIF
+    }
+
     private fun baseKey(label: String, weight: Float, alt: Boolean): TextView = TextView(this).apply {
         text = label
         tag = weight
         gravity = Gravity.CENTER
         textSize = if (label.length > 1) 14f else 20f
-        typeface = Typeface.SERIF
+        typeface = keyFont
         setTextColor(fg)
         background = rounded(if (alt) keyAltBg else keyBg)
         isSoundEffectsEnabled = true
