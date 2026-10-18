@@ -298,5 +298,8 @@
   "badgeFirewallOk": "الجدار الناري يسمح",
   "badgeFirewallBlocked": "الجدار الناري يحظر",
   "badgeAutoAccept": "قبول تلقائي",
-  "badgeAskAccept": "السؤال قبل الاستلام"
+  "badgeAskAccept": "السؤال قبل الاستلام",
+  "openDownloadDir": "فتح المجلد",
+  "openDownloadDirFailed": "تعذر فتح مجلد الملفات المستلمة.",
+  "recvDoneToast": "تم استلام {{name}}"
 }

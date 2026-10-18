@@ -298,5 +298,8 @@
   "badgeFirewallOk": "Firewall allows",
   "badgeFirewallBlocked": "Firewall blocking",
   "badgeAutoAccept": "Auto-accept",
-  "badgeAskAccept": "Ask before receiving"
+  "badgeAskAccept": "Ask before receiving",
+  "openDownloadDir": "Open folder",
+  "openDownloadDirFailed": "Could not open the received files folder.",
+  "recvDoneToast": "Received {{name}}"
 }

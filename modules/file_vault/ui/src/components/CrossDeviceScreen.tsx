@@ -831,6 +831,13 @@ export function CrossDeviceScreen() {
           // 一条既没有名字又没有错误的 recv_update 对用户毫无意义，
           // 只会在列表里堆一行空白。
           if (!row.name && !row.error) break
+          if (kind === 'recv_done' && row.itemKind !== 'clip' && row.name) {
+            // 同一条提示原地更新，连续收一整个文件夹也只占一条。
+            toast.success(t('recvDoneToast', { name: row.name }), {
+              id: 'xdev-recv',
+              action: { label: t('openDownloadDir'), onClick: () => void openRecvFolder(t('openDownloadDirFailed')) },
+            })
+          }
           setTransfers((rows) => [row, ...rows].slice(0, 50))
           break
         }
@@ -1353,6 +1360,15 @@ export function CrossDeviceScreen() {
       toast.error(err instanceof Error ? err.message : String(err))
     } finally {
       setBusy(false)
+    }
+  }
+
+  async function openRecvFolder(failureMessage: string) {
+    try {
+      const result = await api.openDownloadDir()
+      if (!result.ok) toast.error(failureMessage)
+    } catch {
+      toast.error(failureMessage)
     }
   }
 
@@ -2362,14 +2378,18 @@ export function CrossDeviceScreen() {
                   <InfoHint text={desc} />
                 </label>
               ))}
-              <div className="flex items-center gap-3 rounded-xl border bg-card px-4 py-3">
-                <FolderOpen className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
-                <div className="min-w-0 flex-1">
+              <div className="flex flex-wrap items-center gap-3 rounded-xl border bg-card px-4 py-3">
+                <Folder className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+                <div className="min-w-[10rem] flex-1">
                   <div className="text-sm font-medium">{t('downloadDir')}</div>
                   <div className="truncate font-mono text-sm text-muted-foreground" title={status.options.download_dir}>
                     {status.options.download_dir}
                   </div>
                 </div>
+                <Button size="sm" onClick={() => void openRecvFolder(t('openDownloadDirFailed'))}>
+                  <FolderOpen className="mr-2 size-4" />
+                  {t('openDownloadDir')}
+                </Button>
                 <Button size="sm" variant="outline" onClick={pickDownloadDir} disabled={busy}>
                   {t('changeDownloadDir')}
                 </Button>
@@ -2506,6 +2526,10 @@ export function CrossDeviceScreen() {
             </div>
 
             <div className="flex flex-wrap items-center gap-2.5">
+              <Button size="lg" variant="outline" onClick={() => void openRecvFolder(t('openDownloadDirFailed'))}>
+                <FolderOpen className="size-5" aria-hidden="true" />
+                {t('openDownloadDir')}
+              </Button>
               <Button size="lg" className="h-12 rounded-xl px-5" onClick={() => setClipPickOpen(true)} disabled={online.length === 0}>
                 <Clipboard className="mr-2 size-5" />
                 {t('sendClipboard')}

@@ -298,5 +298,8 @@
   "badgeFirewallOk": "Брандмауэр разрешает",
   "badgeFirewallBlocked": "Брандмауэр блокирует",
   "badgeAutoAccept": "Автоприём",
-  "badgeAskAccept": "Спрашивать перед приёмом"
+  "badgeAskAccept": "Спрашивать перед приёмом",
+  "openDownloadDir": "Открыть папку",
+  "openDownloadDirFailed": "Не удалось открыть папку полученных файлов.",
+  "recvDoneToast": "Получено: {{name}}"
 }

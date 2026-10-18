@@ -533,4 +533,11 @@
     <string name="badge_lock_biometric">生物识别锁</string>
     <string name="badge_attention">%1$d 项待处理</string>
     <string name="badge_pro">指标 · 日志</string>
+    <string name="open_received_folder">打开文件夹</string>
+    <string name="received_empty">暂无收到的文件</string>
+    <string name="received_files">收到的文件</string>
+    <string name="open_in_files">在文件管理器中打开</string>
+    <string name="no_app_to_open">没有可以打开此文件的应用</string>
+    <string name="open_file">打开文件</string>
+    <string name="close">关闭</string>
 </resources>

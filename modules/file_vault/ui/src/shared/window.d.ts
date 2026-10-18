@@ -39,6 +39,8 @@ declare global {
       firewallStatus(): Promise<{ state: 'allowed' | 'blocked' | 'unknown'; program: string | null }>
       /** 加放行规则。**会弹 UAC**，只能由用户点按钮触发。 */
       firewallAllow(): Promise<{ ok: boolean; error?: string }>
+      /** 在资源管理器里打开收到的文件所在目录（路径由主进程从守护进程取）。 */
+      openDownloadDir(): Promise<{ ok: boolean; error?: string }>
     }
     electronAPI: {
       openFiles(options?: Electron.OpenDialogOptions): Promise<string[] | null>
