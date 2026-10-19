@@ -191,5 +191,10 @@
   "topbarMetricsMenu": "Indicateurs dans la barre supérieure",
   "valueSecureDelete": "Suppression sécurisée",
   "verifyMenuLabel": "Vérifier l'intégrité…",
-  "opsMetricJumpHint": "Afficher le journal de chiffrement"
+  "opsMetricJumpHint": "Afficher le journal de chiffrement",
+  "tileOpsBadge": "{{count}} opérations cette session",
+  "tileOpsEmpty": "Aucune opération pour l’instant",
+  "tileToolsBadge": "{{count}} outils",
+  "panelBack": "Retour",
+  "panelMetricsTitle": "Indicateurs affichés en haut de la page"
 }

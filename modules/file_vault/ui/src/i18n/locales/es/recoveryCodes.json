@@ -279,5 +279,18 @@
   "timelineSelectedMenuItem": "Cronología de los servicios seleccionados",
   "timelineTabCompare": "Comparar con ahora",
   "timelineTabContent": "Contenido",
-  "timelineUndoBatchButton": "Deshacer lote"
+  "timelineUndoBatchButton": "Deshacer lote",
+  "panelBack": "Atrás",
+  "panelToggleOn": "Activado",
+  "panelToggleOff": "Desactivado",
+  "tileBulkBadgeSelected": "{{selected}} de {{total}} seleccionados",
+  "tileBulkBadgeMode": "Seleccionando · {{total}} servicios",
+  "tileBulkBadgeIdle": "{{total}} servicios",
+  "tileDedupeBadgeLikely": "{{count}} posible(s) duplicado(s)",
+  "tileDedupeBadgeClean": "Sin servicios con el mismo nombre",
+  "tileTimelineBadge": "{{count}} cambio(s) reciente(s)",
+  "tileTimelineBadgeNone": "Sin cambios recientes",
+  "tileImportBadge": "{{count}} códigos guardados",
+  "tileImportBadgeDamaged": "{{count}} registro(s) dañado(s)",
+  "tileExportBadgeSelected": "{{count}} seleccionados · {{formats}}"
 }

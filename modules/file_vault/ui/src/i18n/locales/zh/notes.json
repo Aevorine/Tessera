@@ -449,5 +449,9 @@
   "linkedFolderMissing": "文件夹当前不可用",
   "linkedNoteBadge": "本地文件",
   "revealLinkedFile": "在资源管理器中显示原文件",
-  "timelineKind.external": "外部修改"
+  "timelineKind.external": "外部修改",
+  "tileLinkedCount": "{{count}} 个关联文件夹",
+  "tileBulkNone": "未选择",
+  "tileCategoriesTitle": "分类与标签",
+  "tileCategoriesBadge": "{{categories}} 个分类 · {{tags}} 个标签"
 }

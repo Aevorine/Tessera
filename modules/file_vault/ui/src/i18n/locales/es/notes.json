@@ -449,5 +449,9 @@
   "linkedFolderMissing": "carpeta no disponible",
   "linkedNoteBadge": "Archivo local",
   "revealLinkedFile": "Mostrar el archivo en el Explorador",
-  "timelineKind.external": "Cambio externo"
+  "timelineKind.external": "Cambio externo",
+  "tileLinkedCount": "{{count}} carpetas vinculadas",
+  "tileBulkNone": "Nada seleccionado",
+  "tileCategoriesTitle": "Categorías y etiquetas",
+  "tileCategoriesBadge": "{{categories}} categorías · {{tags}} etiquetas"
 }

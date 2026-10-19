@@ -136,5 +136,11 @@
   "sectionPrivacy": "A dónde van sus datos (privacidad)",
   "privacy1": "Los archivos, notas y contraseñas de la caja fuerte se cifran y permanecen en este equipo. Nunca se suben.",
   "privacy2": "El asistente de IA envía los mensajes que escribe al servicio en la nube de DeepSeek. No introduzca contraseñas, códigos de un solo uso ni números de identidad.",
-  "privacy3": "Con el control del escritorio activado, la IA lee el texto de la interfaz en pantalla y lo envía al modelo. No permita que gestione contraseñas, códigos, pagos ni borrados."
+  "privacy3": "Con el control del escritorio activado, la IA lee el texto de la interfaz en pantalla y lo envía al modelo. No permita que gestione contraseñas, códigos, pagos ni borrados.",
+  "searchPlaceholder": "Buscar en la guía",
+  "noMatches": "Ningún capítulo coincide",
+  "panelBack": "Volver",
+  "tilePoints": "{{count}} puntos",
+  "tileShortcuts": "{{count}} atajos",
+  "tileMatches": "{{count}} coincidencias"
 }

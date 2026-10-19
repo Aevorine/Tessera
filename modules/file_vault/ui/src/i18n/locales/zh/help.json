@@ -136,5 +136,11 @@
   "sectionPrivacy": "数据去了哪里（隐私）",
   "privacy1": "金库里的文件、笔记、密码全部只在本机加密存放，任何情况下都不上传。",
   "privacy2": "AI 助手会把你输入的消息发送到 DeepSeek 云端服务，请勿输入密码、验证码、身份证号一类的敏感信息。",
-  "privacy3": "开启桌面控制后，AI 会读取屏幕上的界面文字并发送给模型；不要让它处理密码、验证码、支付或删除类操作。"
+  "privacy3": "开启桌面控制后，AI 会读取屏幕上的界面文字并发送给模型；不要让它处理密码、验证码、支付或删除类操作。",
+  "searchPlaceholder": "搜索指南",
+  "noMatches": "没有匹配的章节",
+  "panelBack": "返回",
+  "tilePoints": "{{count}} 条要点",
+  "tileShortcuts": "{{count}} 个快捷键",
+  "tileMatches": "命中 {{count}} 条"
 }

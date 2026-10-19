@@ -449,5 +449,9 @@
   "linkedFolderMissing": "dossier indisponible",
   "linkedNoteBadge": "Fichier local",
   "revealLinkedFile": "Afficher le fichier dans l'Explorateur",
-  "timelineKind.external": "Modifié à l'extérieur"
+  "timelineKind.external": "Modifié à l'extérieur",
+  "tileLinkedCount": "{{count}} dossiers liés",
+  "tileBulkNone": "Aucune sélection",
+  "tileCategoriesTitle": "Catégories et étiquettes",
+  "tileCategoriesBadge": "{{categories}} catégories · {{tags}} étiquettes"
 }

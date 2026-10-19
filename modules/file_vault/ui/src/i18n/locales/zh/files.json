@@ -191,5 +191,10 @@
   "topbarMetricsMenu": "顶栏显示的指标",
   "valueSecureDelete": "安全删除",
   "verifyMenuLabel": "校验完整性…",
-  "opsMetricJumpHint": "查看加解密记录"
+  "opsMetricJumpHint": "查看加解密记录",
+  "tileOpsBadge": "本次 {{count}} 次操作",
+  "tileOpsEmpty": "本次暂无操作",
+  "tileToolsBadge": "{{count}} 项工具",
+  "panelBack": "返回",
+  "panelMetricsTitle": "页面顶部显示的指标"
 }

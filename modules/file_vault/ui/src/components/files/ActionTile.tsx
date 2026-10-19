@@ -67,11 +67,12 @@ export function ActionTile({
         acceptsDrop && dropHover && 'border-solid border-primary bg-accent-soft/40 ring-4 ring-primary/15',
       )}
     >
-      <div className="flex items-start gap-4">
+      {/* 说明不常驻画面，收进悬停提示。 */}
+      <div className="flex items-center gap-4" data-hint={typeof summary === 'string' ? summary : undefined}>
         <IconChip icon={icon} size="lg" />
-        <div className="min-w-0 flex-1 space-y-1 pt-0.5">
+        <div className="min-w-0 flex-1">
           <FeatureTitle>{title}</FeatureTitle>
-          <p className="text-sm leading-snug text-muted-foreground">{summary}</p>
+          <span className="sr-only">{summary}</span>
         </div>
       </div>
       <div className="grid gap-3 sm:grid-cols-2">{children}</div>

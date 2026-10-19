@@ -12,10 +12,7 @@ export function FeatureStrip({
   className?: string
 }) {
   return (
-    <div
-      className={cn('grid shrink-0 gap-3', className)}
-      style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(176px, 1fr))' }}
-    >
+    <div className={cn('flex shrink-0 flex-wrap gap-3', className)}>
       {tiles.map((tile) => {
         const Icon = tile.icon
         return (
@@ -26,7 +23,7 @@ export function FeatureStrip({
             aria-label={`${tile.title}，${tile.badge}`}
             data-hint={tile.title}
             className={cn(
-              'ds-focus-ring group relative flex h-16 min-w-0 items-center gap-3 overflow-hidden rounded-xl border border-border/70 bg-card px-3 text-left',
+              'ds-focus-ring group relative flex h-16 min-w-[9.5rem] flex-1 basis-0 items-center gap-3 overflow-hidden rounded-xl border border-border/70 bg-card px-3 text-left',
               'transition-[border-color,background-color,transform] duration-200 ease-out hover:border-[var(--accent-line)] hover:bg-surface active:scale-[0.985]',
             )}
           >

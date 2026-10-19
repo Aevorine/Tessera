@@ -15,11 +15,9 @@ import {
   Loader2,
   ScanSearch,
   ShieldCheck,
-  SlidersHorizontal,
   Sparkles,
   Trash2,
   Unlock,
-  Upload,
   Wrench,
   XCircle,
 } from 'lucide-react'
@@ -32,7 +30,10 @@ import { usePassphrasePrompt } from '@/lib/usePassphrasePrompt'
 import { VerifyResultsDialog, type VerifyRow } from '@/components/files/VerifyResultsDialog'
 import { FileOpsDashboard } from '@/components/files/FileOpsDashboard'
 import { ActionTile, TileStatus } from '@/components/files/ActionTile'
-import { TopBar, type TopBarMenu, type TopBarNode } from '@/components/TopBar'
+import { FeatureGrid, type FeatureTileSpec } from '@/components/feature/FeatureGrid'
+import { FeaturePanel } from '@/components/feature/FeaturePanel'
+import { useFeaturePanel } from '@/components/feature/useFeaturePanel'
+import { InfoHint } from '@/components/ui/info-hint'
 import { StatTile } from '@/components/StatTile'
 import {
   FILE_OP_METRICS,
@@ -45,7 +46,7 @@ import {
   type FileOpMetricId,
   type FileOpRecord,
 } from '@/lib/fileOpsStats'
-import { Badge, PageHeader, PageSection, PageShell } from '@/components/ui/page'
+import { Badge, PageHeader, PageSection } from '@/components/ui/page'
 import { newShareSession, shareParams, type ShareContext } from '@/lib/shareSession'
 import { vaultApi } from '@/lib/vaultApi'
 import { electronApi } from '@/lib/electronApi'
@@ -196,7 +197,7 @@ const REMNANT_VIEWPORT_HEIGHT = 256 // 原来的 max-h-64
 const EMPTY_QUEUE: QueueItemState[] = []
 const EMPTY_REMNANTS: RemnantItem[] = []
 
-// 顶栏统计磁贴的排列顺序：先"做了几次"，再"做了多少"，最后才是速度。跟菜单里
+// 统计磁贴的排列顺序：先"做了几次"，再"做了多少"，最后才是速度。跟记录面板里
 // 勾选的先后无关——否则取消一项再勾回来，磁贴就换了位置。
 const METRIC_DISPLAY_ORDER: readonly FileOpMetricId[] = [
   'encrypted',
@@ -208,18 +209,6 @@ const METRIC_DISPLAY_ORDER: readonly FileOpMetricId[] = [
   'peak',
   'last',
 ]
-
-// 「活动」面板显示与否（顶栏「记录」菜单里的开关）。只是个人显示偏好，存不下就
-// 当作显示，不影响任何功能。
-const ACTIVITY_VISIBLE_KEY = 'tessera.files.activityVisible'
-
-function loadActivityVisible(): boolean {
-  try {
-    return localStorage.getItem(ACTIVITY_VISIBLE_KEY) !== '0'
-  } catch {
-    return true
-  }
-}
 
 function formatSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`
@@ -326,8 +315,11 @@ const RemnantRow = memo(function RemnantRow({
   )
 })
 
+type PanelId = 'algorithm' | 'encrypt-options' | 'decrypt-options' | 'tools' | 'records'
+
 export function FilesPane({ isProfessional = false }: { isProfessional?: boolean }) {
   const { t } = useTranslation('files')
+  const { rootRef, panel, origin: panelOrigin, open: openPanel, close: closePanel } = useFeaturePanel<PanelId>()
   const [busyLabel, setBusyLabel] = useState<string | null>(null)
   const [queueItems, setQueueItems] = useState<QueueItemState[] | null>(null)
   const [deleteSourceOnEncrypt, setDeleteSourceOnEncrypt] = useState(true)
@@ -337,7 +329,7 @@ export function FilesPane({ isProfessional = false }: { isProfessional?: boolean
   const [remnantSelected, setRemnantSelected] = useState<ReadonlySet<string>>(() => new Set())
   // 后量子默认开启：每文件仅约 0.07 ms、1.6 KB（实测），不到 1%，没有让用户手动开启的速度理由。
   const [profileId, setProfileId] = useState<EncryptionProfile>('pq-aes-256-gcm')
-  // 设置都在顶栏菜单里；安全删除开着时，顶栏触发器和磁贴底部摘要行常驻显示（不可逆操作不能藏起来），
+  // 设置都在功能格的面板里；安全删除开着时，功能格小结和磁贴底部摘要行常驻显示（不可逆操作不能藏起来），
   // 见 topBarMenus 与 ActionTile。口令分享：FK 只用口令封装，另一台 Tessera 凭口令即可打开。与后量子
   // 封装互斥（后端同时出现会报错），分享模式下后量子档退化为同一对称算法。
   const [shareMode, setShareMode] = useState(false)
@@ -353,35 +345,25 @@ export function FilesPane({ isProfessional = false }: { isProfessional?: boolean
   const [opRecords, setOpRecords] = useState<FileOpRecord[]>([])
   const [fileHistory, setFileHistory] = useState<ActivityLogEntry[]>([])
   const opSummary = useMemo(() => summarize(opRecords), [opRecords])
-  // 顶栏左端显示哪几项统计，在「记录 ▸ 顶栏显示的数字」里挑；沿用旧存储键，以前的选择仍有效。
+  // 页面顶端显示哪几项统计，在「记录」面板里挑；沿用旧存储键，以前的选择仍有效。
   const [metrics, setMetrics] = useState<FileOpMetricId[]>(loadFileOpMetrics)
-  const [showActivity, setShowActivity] = useState(loadActivityVisible)
 
   function toggleMetric(id: FileOpMetricId) {
     setMetrics((current) => {
       const next = current.includes(id)
         ? current.filter((m) => m !== id)
         : FILE_OP_METRICS.filter((m) => m === id || current.includes(m))
-      // 至少留一项：一项都不剩时顶栏左端整块消失，用户找不到"刚才那排数字去哪了"。
+      // 至少留一项：一项都不剩时统计行整块消失，用户找不到"刚才那排数字去哪了"。
       if (next.length === 0) return current
       saveFileOpMetrics(next)
       return next
     })
   }
 
-  function toggleActivity(next: boolean) {
-    setShowActivity(next)
-    try {
-      localStorage.setItem(ACTIVITY_VISIBLE_KEY, next ? '1' : '0')
-    } catch {
-      // 记不住就只影响下次打开时的样子。
-    }
-  }
-
   // 拖放：整页"拖入中"按进出计数判定，因为 dragenter/dragleave 在子元素间移动时也成对触发，一次
   // dragleave 不等于真的拖出。
   const dragDepth = useRef(0)
-  const activityRef = useRef<HTMLDivElement>(null)
+  const metricsRowRef = useRef<HTMLDivElement>(null)
   const [dragActive, setDragActive] = useState(false)
   const [dropTarget, setDropTarget] = useState<'encrypt' | 'decrypt' | null>(null)
 
@@ -1556,192 +1538,227 @@ export function FilesPane({ isProfessional = false }: { isProfessional?: boolean
   const queueErrorLabel = t('queueItemErrorLabel')
   const remnantMatchedSuffix = t('remnantMatchedSuffix')
 
-  // 顶栏一行化：每类设置是顶栏一个菜单，当前值直接写在触发器上，不展开也知道点下去的效果。行为不变：
-  // 加解密进行中全部禁用（showProgress），两个安全删除仍默认打开；开着时触发器用强调色，因为是不可逆
-  // 动作，即使是默认值也要提醒。
-  const encryptOptionValue = [shareMode && t('shareModeLabel'), deleteSourceOnEncrypt && t('valueSecureDelete')]
+  // 主功能收在功能格里，点开是全屏面板。各格的小结是实时值：当前档位、开关状态、本次会话的数字。
+  // 加解密进行中面板里的选项全部禁用（showProgress），两个安全删除仍默认打开；开着时小结用警示色，
+  // 因为是不可逆动作，即使是默认值也要提醒。
+  const encryptBadge = [shareMode && t('shareModeLabel'), deleteSourceOnEncrypt ? t('valueSecureDelete') : t('statusKeepAfterEncrypt')]
     .filter(Boolean)
     .join(' · ')
+  const toolCount = isProfessional ? 3 : 1
+  const opsBadge =
+    opRecords.length === 0
+      ? t('tileOpsEmpty')
+      : `${t('tileOpsBadge', { count: opRecords.length })} · ${formatFileOpMetric('bytes', opSummary)}`
 
-  const topBarMenus: TopBarMenu[] = [
+  const tiles: FeatureTileSpec[] = [
     {
-      // 算法只对"这次新建的加密"有意义（写进容器头部，解密时自己读回来），
-      // 所以解密那一侧没有任何算法选择——选错的唯一结果是解不开。
       id: 'algorithm',
-      label: t('menuAlgorithm'),
       icon: ShieldCheck,
-      value: PROFILE_TEXT[profileId].label,
-      // 只有离开默认的抗量子档才算"非默认"：触发器变色，并出现一键回默认的 ×。
-      active: profileId !== ENCRYPTION_PROFILES[0].value,
-      onClear: () => setProfileId(ENCRYPTION_PROFILES[0].value),
-      contentClassName: 'min-w-72',
-      items: [
-        { id: 'algorithm-label', type: 'label', label: t('cipherLabel') },
-        ...ENCRYPTION_PROFILES.map(
-          (opt): TopBarNode => ({
-            id: `algorithm-${opt.value}`,
-            type: 'item',
-            label: PROFILE_TEXT[opt.value].label,
-            // 算法全名写在每一项下面，不只放在悬浮提示里：这是用户唯一能核对
-            // "我的文件到底是用什么加密的"的地方。
-            description: PROFILE_TEXT[opt.value].algorithm,
-            selected: profileId === opt.value,
-            disabled: showProgress,
-            onSelect: () => setProfileId(opt.value),
-          }),
-        ),
-        { id: 'algorithm-sep', type: 'separator' },
-        {
-          // 原来是算法名后面那颗 InfoHint 的内容。口令分享开着时换成另一句：
-          // 那时后量子封装不生效（后端对两者同时出现直接报错），得说清楚。
-          id: 'algorithm-hint',
-          type: 'custom',
-          node: (
-            <p className="max-w-80 px-2 py-1.5 text-sm leading-snug text-muted-foreground">
-              {shareMode ? t('algorithmShareNote', { algorithm: algorithmSummary }) : PROFILE_TEXT[profileId].hint}
-            </p>
-          ),
-        },
-      ],
+      title: t('menuAlgorithm'),
+      badge: `${PROFILE_TEXT[profileId].label} · ${algorithmSummary}`,
+      // 只有离开默认的抗量子档才算"非默认"。
+      attention: profileId !== ENCRYPTION_PROFILES[0].value,
     },
     {
       id: 'encrypt-options',
-      label: t('encryptOptionsLabel'),
       icon: FileLock2,
-      value: encryptOptionValue || undefined,
-      active: shareMode || deleteSourceOnEncrypt,
-      contentClassName: 'min-w-72',
-      items: [
-        {
-          id: 'share-mode',
-          type: 'toggle',
-          label: t('shareModeLabel'),
-          description: t('shareModeHint'),
-          checked: shareMode,
-          disabled: showProgress,
-          onCheckedChange: setShareMode,
-        },
-        { id: 'encrypt-options-sep', type: 'separator' },
-        {
-          id: 'delete-source-encrypt',
-          type: 'toggle',
-          label: t('deleteSourceOnEncryptShort'),
-          description: `${t('secureDeleteIrreversible')} ${t('deleteSourceOnEncryptHint')}`,
-          checked: deleteSourceOnEncrypt,
-          disabled: showProgress,
-          onCheckedChange: setDeleteSourceOnEncrypt,
-        },
-      ],
+      title: t('encryptOptionsLabel'),
+      badge: encryptBadge,
+      attention: deleteSourceOnEncrypt,
     },
     {
       id: 'decrypt-options',
-      label: t('decryptOptionsLabel'),
       icon: Unlock,
-      value: deleteSourceOnDecrypt ? t('valueSecureDelete') : undefined,
-      active: deleteSourceOnDecrypt,
-      contentClassName: 'min-w-72',
-      items: [
-        {
-          id: 'delete-source-decrypt',
-          type: 'toggle',
-          label: t('deleteSourceOnDecryptShort'),
-          description: `${t('secureDeleteIrreversible')} ${t('deleteSourceOnDecryptHint')}`,
-          checked: deleteSourceOnDecrypt,
-          disabled: showProgress,
-          onCheckedChange: setDeleteSourceOnDecrypt,
-        },
-      ],
+      title: t('decryptOptionsLabel'),
+      badge: deleteSourceOnDecrypt ? t('valueSecureDelete') : t('statusKeepAfterDecrypt'),
+      attention: deleteSourceOnDecrypt,
     },
     {
-      // 加密/解密之外的三件事。重新加密和残留扫描仍然只在专业模式下出现——
-      // 算法是每次加密都要面对的，这两个不是，默认模式没必要为它们付位置。
       id: 'tools',
-      label: t('menuTools'),
       icon: Wrench,
-      contentClassName: 'min-w-72',
-      items: [
-        {
-          id: 'verify',
-          type: 'item',
-          label: t('verifyMenuLabel'),
-          icon: ShieldCheck,
-          description: t('verifyNoPlaintextHint'),
-          disabled: showProgress,
-          onSelect: () => void handleVerify(),
-        },
-        { id: 'tools-sep', type: 'separator' },
-        {
-          id: 'reencrypt',
-          type: 'item',
-          label: t('reencryptMenuLabel'),
-          icon: FolderSync,
-          description: t('reencryptButtonHint'),
-          hidden: !isProfessional,
-          disabled: showProgress || reencryptBusy,
-          onSelect: () => void handleStartFolderReencrypt(),
-        },
-        {
-          id: 'scan-remnants',
-          type: 'item',
-          label: t('scanRemnantsShort'),
-          icon: ScanSearch,
-          description: t('scanRemnantsDescription'),
-          hidden: !isProfessional,
-          disabled: showProgress,
-          onSelect: () => void handleScanRemnants(),
-        },
-      ],
+      title: t('menuTools'),
+      badge: t('tileToolsBadge', { count: toolCount }),
     },
-    {
-      id: 'records',
-      label: t('menuRecords'),
-      icon: History,
-      value: showActivity ? undefined : t('activityHiddenValue'),
-      items: [
-        {
-          id: 'show-activity',
-          type: 'toggle',
-          label: t('showActivityPanel'),
-          checked: showActivity,
-          onCheckedChange: toggleActivity,
-        },
-        {
-          // 原来概览卡右上角那颗「选择指标」按钮。选中的几项显示在顶栏左端。
-          id: 'topbar-metrics',
-          type: 'submenu',
-          label: t('topbarMetricsMenu'),
-          icon: SlidersHorizontal,
-          children: FILE_OP_METRICS.map(
-            (id): TopBarNode => ({
-              id: `metric-${id}`,
-              type: 'toggle',
-              label: t(`opsMetric_${id}`),
-              checked: metrics.includes(id),
-              // 最后一项勾不掉（见 toggleMetric），直接画成不可点，免得点了没反应。
-              disabled: metrics.length === 1 && metrics.includes(id),
-              onCheckedChange: () => toggleMetric(id),
-            }),
-          ),
-        },
-        { id: 'records-sep', type: 'separator' },
-        {
-          id: 'clear-session',
-          type: 'item',
-          label: t('clearSessionStats'),
-          icon: Eraser,
-          description: t('clearSessionStatsHint'),
-          disabled: opRecords.length === 0,
-          onSelect: () => setOpRecords([]),
-        },
-      ],
-    },
+    { id: 'records', icon: History, title: t('menuRecords'), badge: opsBadge },
   ]
 
+  /** 一个开关行：整行可点，说明收进 InfoHint。 */
+  function renderToggle(id: string, label: string, hint: string, checked: boolean, onChange: (v: boolean) => void, danger = false) {
+    return (
+      <label
+        htmlFor={id}
+        className={cn(
+          'flex cursor-pointer items-center gap-3 rounded-xl border bg-card px-4 py-4 transition-colors hover:bg-surface',
+          checked && danger ? 'border-warning/60' : 'border-border/70',
+          showProgress && 'pointer-events-none opacity-60',
+        )}
+      >
+        <Checkbox id={id} checked={checked} disabled={showProgress} onCheckedChange={(v) => onChange(v === true)} />
+        <span className={cn('min-w-0 flex-1 text-sihao font-medium', checked && danger && 'text-warning')}>{label}</span>
+        <InfoHint text={hint} />
+      </label>
+    )
+  }
+
+  /** 工具卡：先收起面板，再调原来的处理函数。 */
+  function renderToolCard(icon: typeof ShieldCheck, label: string, hint: string, disabled: boolean, run: () => void) {
+    const Icon = icon
+    return (
+      <button
+        type="button"
+        disabled={disabled}
+        onClick={() => {
+          closePanel()
+          run()
+        }}
+        className="ds-focus-ring flex items-center gap-4 rounded-2xl border border-border/70 bg-card p-5 text-left transition-colors hover:border-[var(--accent-line)] hover:bg-surface disabled:pointer-events-none disabled:opacity-50"
+      >
+        <span className="ds-icon-chip size-12 rounded-xl">
+          <Icon className="size-6" aria-hidden="true" />
+        </span>
+        <span className="min-w-0 flex-1 text-sihao font-medium">{label}</span>
+        <InfoHint text={hint} />
+      </button>
+    )
+  }
+
+  function renderPanel(id: PanelId): { body: React.ReactNode; actions?: React.ReactNode } {
+    switch (id) {
+      case 'algorithm':
+        return {
+          body: (
+            <div className="mx-auto w-full max-w-3xl space-y-4">
+              <p className="text-sm text-muted-foreground">{t('cipherLabel')}</p>
+              <div role="radiogroup" aria-label={t('menuAlgorithm')} className="grid gap-3">
+                {ENCRYPTION_PROFILES.map((opt) => {
+                  const selected = profileId === opt.value
+                  return (
+                    <button
+                      key={opt.value}
+                      type="button"
+                      role="radio"
+                      aria-checked={selected}
+                      disabled={showProgress}
+                      onClick={() => setProfileId(opt.value)}
+                      className={cn(
+                        'ds-focus-ring flex items-center gap-4 rounded-2xl border p-5 text-left transition-colors disabled:pointer-events-none disabled:opacity-60',
+                        selected ? 'border-primary bg-accent-soft' : 'border-border/70 bg-card hover:border-[var(--accent-line)] hover:bg-surface',
+                      )}
+                    >
+                      <span className="min-w-0 flex-1">
+                        <span className={cn('block text-sihao font-medium', selected && 'text-primary')}>{PROFILE_TEXT[opt.value].label}</span>
+                        <span className="tabular block text-sm text-muted-foreground">{PROFILE_TEXT[opt.value].algorithm}</span>
+                      </span>
+                      <InfoHint text={PROFILE_TEXT[opt.value].hint} />
+                      {selected && <CheckCircle2 className="size-5 shrink-0 text-primary" aria-hidden="true" />}
+                    </button>
+                  )
+                })}
+              </div>
+              {/* 口令分享开着时后量子封装不生效（后端对两者同时出现直接报错），得说清楚。 */}
+              {shareMode && (
+                <p className="rounded-xl border border-warning/40 px-4 py-3 text-sm leading-snug text-warning">
+                  {t('algorithmShareNote', { algorithm: algorithmSummary })}
+                </p>
+              )}
+            </div>
+          ),
+        }
+      case 'encrypt-options':
+        return {
+          body: (
+            <div className="mx-auto w-full max-w-3xl space-y-3">
+              {renderToggle('opt-share-mode', t('shareModeLabel'), t('shareModeHint'), shareMode, setShareMode)}
+              {renderToggle(
+                'opt-delete-encrypt',
+                t('deleteSourceOnEncryptShort'),
+                `${t('secureDeleteIrreversible')} ${t('deleteSourceOnEncryptHint')}`,
+                deleteSourceOnEncrypt,
+                setDeleteSourceOnEncrypt,
+                true,
+              )}
+            </div>
+          ),
+        }
+      case 'decrypt-options':
+        return {
+          body: (
+            <div className="mx-auto w-full max-w-3xl space-y-3">
+              {renderToggle(
+                'opt-delete-decrypt',
+                t('deleteSourceOnDecryptShort'),
+                `${t('secureDeleteIrreversible')} ${t('deleteSourceOnDecryptHint')}`,
+                deleteSourceOnDecrypt,
+                setDeleteSourceOnDecrypt,
+                true,
+              )}
+            </div>
+          ),
+        }
+      case 'tools':
+        // 重新加密和残留扫描仍然只在专业模式下出现——算法是每次加密都要面对的，这两个不是。
+        return {
+          body: (
+            <div className="mx-auto grid w-full max-w-3xl gap-3">
+              {renderToolCard(ShieldCheck, t('verifyMenuLabel'), t('verifyNoPlaintextHint'), showProgress, () => void handleVerify())}
+              {isProfessional &&
+                renderToolCard(FolderSync, t('reencryptMenuLabel'), t('reencryptButtonHint'), showProgress || reencryptBusy, () =>
+                  void handleStartFolderReencrypt(),
+                )}
+              {isProfessional &&
+                renderToolCard(ScanSearch, t('scanRemnantsShort'), t('scanRemnantsDescription'), showProgress, () => void handleScanRemnants())}
+            </div>
+          ),
+        }
+      case 'records':
+        return {
+          actions: (
+            <Button variant="outline" size="sm" onClick={() => setOpRecords([])} disabled={opRecords.length === 0}>
+              <Eraser className="size-4" aria-hidden="true" />
+              {t('clearSessionStats')}
+            </Button>
+          ),
+          body: (
+            <div className="mx-auto w-full max-w-5xl space-y-6">
+              <div className="space-y-2">
+                <p className="text-sm text-muted-foreground">{t('panelMetricsTitle')}</p>
+                <div className="flex flex-wrap gap-2">
+                  {FILE_OP_METRICS.map((m) => {
+                    const on = metrics.includes(m)
+                    return (
+                      <button
+                        key={m}
+                        type="button"
+                        aria-pressed={on}
+                        // 最后一项勾不掉（见 toggleMetric），直接画成不可点，免得点了没反应。
+                        disabled={metrics.length === 1 && on}
+                        onClick={() => toggleMetric(m)}
+                        className={cn(
+                          'ds-focus-ring rounded-md border px-3 py-1.5 text-sm transition-colors disabled:cursor-not-allowed',
+                          on ? 'border-primary bg-accent-soft text-primary' : 'border-border/70 hover:bg-surface',
+                        )}
+                      >
+                        {t(`opsMetric_${m}`)}
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+              <FileOpsDashboard records={opRecords} history={fileHistory} />
+            </div>
+          ),
+        }
+    }
+  }
+
   const shownMetrics = METRIC_DISPLAY_ORDER.filter((id) => metrics.includes(id))
+  const panelTile = tiles.find((tile) => tile.id === panel)
+  const current = panel ? renderPanel(panel) : null
 
   return (
-    <PageShell
-      width="canvas"
+    <div
+      ref={rootRef}
+      className="relative flex min-h-0 flex-1 flex-col overflow-hidden"
       onDragEnter={(event) => {
         if (!event.dataTransfer.types.includes('Files')) return
         dragDepth.current += 1
@@ -1760,40 +1777,27 @@ export function FilesPane({ isProfessional = false }: { isProfessional?: boolean
         void handleDropFiles(event)
       }}
     >
+      <div className="ds-page-wash flex min-h-0 flex-1 flex-col gap-6 overflow-y-auto px-6 pt-5 pb-6" aria-hidden={panel ? true : undefined}>
       <PageHeader title={t('pageTitle')} />
 
-      <TopBar
-        className="border-b border-border/70 pb-3"
-        leading={shownMetrics.map((id) => (
+      <div ref={metricsRowRef} className="flex flex-wrap items-center gap-2 border-b border-border/70 pb-3">
+        {shownMetrics.map((id) => (
           <StatTile
             key={id}
             compact
             label={t(`opsMetric_${id}`)}
             value={formatFileOpMetric(id, opSummary)}
             hint={t('opsMetricJumpHint')}
-            // 数字是入口：点一下打开下面的加解密记录（关着就先打开），并滚到那里——
-            // 「本次加密 12」之后用户要看的就是这 12 条是哪些。
-            onClick={() => {
-              toggleActivity(true)
-              requestAnimationFrame(() => activityRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }))
-            }}
+            // 数字是入口：点一下打开记录面板——「本次加密 12」之后用户要看的就是这 12 条是哪些。
+            onClick={() => openPanel('records', metricsRowRef.current)}
           />
         ))}
-        menus={topBarMenus}
-        trailing={
-          // 整页都能拖放（按扩展名自动分流），但以前界面上一个字都没提。宽窗口
-          // 下在顶栏右端说一句；窄了就让位给菜单。
-          <span className="hidden items-center gap-1.5 text-sm text-muted-foreground @7xl:flex">
-            <Upload className="size-4" aria-hidden="true" />
-            {t('dropHint')}
-          </span>
-        }
-      />
+      </div>
 
       {/* 加密和解密是这个页面仅有的两件要紧事，所以它们并排占据顶栏下面最宽的
           位置。两块结构完全对称（图标 + 名称 + 一句话 + 两颗按钮 + 设置摘要），
           高度天然一致——旧版解密卡下半截空着一大块，就是因为设置只塞在了加密卡里。
-          设置本身在顶栏；这里底部那行摘要是"这次点下去实际会怎么做"，安全删除
+          设置本身在下方功能格的面板里；这里底部那行摘要是"这次点下去实际会怎么做"，安全删除
           开着时用警示色。 */}
       <div className="grid gap-6 lg:grid-cols-2">
         <ActionTile
@@ -1980,16 +1984,21 @@ export function FilesPane({ isProfessional = false }: { isProfessional?: boolean
         </PageSection>
       )}
 
-      {showActivity && (
-        <div ref={activityRef}>
-          <FileOpsDashboard records={opRecords} history={fileHistory} />
-        </div>
-      )}
+      <FeatureGrid tiles={tiles} onOpen={(id, el) => openPanel(id as PanelId, el)} className="min-h-[200px] flex-1" />
+      </div>
 
-      {/* 原来这里还有一张「高级操作」卡（算法选择 / 加密整个文件夹 / 增量重新加密 /
-          明文残留扫描），早已拆散：算法现在在顶栏「算法」菜单，文件夹加密在加密
-          磁贴上，另外两件收尾动作在顶栏「工具」菜单。一个叫"高级操作"的抽屉不告诉
-          用户里面是什么，而里面每一样其实都有自己更确切的归处。 */}
+      {panel && current && (
+        <FeaturePanel
+          key={panel}
+          label={panelTile?.title ?? ''}
+          origin={panelOrigin}
+          backLabel={t('panelBack')}
+          actions={current.actions}
+          onClose={closePanel}
+        >
+          {current.body}
+        </FeaturePanel>
+      )}
 
       {passPrompt.element}
       <VerifyResultsDialog rows={verifyRows} onClose={() => setVerifyRows(null)} />
@@ -2177,6 +2186,6 @@ export function FilesPane({ isProfessional = false }: { isProfessional?: boolean
           )}
         </DialogContent>
       </Dialog>
-    </PageShell>
+    </div>
   )
 }

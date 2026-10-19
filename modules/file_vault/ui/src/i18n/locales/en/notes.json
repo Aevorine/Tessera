@@ -449,5 +449,9 @@
   "linkedFolderMissing": "folder unavailable",
   "linkedNoteBadge": "Local file",
   "revealLinkedFile": "Show the file in Explorer",
-  "timelineKind.external": "Changed outside"
+  "timelineKind.external": "Changed outside",
+  "tileLinkedCount": "{{count}} linked folders",
+  "tileBulkNone": "None selected",
+  "tileCategoriesTitle": "Categories & tags",
+  "tileCategoriesBadge": "{{categories}} categories · {{tags}} tags"
 }

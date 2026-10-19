@@ -279,5 +279,18 @@
   "timelineSelectedMenuItem": "已选服务的时间线",
   "timelineTabCompare": "与现在对比",
   "timelineTabContent": "内容",
-  "timelineUndoBatchButton": "整批撤销"
+  "timelineUndoBatchButton": "整批撤销",
+  "panelBack": "返回",
+  "panelToggleOn": "已开启",
+  "panelToggleOff": "已关闭",
+  "tileBulkBadgeSelected": "已选 {{selected}} / {{total}}",
+  "tileBulkBadgeMode": "选择中 · {{total}} 个服务",
+  "tileBulkBadgeIdle": "{{total}} 个服务",
+  "tileDedupeBadgeLikely": "{{count}} 组疑似重复",
+  "tileDedupeBadgeClean": "没有同名服务",
+  "tileTimelineBadge": "近期 {{count}} 条改动",
+  "tileTimelineBadgeNone": "暂无近期改动",
+  "tileImportBadge": "已保存 {{count}} 个码",
+  "tileImportBadgeDamaged": "{{count}} 条记录已损坏",
+  "tileExportBadgeSelected": "已选 {{count}} · {{formats}}"
 }

@@ -191,5 +191,10 @@
   "topbarMetricsMenu": "المؤشرات في الشريط العلوي",
   "valueSecureDelete": "حذف آمن",
   "verifyMenuLabel": "التحقق من السلامة…",
-  "opsMetricJumpHint": "عرض سجل التشفير"
+  "opsMetricJumpHint": "عرض سجل التشفير",
+  "tileOpsBadge": "{{count}} عملية في هذه الجلسة",
+  "tileOpsEmpty": "لا عمليات بعد",
+  "tileToolsBadge": "{{count}} أدوات",
+  "panelBack": "رجوع",
+  "panelMetricsTitle": "المؤشرات المعروضة أعلى الصفحة"
 }
