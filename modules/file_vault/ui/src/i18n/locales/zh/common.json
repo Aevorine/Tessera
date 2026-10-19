@@ -132,5 +132,9 @@
   "searchOrder_recent": "最新优先",
   "searchOrder_oldest": "最早优先",
   "searchOrder_frequent": "常用优先",
-  "searchMostRemaining": "剩余最多"
+  "searchMostRemaining": "剩余最多",
+  "searchHotkey": "快速搜索 Ctrl+F 或 /，↑↓ 切换结果，Enter 打开",
+  "searchNoResults": "没有匹配的内容",
+  "searchHub": "搜索设备、文件、同步记录、功能",
+  "searchGroupFeatures": "功能"
 }

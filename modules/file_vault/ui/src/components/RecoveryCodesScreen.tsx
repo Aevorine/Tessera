@@ -1,8 +1,9 @@
-import { useSmartSearch } from '@/lib/search'
+import { useResultCursor, useSmartSearch } from '@/lib/search'
 import { recoverySearcher } from '@/lib/search/fields/recovery'
 import { SmartSearchBox } from '@/components/search/SmartSearchBox'
 import { Highlight } from '@/components/search/Highlight'
 import {
+  useCallback,
   useEffect,
   useMemo,
   useRef,
@@ -422,6 +423,24 @@ export function RecoveryCodesScreen({ isProfessional = false }: { isProfessional
     // 按条目 id 作键而非下标，否则搜索/删除重排后行高测量缓存会套到别的记录（同 PasswordScreen）。
     getItemKey: (index) => filtered[index]?.id ?? index,
   })
+
+  // 列表视图右栏默认落在第一条，不留一句空提示。
+  useEffect(() => {
+    if (view !== 'list') return
+    if (detailId !== null && filteredIds.has(detailId)) return
+    setDetailId(filtered.length > 0 ? filtered[0].id : null)
+  }, [view, detailId, filteredIds, filtered])
+
+  const groupIds = useMemo(() => filtered.map((g) => g.id), [filtered])
+  const pickGroup = useCallback(
+    (id: string, index: number) => {
+      setView('list')
+      setDetailId(id)
+      rowVirtualizer.scrollToIndex(index, { align: 'auto' })
+    },
+    [rowVirtualizer],
+  )
+  const cursor = useResultCursor(groupIds, detailId, pickGroup)
 
   function toggleSelected(id: string, checked: boolean) {
     setSelectedIds((prev) => {
@@ -1479,7 +1498,7 @@ export function RecoveryCodesScreen({ isProfessional = false }: { isProfessional
           trailing={
             <>
               <SmartSearchBox scope="recovery" value={search} onChange={(value) => { setSearch(value); if (value.trim()) setView('list') }} placeholder={t('searchPlaceholder')} count={filtered.length} approximate={searchState.approximate}
-                fields={recoverySearcher.fields.map((f) => ({ key: f.key, token: f.key, label: tCommon(`searchField_${f.key}`) }))} />
+                fields={recoverySearcher.fields.map((f) => ({ key: f.key, token: f.key, label: tCommon(`searchField_${f.key}`) }))} {...cursor} />
               <Button size="sm" onClick={() => void handleImportFiles()}>
                 <ArrowDownToLine className="size-4" aria-hidden="true" />
                 {t('importButton')}

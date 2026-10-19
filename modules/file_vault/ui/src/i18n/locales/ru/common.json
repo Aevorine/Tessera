@@ -132,5 +132,9 @@
   "searchOrder_recent": "Сначала новые",
   "searchOrder_oldest": "Сначала старые",
   "searchOrder_frequent": "Часто используемые",
-  "searchMostRemaining": "Больше оставшихся"
+  "searchMostRemaining": "Больше оставшихся",
+  "searchHotkey": "Поиск: Ctrl+F или /, ↑↓ — переход, Enter — открыть",
+  "searchNoResults": "Ничего не найдено",
+  "searchHub": "Поиск устройств, файлов, журнала синхронизации, функций",
+  "searchGroupFeatures": "Функции"
 }

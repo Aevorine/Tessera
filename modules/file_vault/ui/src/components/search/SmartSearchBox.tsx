@@ -12,6 +12,40 @@ export interface SearchFieldChip {
 }
 
 const RECENT_MAX = 8
+
+// Ctrl+F 与 / 聚焦当前看得见、没被面板盖住的那个搜索框；后挂载的优先。
+const boxes: HTMLInputElement[] = []
+function onTop(el: HTMLInputElement): boolean {
+  const r = el.getBoundingClientRect()
+  if (r.width === 0 || r.height === 0) return false
+  const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2)
+  return !!hit && (el === hit || el.parentElement?.contains(hit) === true)
+}
+function onHotkey(e: globalThis.KeyboardEvent) {
+  if (e.defaultPrevented || e.altKey) return
+  const t = e.target as HTMLElement | null
+  const editing = t instanceof HTMLInputElement || t instanceof HTMLTextAreaElement || !!t?.isContentEditable
+  const ctrlF = (e.ctrlKey || e.metaKey) && !e.shiftKey && e.key.toLowerCase() === 'f'
+  const slash = e.key === '/' && !e.ctrlKey && !e.metaKey && !editing
+  if (!ctrlF && !slash) return
+  if (document.querySelector('[role="dialog"][data-state="open"], [role="alertdialog"][data-state="open"]')) return
+  for (let i = boxes.length - 1; i >= 0; i--) {
+    if (!onTop(boxes[i])) continue
+    e.preventDefault()
+    boxes[i].focus()
+    boxes[i].select()
+    return
+  }
+}
+function register(el: HTMLInputElement) {
+  if (boxes.length === 0) window.addEventListener('keydown', onHotkey)
+  boxes.push(el)
+  return () => {
+    const i = boxes.indexOf(el)
+    if (i >= 0) boxes.splice(i, 1)
+    if (boxes.length === 0) window.removeEventListener('keydown', onHotkey)
+  }
+}
 /**
  * 页内搜索框：字段前缀 / 排除 / 整句 / 拼音都在引擎里；这里管结果数、最近搜索、字段快捷片。
  * 聚焦且框空（或末尾是空格）时弹出最近搜索与字段片。
@@ -31,10 +65,11 @@ export const SmartSearchBox = forwardRef<
     approximate?: boolean
     onSubmit?: () => void
     onArrowDown?: () => void
+    onArrowUp?: () => void
     className?: string
   }
 >(function SmartSearchBox(
-  { id, value, onChange, placeholder, scope, fields = [], count, approximate, onSubmit, onArrowDown, className },
+  { id, value, onChange, placeholder, scope, fields = [], count, approximate, onSubmit, onArrowDown, onArrowUp, className },
   ref,
 ) {
   const { t } = useTranslation('common')
@@ -44,6 +79,7 @@ export const SmartSearchBox = forwardRef<
   const [dismissed, setDismissed] = useState(false)
   const [recent, setRecent] = useState<string[]>([])
 
+  useEffect(() => (inputRef.current ? register(inputRef.current) : undefined), [])
   useEffect(() => setRecent([]), [scope])
   useEffect(() => setDismissed(false), [value])
 
@@ -86,14 +122,20 @@ export const SmartSearchBox = forwardRef<
       else inputRef.current?.blur()
     } else if (e.key === 'ArrowDown' && onArrowDown) {
       e.preventDefault()
+      setDismissed(true)
       onArrowDown()
+    } else if (e.key === 'ArrowUp' && onArrowUp) {
+      e.preventDefault()
+      onArrowUp()
     }
   }
 
   return (
     <div className={cn('relative min-w-0 w-full sm:w-72', className)}>
       <label className="flex h-9 w-full items-center gap-2 rounded-lg border border-border/70 bg-background px-2.5 transition-colors focus-within:border-ring focus-within:ring-2 focus-within:ring-ring/30">
-        <Search className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+        <span className="shrink-0 text-muted-foreground" data-hint={t('searchHotkey')}>
+          <Search className="size-4" aria-hidden="true" />
+        </span>
         <input
           ref={inputRef}
           id={id}
@@ -107,6 +149,7 @@ export const SmartSearchBox = forwardRef<
           onKeyDown={onKeyDown}
           placeholder={placeholder}
           aria-label={placeholder}
+          aria-keyshortcuts="Control+F /"
           autoComplete="off"
           spellCheck={false}
           className="w-full min-w-0 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
