@@ -1,3 +1,4 @@
+import { createSearcher, useSmartSearch } from '@/lib/search'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
@@ -38,6 +39,12 @@ export interface ClipTimelineItem {
   /** 正文不全、来源又不在线时为 false：暂时粘贴不了。 */
   available: boolean
 }
+
+const timelineSearcher = createSearcher<ClipTimelineItem>([
+  { key: 'text', get: (it) => it.preview, weight: 2, aliases: ['内容', 'clip'] },
+  { key: 'device', get: (it) => it.source_name, aliases: ['设备', '来源', 'from'] },
+  { key: 'type', get: (it) => it.preferred, aliases: ['类型'] },
+])
 
 type Filter = 'all' | 'others' | 'mine'
 
@@ -134,15 +141,14 @@ export function ClipTimelinePanel({
     }
   }, [available, load])
 
+  const searchState = useSmartSearch(items, timelineSearcher, query)
   const shown = useMemo(() => {
-    const q = query.trim().toLowerCase()
-    return items.filter((it) => {
+    return searchState.items.filter((it) => {
       if (filter === 'mine' && !it.local) return false
       if (filter === 'others' && it.local) return false
-      if (!q) return true
-      return it.preview.toLowerCase().includes(q) || it.source_name.toLowerCase().includes(q)
+      return true
     })
-  }, [items, filter, query])
+  }, [searchState.items, filter])
 
   const apply = useCallback(
     async (it: ClipTimelineItem, broadcast: boolean) => {

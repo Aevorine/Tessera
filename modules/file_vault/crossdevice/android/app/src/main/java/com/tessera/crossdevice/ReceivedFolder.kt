@@ -31,7 +31,21 @@ object ReceivedFolder {
     private val DOCS_UI = listOf("com.google.android.documentsui", "com.android.documentsui")
     private const val LIST_MAX = 500
 
-    private class Entry(val name: String, val size: Long, val modified: Long, val uri: Uri)
+    /** 收件夹里的一个文件；name 是相对收件夹的路径（含子文件夹）。 */
+    class Entry(val name: String, val size: Long, val modified: Long, val uri: Uri)
+
+    /** 列出收件夹里的文件（新的在前），给首页搜索用。会碰磁盘 / SAF，只能在后台线程调。 */
+    fun list(activity: Activity): List<Entry> {
+        val tree = FileBridge.saveTree(activity)
+        return runCatching { if (tree != null) listTree(activity, tree) else listPrivate(activity) }
+            .getOrDefault(emptyList())
+    }
+
+    /** 打开一个文件，与列表里点一行相同。 */
+    fun openEntry(activity: Activity, e: Entry) = view(activity, e)
+
+    /** 分享一个文件，与列表里长按一行相同。 */
+    fun shareEntry(activity: Activity, e: Entry) = share(activity, e)
 
     fun open(activity: Activity) {
         val tree = FileBridge.saveTree(activity)

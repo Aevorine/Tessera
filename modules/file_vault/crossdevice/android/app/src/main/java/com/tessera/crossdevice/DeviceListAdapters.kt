@@ -79,6 +79,14 @@ internal class PairedDeviceAdapter(
     private val onOpen: (PairedDeviceItem) -> Unit = {},
 ) : ListAdapter<PairedDeviceItem, PairedDeviceAdapter.Holder>(PairedDeviceItemCallback) {
 
+    /** 搜索高亮钩子；换了查询就整表重绑一次，DiffUtil 不会因查询变化而重绑。 */
+    var highlight: Highlighter = Highlighter.NONE
+        set(value) {
+            if (field === value) return
+            field = value
+            notifyItemRangeChanged(0, itemCount)
+        }
+
     var selectionMode: Boolean = false
         private set
 
@@ -135,7 +143,7 @@ internal class PairedDeviceAdapter(
 
     override fun onBindViewHolder(holder: Holder, position: Int) {
         val item = getItem(position)
-        holder.name.text = item.name
+        holder.name.text = highlight.apply(item.name)
         // 延迟（rtt_ms）与桌面端同样缀「· 23ms」；只在有真实数值时拼，离线设备不显示旧延迟。
         holder.state.text = buildString {
             append(stateLabel(item.state))
@@ -161,7 +169,7 @@ internal class PairedDeviceAdapter(
                 // 别让这一行看起来像卡住不动了。
                 item.offlineHint != null -> append(" · ").append(item.offlineHint)
             }
-        }
+        }.let(highlight::apply)
         // 经中继时标警示色：内容仍端到端加密，只是让用户一眼看出字节经过了服务器。
         holder.state.setTextColor(
             if (item.relayed) holder.itemView.context.getColor(R.color.status_warning)
@@ -217,6 +225,14 @@ internal class NearbyDeviceAdapter(
     private val onPair: (NearbyDeviceItem) -> Unit,
 ) : ListAdapter<NearbyDeviceItem, NearbyDeviceAdapter.Holder>(NearbyDeviceItemCallback) {
 
+    /** 搜索高亮钩子；换了查询就整表重绑一次，DiffUtil 不会因查询变化而重绑。 */
+    var highlight: Highlighter = Highlighter.NONE
+        set(value) {
+            if (field === value) return
+            field = value
+            notifyItemRangeChanged(0, itemCount)
+        }
+
     class Holder(view: View) : RecyclerView.ViewHolder(view) {
         val name: TextView = view.findViewById(R.id.textName)
         val unverified: TextView = view.findViewById(R.id.textUnverified)
@@ -229,8 +245,8 @@ internal class NearbyDeviceAdapter(
 
     override fun onBindViewHolder(holder: Holder, position: Int) {
         val item = getItem(position)
-        holder.name.text = item.name
-        holder.address.text = item.address
+        holder.name.text = highlight.apply(item.name)
+        holder.address.text = highlight.apply(item.address)
         holder.address.visibility = if (item.address.isEmpty()) View.GONE else View.VISIBLE
         if (item.paired) {
             holder.unverified.setText(R.string.nearby_already_paired)
@@ -281,6 +297,14 @@ internal class TransferAdapter(
     private val onCancel: (TransferItem) -> Unit,
 ) : ListAdapter<TransferItem, TransferAdapter.Holder>(TransferItemCallback) {
 
+    /** 搜索高亮钩子；换了查询就整表重绑一次，DiffUtil 不会因查询变化而重绑。 */
+    var highlight: Highlighter = Highlighter.NONE
+        set(value) {
+            if (field === value) return
+            field = value
+            notifyItemRangeChanged(0, itemCount)
+        }
+
     class Holder(view: View) : RecyclerView.ViewHolder(view) {
         val icon: ImageView = view.findViewById(R.id.iconItem)
         val name: TextView = view.findViewById(R.id.textName)
@@ -296,14 +320,14 @@ internal class TransferAdapter(
 
     override fun onBindViewHolder(holder: Holder, position: Int) {
         val item = getItem(position)
-        holder.name.text = item.name
+        holder.name.text = highlight.apply(item.name)
         holder.percent.text = "${item.percent}%"
         holder.progress.setProgressCompat(item.percent, true)
         holder.progress.alpha = if (item.paused) 0.45f else 1f
         // 强调色由外观设置决定，而这一行是 apply() 跑完之后才创建的，
         // 那一遍视图树遍历够不到它——在这里补上。
         AppearanceStyler.currentAccent?.let { holder.progress.setIndicatorColor(it) }
-        holder.detail.text = detailText(item)
+        holder.detail.text = highlight.apply(detailText(item))
         holder.icon.setImageResource(
             when (item.itemKind) {
                 "image" -> R.drawable.ic_image

@@ -57,7 +57,7 @@ import {
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { ActionButton } from '@/components/ActionButton'
-import { TopBar, TopBarSearch, type TopBarMenu, type TopBarNode } from '@/components/TopBar'
+import { TopBar, type TopBarMenu, type TopBarNode } from '@/components/TopBar'
 import { StatTile } from '@/components/StatTile'
 import { ClipboardImageViewer, type ViewerImage } from '@/components/ClipboardImageViewer'
 // 保存动作在查看器自己那边做（它的工具栏上有切换按钮），这里只负责读初值。
@@ -80,7 +80,9 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import { cn } from '@/lib/utils'
 import { vaultApi } from '@/lib/vaultApi'
 import { electronApi } from '@/lib/electronApi'
-import { useDebouncedValue } from '@/lib/useDebouncedValue'
+import { useSmartSearch } from '@/lib/search'
+import { clipboardSearcher } from '@/lib/search/fields/clipboard'
+import { SmartSearchBox } from '@/components/search/SmartSearchBox'
 import { LABEL_REGIONS } from '@/lib/labelMode'
 import { translateError } from '@/i18n/errors'
 import type {
@@ -186,6 +188,8 @@ export function ClipboardScreen({
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState<string | null>(null)
   const [search, setSearch] = useState('')
+  const [timeRange, setTimeRange] = useState('all')
+  const [resultSort, setResultSort] = useState('relevance')
   // 分类路径：类型 ▸ 维度 ▸ 值（链接 ▸ 按域名 ▸ github.com）。子分类全部从
   // 数据里算出来，见 lib/clipboardFacets.ts。typeFilter 是它的第一层，拖拽排序
   // 等只关心"有没有按类型筛"的地方继续读它。
@@ -309,8 +313,7 @@ export function ClipboardScreen({
     return { total: activeList.length, active, hidden, pinned, snippets: snippets.length, trashed: trash.length }
   }, [activeList, snippets, trash])
   // 输入框绑定原始 search（打字即时响应），只有过滤计算用防抖值，避免每个字符对最多 5000
-  // 条做同步全量扫描（同 PasswordScreen debouncedSearch）。
-  const debouncedSearch = useDebouncedValue(search, 200)
+  // 条做同步全量扫描（同 PasswordScreen search）。
   // 分类菜单里的数字须与点击后列表条数一致，所以子分类在过完隐藏/置顶两道门之后、
   // 分类和搜索之前的那批上计数。
   const scopeList = useMemo(() => {
@@ -329,14 +332,17 @@ export function ClipboardScreen({
     })
   }, [activeList, trash, snippets, viewMode, pinnedOnly, unpinnedOnly, hiddenOnly])
   const facets = useMemo(() => buildFacets(scopeList), [scopeList])
+  const searchState = useSmartSearch(scopeList, clipboardSearcher, search)
   const filtered = useMemo(() => {
-    const q = debouncedSearch.trim().toLowerCase()
     const now = Date.now()
-    const result = scopeList.filter((e) => {
+    const result = searchState.items.filter((e) => {
       if (viewMode !== 'snippets' && !matchesCategory(e, category, now)) return false
-      if (!q) return true
-      return (e.content_text ?? '').toLowerCase().includes(q) || (e.source_app ?? '').toLowerCase().includes(q)
+      if (timeRange !== 'all' && !(new Date(e.created_at).getTime() >= now - Number(timeRange) * 86400000)) return false
+      return true
     })
+    if (resultSort === 'frequent') return [...result].sort((a, b) => b.copy_count - a.copy_count || b.id - a.id)
+    if (resultSort === 'oldest') return [...result].sort((a, b) => a.id - b.id)
+    if (resultSort === 'recent') return [...result].sort((a, b) => b.id - a.id)
     // 只有「只看置顶」视图按手工序排（pin_order 升序）；其它视图仍最新在前（sortEntries 的 id DESC）。
     // pin_order 为 null 的排最后，与后端 fetch_pinned_ordered 的 `pin_order IS NULL` 规则一致。
     if (pinnedOnly && viewMode === 'active') {
@@ -348,7 +354,7 @@ export function ClipboardScreen({
       })
     }
     return result
-  }, [scopeList, viewMode, debouncedSearch, category, pinnedOnly])
+  }, [searchState.items, viewMode, category, pinnedOnly, timeRange, resultSort])
 
   // 默认预览首条；自动选中不改动剪贴板。
   useEffect(() => {
@@ -361,7 +367,7 @@ export function ClipboardScreen({
   // nds），
   // 列表被搜索/类型筛选后，视觉上相邻的两条在真实序列里可能夹着被筛掉的项，落点会不一致。
   const dragSortEnabled =
-    viewMode === 'active' && pinnedOnly && !hiddenOnly && typeFilter === 'all' && debouncedSearch.trim() === ''
+    viewMode === 'active' && pinnedOnly && !hiddenOnly && typeFilter === 'all' && search.trim() === '' && timeRange === 'all' && resultSort === 'relevance'
 
   // 过滤/切换视图后选中集合可能残留已不在列表里的 id，每次渲染前收紧，全选框和「已选 N
   // 项」才不显示假数据（同 PasswordScreen visibleSelectedIds）。
@@ -1034,6 +1040,17 @@ export function ClipboardScreen({
 
   const topBarMenus: TopBarMenu[] = [
     {
+      id: 'time-range', icon: Filter, label: tCommon('searchField_date'), value: tCommon(`searchDays_${timeRange}`),
+      active: timeRange !== 'all', onClear: () => setTimeRange('all'),
+      items: ['all', '1', '7', '30'].map((value) => ({ id: `days-${value}`, type: 'item' as const,
+        label: tCommon(`searchDays_${value}`), selected: timeRange === value, onSelect: () => setTimeRange(value) })),
+    },
+    {
+      id: 'result-sort', icon: ListFilter, label: tCommon('searchSort'), value: tCommon(`searchOrder_${resultSort}`),
+      items: ['relevance', 'recent', 'oldest', 'frequent'].map((value) => ({ id: `order-${value}`, type: 'item' as const,
+        label: tCommon(`searchOrder_${value}`), selected: resultSort === value, onSelect: () => setResultSort(value) })),
+    },
+    {
       id: 'view',
       label: t('menuView'),
       icon: PanelsTopLeft,
@@ -1337,7 +1354,8 @@ export function ClipboardScreen({
         menus={topBarMenus}
         trailing={
           <>
-            <TopBarSearch value={search} onChange={setSearch} placeholder={t('searchPlaceholder')} />
+            <SmartSearchBox scope="history" value={search} onChange={setSearch} placeholder={t('searchPlaceholder')} count={filtered.length} approximate={searchState.approximate}
+              fields={clipboardSearcher.fields.map((f) => ({ key: f.key, token: f.key, label: tCommon(`searchField_${f.key}`) }))} />
             {viewMode === 'snippets' && (
               <Button size="sm" onClick={openNewSnippetDialog}>
                 <Plus className="size-4" aria-hidden="true" />

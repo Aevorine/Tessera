@@ -95,7 +95,10 @@ export function PageShell({
           // 必须分档：宽档留白在窄窗口（700px 减 184px 侧栏）会把内容挤到 404px，表格被迫横向滚动。
           // 块间距比卡内边距(p-6)大一档，不用边框或投影就能分层。
           // 上下不对称：上边只收窄（顶着屏幕边缘的纯空白），下边保留作为滚到底的呼吸位。
-          'mx-auto flex w-full flex-col gap-6 pt-4 pb-7 sm:gap-7 sm:pt-5 sm:pb-9 lg:gap-8 lg:pt-6 lg:pb-11',
+          'mx-auto flex w-full flex-col',
+          width === 'canvas'
+            ? 'gap-3 py-2 sm:gap-4 sm:py-3'
+            : 'gap-6 pt-4 pb-7 sm:gap-7 sm:pt-5 sm:pb-9 lg:gap-8 lg:pt-6 lg:pb-11',
           // 横向留白：canvas 档单独一套（见上面长注释），其余三档共用原来那套。
           width === 'canvas'
             ? 'px-4 sm:px-5 lg:px-6'
