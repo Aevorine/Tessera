@@ -15,3 +15,5 @@ The meeting-point server is distributed through GitHub Releases and the `ghcr.io
 Version 0.1.42 adds received-folder access on Windows and Android phones/tablets, retaining the existing feature-card navigation and full-screen secondary panels. Test suites and real-device end-to-end checks were not run for this release. Source and release metadata are separate from that unverified device behavior.
 
 Version 0.1.43 makes desktop clipboard history selection copy the stored entry and update the right-side preview together. Pinned rows, virtualized rows and image thumbnails share the action; explicit Paste retains its behavior.
+
+Version 0.1.44 fixes the Windows file-shortcut switch failing with “Access is denied” while deploying its helper, corrects paste progress (counts, size, speed and remaining time) and pipelines scanning with copying for faster paste.

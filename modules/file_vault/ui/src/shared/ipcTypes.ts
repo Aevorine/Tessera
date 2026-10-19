@@ -2380,8 +2380,18 @@ export interface FileClipHistoryEntry {
   path_count: number
 }
 
-// file_clip_paste/file_clip_delete 的进度：done/total 是字节（回收站删除不计字节，退回文件数），见 fileops/service.py::_run_with_progress；无额外字段。
-export type FileClipProgress = ProgressEvent
+// file_clip_paste/file_clip_delete 的进度：done/total 与任务卡同口径（拷贝按字节，删除/同盘改名按条目），见 fileops/service.py::_emit。
+export interface FileClipProgress extends ProgressEvent {
+  scan_complete?: boolean  // false = 边扫边拷，总量仍在增长
+  unit?: 'bytes' | 'items'
+  files_done?: number
+  files_total?: number
+  bytes_done?: number
+  bytes_total?: number
+  speed?: number  // unit 每秒，最近 2 秒滑动平均
+  eta?: number | null
+  current?: string
+}
 
 export interface NetworkSpeedtestHistoryEntry {
   id: number

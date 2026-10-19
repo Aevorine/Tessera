@@ -204,7 +204,7 @@ def test_card_tick_reads_a_fresh_snapshot_after_scanning_totals_freeze(monkeypat
 
     report = engine.TransferReport(operation="copy")
     state = engine._report_state(report)
-    clock = iter((state.started_perf + 1, state.started_perf + 1, state.started_perf + 2, state.started_perf + 2))
+    clock = iter((state.started_perf + 1, state.started_perf + 2))  # 只喂卡片自己的时钟；引擎快照用自己的时钟
     monkeypatch.setattr(progress_ui.time, "perf_counter", lambda: next(clock))
     card = object.__new__(progress_ui._ProgressWindow)
     card.final = {"live_report": report}

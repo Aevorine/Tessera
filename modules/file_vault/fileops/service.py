@@ -15,7 +15,7 @@ from typing import Callable, Dict, List, Tuple
 
 from core.fileops import clipboard as file_clipboard
 from core.fileops import engine as file_engine
-from core.fileops import progress_preferences
+from core.fileops import progress_preferences, progress_ui
 
 # 进度每 100ms 上报一次，既跟手又不刷爆 NDJSON 管道（与 backend_server.py 的 _throttled_progress 0.1s 对齐）。
 _POLL_INTERVAL_S = 0.1
@@ -97,15 +97,42 @@ def _run_with_progress(
     while state["report"] is None:
         time.sleep(0.005)
     report = state["report"]
+    smoother = progress_ui.SpeedSmoother()
+    running_since = None
     while thread.is_alive():
-        total = report.bytes_total or report.files_total
-        done = report.bytes_done if report.bytes_total else report.files_done
-        on_progress(done, total)
+        snapshot = report.snapshot()
+        now = time.perf_counter()
+        if snapshot.phase == "running" and running_since is None:
+            running_since = now
+        speed = smoother.observe(progress_ui._progress_units(snapshot), now)
+        eta = progress_ui.progress_eta(
+            snapshot, speed, None if running_since is None else now - running_since,
+        )
+        _emit(on_progress, snapshot, speed, eta)
         time.sleep(_POLL_INTERVAL_S)
     final = state["final"]
-    total = final.bytes_total or final.files_total
-    on_progress(total, total)
+    _emit(on_progress, final.snapshot(), 0.0, None, finished=True)
     return final
+
+
+def _emit(on_progress, snapshot, speed: float, eta, finished: bool = False) -> None:
+    """进度帧：done/total 与任务卡同一口径（拷贝按字节，删除/改名按条目），另附明细供界面显示。"""
+    done, total = progress_ui.progress_fraction(snapshot)
+    if finished:
+        done = total
+    on_progress(
+        done, total,
+        phase=snapshot.phase,
+        scan_complete=snapshot.scan_complete,
+        unit="bytes" if snapshot.operation in ("copy", "move") and snapshot.bytes_total else "items",
+        files_done=snapshot.files_done,
+        files_total=snapshot.files_total,
+        bytes_done=snapshot.bytes_done,
+        bytes_total=snapshot.bytes_total,
+        speed=speed,
+        eta=eta,
+        current=os.path.basename(snapshot.current_path) or snapshot.current_path,
+    )
 
 
 def run_paste(dest_dir: str, on_conflict: str, on_progress: Callable[[int, int], None]) -> Dict:

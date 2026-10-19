@@ -133,6 +133,7 @@ def progress_eta(snapshot, speed, running_elapsed=None):
         running_elapsed = snapshot.elapsed_seconds
     if (
         snapshot.phase != "running"
+        or not snapshot.scan_complete
         or running_elapsed < 1.0
         or snapshot.bytes_total <= snapshot.bytes_done
         or speed <= 0
@@ -164,11 +165,13 @@ def _progress_counts(snapshot):
 
 
 def progress_fraction(snapshot):
-    """Return the units used by the progress bar, preferring transfer bytes."""
-    if snapshot.items_total:
-        return snapshot.items_done, snapshot.items_total
+    """Return the units used by the progress bar, preferring transfer bytes.
+
+    同盘改名是瞬间完成的，混合移动（部分改名 + 部分跨盘拷）若按条目算会先显示 100%。"""
     if snapshot.operation in ("copy", "move") and snapshot.bytes_total:
         return snapshot.bytes_done, snapshot.bytes_total
+    if snapshot.items_total:
+        return snapshot.items_done, snapshot.items_total
     return snapshot.files_done, snapshot.files_total
 
 
@@ -192,6 +195,7 @@ def card_is_determinate(snapshot):
     """Only the legacy Shell fallback is intentionally indeterminate."""
     return (
         snapshot.phase == "running"
+        and snapshot.scan_complete
         and not snapshot.indeterminate
         and bool(progress_fraction(snapshot)[1])
     )
@@ -204,9 +208,25 @@ def card_can_cancel(snapshot, compact):
 def format_progress(snapshot, compact, speed, running_elapsed=None):
     """Render operation-aware content without leaking paths in compact mode."""
     if snapshot.phase == "scanning":
+        if snapshot.files_total:
+            return f"{_operation_label(snapshot)} 正在扫描… 已发现 {snapshot.files_total:,} 个"
         return f"{_operation_label(snapshot)} 正在扫描…"
+    if snapshot.phase == "cleanup":
+        return f"{_operation_label(snapshot)} 正在清理源文件…"
     if snapshot.recycle and snapshot.indeterminate:
         return "移入回收站 系统处理中…"
+    if not snapshot.scan_complete:
+        # 边扫边拷：总量还在长，只报已完成量与速度，不报百分比和剩余时间。
+        rate = f"{_fmt_bytes(speed)}/s" if speed else ""
+        found = f"{snapshot.files_done:,}/{snapshot.files_total:,}+"
+        primary = "  ".join(part for part in (
+            _operation_label(snapshot), found, _fmt_bytes(snapshot.bytes_done), rate,
+            f"用时 {snapshot.elapsed_seconds:.1f}s",
+        ) if part)
+        if compact:
+            return primary
+        path = os.path.basename(snapshot.current_path) or snapshot.current_path
+        return "\n".join(part for part in (path, primary, "仍在统计总量…") if part)
     done, total = _progress_counts(snapshot)
     count = f"{done:,}/{total:,}" if total else ""
     percent = f"{_progress_percent(snapshot)}%" if total else ""
