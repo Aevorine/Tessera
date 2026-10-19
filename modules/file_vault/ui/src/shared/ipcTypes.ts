@@ -284,6 +284,30 @@ export interface NoteListItem {
   sort_order: number
   created_at: string
   updated_at: string
+  // 关联笔记：正文就是 linked_path 处的原文件，保存写回原处。
+  is_linked?: number
+  linked_path?: string | null
+}
+
+// 导入方式：link 关联原文件（默认），copy 复制进笔记库。
+export type NoteImportMode = 'link' | 'copy'
+
+export interface NoteLinkedFolder {
+  id: number
+  path: string
+  category: string
+  is_hidden: boolean
+  created_at: string
+  note_count: number
+  exists?: boolean
+}
+
+export interface NoteLinkedSyncResult {
+  added: NoteListItem[]
+  updated: number[]
+  removed: number[]
+  skipped_large: number
+  missing_folders: number[]
 }
 
 export interface Note extends NoteListItem {
@@ -1930,7 +1954,7 @@ export interface VaultMethods {
     result: { ok: true; note: Note } | { ok: false; error: string; error_params?: Record<string, string | number> }
   }
   note_create: {
-    params: { title: string; category: string; content: string; encrypt?: boolean; format?: NoteFormat }
+    params: { title: string; category: string; content: string; encrypt?: boolean; format?: NoteFormat; linked?: boolean }
     result: { ok: true; note: Note } | { ok: false; error: string; error_params?: Record<string, string | number> }
   }
   note_update: {
@@ -2005,13 +2029,14 @@ export interface VaultMethods {
     // 无共同根的导入（多选文件）不传，回落到关键词/名称分类器。
     // hidden 使整批进入隐藏区（并在隐藏作用域建分类，与普通目录独立）。target_category 是整批共用前缀，
     // 与子文件夹路径拼接而非替换："Finance/2026/x.txt" 加前缀 "Private" 得 "Private/Finance/2026"。两者默认保持旧行为。
-    params: { paths: string[]; encrypt?: boolean; base_dir?: string; hidden?: boolean; target_category?: string }
+    params: { paths: string[]; encrypt?: boolean; base_dir?: string; hidden?: boolean; target_category?: string; mode?: NoteImportMode }
     // imported 是 NoteListItem[] 而非 Note[]：刻意不回传刚导入笔记的完整 `content`，
     // 否则数百 MB 内容会重现大笔记要避免的「单条巨大 IPC 消息」。进度事件带 NoteImportProgress 的额外字段。
     result: {
       ok: true
       imported: NoteListItem[]
       failed: { path: string; error: string; error_params?: Record<string, string | number> }[]
+      copied?: number
     } | { ok: false; error: string; error_params?: Record<string, string | number> }
   }
   note_content_session_open: {
@@ -2045,6 +2070,32 @@ export interface VaultMethods {
       | { ok: true; done: false }
       | { ok: true; done: true; note: NoteListItem }
       | { ok: false; error: string; error_params?: Record<string, string | number> }
+  }
+  note_linked_folder_add: {
+    params: { dir: string; category?: string; hidden?: boolean }
+    result:
+      | ({ ok: true; folder: NoteLinkedFolder; sync: NoteLinkedSyncResult })
+      | { ok: false; error: string; error_params?: Record<string, string | number> }
+  }
+  note_linked_folder_list: {
+    params: Record<string, never>
+    result: { ok: true; folders: NoteLinkedFolder[] } | { ok: false; error: string; error_params?: Record<string, string | number> }
+  }
+  note_linked_folder_remove: {
+    params: { id: number }
+    result: { ok: true } | { ok: false; error: string; error_params?: Record<string, string | number> }
+  }
+  note_linked_sync: {
+    params: { folder_id?: number }
+    result: ({ ok: true } & NoteLinkedSyncResult) | { ok: false; error: string; error_params?: Record<string, string | number> }
+  }
+  note_import_mode_get: {
+    params: Record<string, never>
+    result: { ok: true; mode: NoteImportMode } | { ok: false; error: string; error_params?: Record<string, string | number> }
+  }
+  note_import_mode_set: {
+    params: { mode: NoteImportMode }
+    result: { ok: true; mode: NoteImportMode } | { ok: false; error: string; error_params?: Record<string, string | number> }
   }
   note_scan_txt_dir: {
     params: { dir: string }

@@ -233,5 +233,8 @@
   "recovery_codes.revision_not_found": "找不到这条修改记录。",
   "recovery_codes.batch_not_found": "找不到这批修改，可能已经被清理。",
   "recovery_codes.bulk_empty": "请先选择要修改的服务。",
-  "recovery_codes.duplicates_invalid": "要合并的服务已经变了（被删除或改动过），请重新扫描一次。"
+  "recovery_codes.duplicates_invalid": "要合并的服务已经变了（被删除或改动过），请重新扫描一次。",
+  "notes.linked_too_large": "文件超过 8 MB，不能以「打开原文件」方式关联",
+  "notes.linked_file_missing": "找不到这条笔记对应的本地文件：{{path}}",
+  "notes.linked_folder_not_found": "这个关联文件夹已不存在"
 }

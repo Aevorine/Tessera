@@ -3025,6 +3025,7 @@ def rpc_note_create(params):
             content=params.get("content", ""),
             encrypt=params.get("encrypt", True),
             format=params.get("format", "plain"),
+            linked=bool(params.get("linked", False)),
         )
     except errors.VaultError as exc:
         return _error_result(exc)
@@ -3196,8 +3197,10 @@ def rpc_note_import_files(params, request_id):
     # hidden 决定笔记落在隐藏区还是普通区（两区分类目录各自独立），target_category 是所有导入
     # 笔记共同的分类前缀；两者合用才是"批量导入到隐藏分类"。前缀与文件夹派生子路径是拼接关系：
     # 根目录下 `财务/2026/x.txt` 前缀选「私密」得「私密/财务/2026」，不能把用户的层级拍平。
+    # mode="link"：不复制，笔记直接关联原文件，保存写回原处；超过关联上限的文件退回复制（计入 copied）。
     service = _require_notes_service()
     encrypt = params.get("encrypt", True)
+    link = params.get("mode") == "link"
     base_dir = params.get("base_dir")
     hidden = bool(params.get("hidden", False))
     scope = "hidden" if hidden else "normal"
@@ -3208,6 +3211,7 @@ def rpc_note_import_files(params, request_id):
     paths = params["paths"]
     imported: list = []
     failed: list = []
+    copied = 0
     for index, raw_path in enumerate(paths):
         path = Path(raw_path)
         on_progress = _throttled_progress(
@@ -3215,10 +3219,21 @@ def rpc_note_import_files(params, request_id):
         )
         folder_category = _join_category(target_category, _folder_category_for(path, base_dir))
         try:
-            note = service.create_note_from_file(
-                title=path.stem, category=folder_category, source_path=str(path), encrypt=encrypt,
-                on_progress=on_progress, hidden=hidden
-            )
+            note = None
+            if link:
+                try:
+                    note = service.link_file(
+                        str(path), title=path.stem, category=folder_category, hidden=hidden, on_progress=on_progress
+                    )
+                except errors.VaultError as exc:
+                    if exc.code != "notes.linked_too_large":
+                        raise
+                    copied += 1
+            if note is None:
+                note = service.create_note_from_file(
+                    title=path.stem, category=folder_category, source_path=str(path), encrypt=encrypt or link,
+                    on_progress=on_progress, hidden=hidden
+                )
         except errors.VaultError as exc:
             failed.append({"path": raw_path, "error": exc.code, "error_params": exc.params})
             continue
@@ -3234,7 +3249,51 @@ def rpc_note_import_files(params, request_id):
             # 建错区则隐藏区的树里是空的。
             service.create_category(folder_category, scope)
         imported.append(note)
-    return {"ok": True, "imported": imported, "failed": failed}
+    return {"ok": True, "imported": imported, "failed": failed, "copied": copied}
+
+
+def rpc_note_linked_folder_add(params, request_id):
+    """关联一个文件夹：现有笔记文件全部关联，之后放进去的新文件由 note_linked_sync 自动加入。"""
+    service = _require_notes_service()
+    try:
+        category = category_paths.validate_path(params.get("category", "") or "") if params.get("category") else ""
+        result = service.add_linked_folder(params["dir"], category=category, hidden=bool(params.get("hidden", False)))
+    except category_paths.CategoryPathError as exc:
+        return {"ok": False, "error": exc.code, "error_params": exc.params}
+    except errors.VaultError as exc:
+        return _error_result(exc)
+    return {"ok": True, **result}
+
+
+def rpc_note_linked_folder_list(params):
+    service = _require_notes_service()
+    return {"ok": True, "folders": service.list_linked_folders()}
+
+
+def rpc_note_linked_folder_remove(params):
+    service = _require_notes_service()
+    if not service.remove_linked_folder(params["id"]):
+        return {"ok": False, "error": "notes.linked_folder_not_found"}
+    return {"ok": True}
+
+
+def rpc_note_linked_sync(params, request_id):
+    service = _require_notes_service()
+    return {"ok": True, **service.sync_linked_folders(params.get("folder_id"))}
+
+
+def rpc_note_import_mode_get(params):
+    _require_imk()
+    return {"ok": True, "mode": ui_settings.load_note_import_mode(_data_dir)}
+
+
+def rpc_note_import_mode_set(params):
+    _require_imk()
+    mode = params.get("mode")
+    if mode not in ui_settings.NOTE_IMPORT_MODES:
+        return {"ok": False, "error": "settings.invalid_request"}
+    ui_settings.save_note_import_mode(_data_dir, mode)
+    return {"ok": True, "mode": mode}
 
 
 def _join_category(prefix: str, suffix: str) -> str:
@@ -5549,6 +5608,10 @@ _METHODS: Dict[str, Callable] = {
     "note_content_chunk_get": rpc_note_content_chunk_get,
     "note_content_write_chunk": rpc_note_content_write_chunk,
     "note_scan_txt_dir": rpc_note_scan_txt_dir,
+    "note_linked_folder_list": rpc_note_linked_folder_list,
+    "note_linked_folder_remove": rpc_note_linked_folder_remove,
+    "note_import_mode_get": rpc_note_import_mode_get,
+    "note_import_mode_set": rpc_note_import_mode_set,
     "note_export_files": rpc_note_export_files,
     "note_category_list": rpc_note_category_list,
     "note_category_create": rpc_note_category_create,
@@ -5683,6 +5746,8 @@ _METHODS_WITH_PROGRESS: Dict[str, Callable] = {
     "password_breach_check": rpc_password_breach_check,
     "clipboard_find_near_duplicates": rpc_clipboard_find_near_duplicates,
     "note_import_files": rpc_note_import_files,
+    "note_linked_folder_add": rpc_note_linked_folder_add,
+    "note_linked_sync": rpc_note_linked_sync,
     "ai_chat": rpc_ai_chat,
     "file_clip_paste": rpc_file_clip_paste,
     "file_clip_delete": rpc_file_clip_delete,

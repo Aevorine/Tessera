@@ -41,14 +41,18 @@ _IMAGE_LIST_COLUMNS = "id, note_id, mime_type, byte_size, created_at, storage_mo
 _IMAGE_FULL_COLUMNS = "id, note_id, mime_type, byte_size, created_at, storage_mode, image_data, image_path"
 _IMAGE_PATH_COLUMNS = "id, storage_mode, image_path, thumbnail_path"
 
+# linked_path 只对关联笔记给出（那是用户自己的文件位置）；disk_plain 的内部路径不外露。
 _LIST_COLUMNS = (
     "id, title, category, preview, content_length, content_storage_mode, format, is_pinned, is_hidden, "
-    "is_deleted, sort_order, created_at, updated_at"
+    "is_deleted, sort_order, created_at, updated_at, is_linked, "
+    "CASE WHEN is_linked = 1 THEN content_path END AS linked_path"
 )
 _FULL_COLUMNS = (
     "id, title, category, content, content_storage_mode, content_path, format, preview, content_length, "
-    "is_pinned, is_hidden, is_deleted, sort_order, created_at, updated_at"
+    "is_pinned, is_hidden, is_deleted, sort_order, created_at, updated_at, "
+    "is_linked, linked_encoding, linked_newline, linked_mtime, linked_folder_id"
 )
+_LINKED_FOLDER_COLUMNS = "id, path, category, is_hidden, created_at"
 
 # 排序模式 → ORDER BY 片段。列带 `notes.` 前缀，列表与搜索（`notes_fts JOIN notes`）共用一份。
 # 四个模式都以 is_pinned DESC 打头（置顶不是一种排序），末尾兜 notes.id DESC 作决胜键：
@@ -120,7 +124,23 @@ CREATE TABLE IF NOT EXISTS notes (
     -- 还没摆过这一条，排在已摆过的前面；set_manual_order 从 1 开始发号。
     sort_order     INTEGER NOT NULL DEFAULT 0,
     created_at     TEXT NOT NULL,
-    updated_at     TEXT NOT NULL
+    updated_at     TEXT NOT NULL,
+    -- 关联笔记：正文就是 content_path 处用户自己的文件（disk_plain），保存写回原文件。
+    -- 编码/换行沿用原文件；linked_mtime 是上次同步时的文件修改时间，用来发现外部改动。
+    is_linked        INTEGER NOT NULL DEFAULT 0,
+    linked_encoding  TEXT NOT NULL DEFAULT '',
+    linked_newline   TEXT NOT NULL DEFAULT '',
+    linked_mtime     REAL NOT NULL DEFAULT 0,
+    linked_folder_id INTEGER
+);
+
+-- 关联文件夹：之后放进去的新文件由 sync 自动建成关联笔记，分类 = category/子目录。
+CREATE TABLE IF NOT EXISTS linked_folders (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    path       TEXT NOT NULL UNIQUE,
+    category   TEXT NOT NULL DEFAULT '',
+    is_hidden  INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS settings (
@@ -252,6 +272,7 @@ CREATE INDEX IF NOT EXISTS idx_note_images_note_id ON note_images(note_id);
 -- SQLite 只有在存在这个索引时才能把前缀 LIKE 优化成索引范围扫描，否则每次按
 -- 分类筛选/删除子树/重命名子树都是全表扫。分类树越深、笔记越多，这个差距越大。
 CREATE INDEX IF NOT EXISTS idx_notes_category ON notes(category);
+CREATE INDEX IF NOT EXISTS idx_notes_is_linked ON notes(is_linked);
 
 -- 触发器必须排在 notes 表之后：executescript 是顺序执行的，表还没建就
 -- CREATE TRIGGER 会直接报 no such table。
@@ -359,6 +380,23 @@ def _migrate_notes_sort_order_column(conn: sqlite3.Connection) -> None:
     conn.commit()
 
 
+def _migrate_notes_linked_columns(conn: sqlite3.Connection) -> None:
+    """Adds the linked-file columns to an old notes table; no-op for new or migrated DBs."""
+    cols = {row[1] for row in conn.execute("PRAGMA table_info(notes)").fetchall()}
+    if not cols or "is_linked" in cols:
+        return
+    conn.executescript(
+        """
+        ALTER TABLE notes ADD COLUMN is_linked INTEGER NOT NULL DEFAULT 0;
+        ALTER TABLE notes ADD COLUMN linked_encoding TEXT NOT NULL DEFAULT '';
+        ALTER TABLE notes ADD COLUMN linked_newline TEXT NOT NULL DEFAULT '';
+        ALTER TABLE notes ADD COLUMN linked_mtime REAL NOT NULL DEFAULT 0;
+        ALTER TABLE notes ADD COLUMN linked_folder_id INTEGER;
+        """
+    )
+    conn.commit()
+
+
 def connect(db_path: Path, key: bytes) -> sqlite3.Connection:
     db_path.parent.mkdir(parents=True, exist_ok=True)
     conn = sqlcipher.connect(str(db_path), check_same_thread=False)
@@ -370,6 +408,7 @@ def connect(db_path: Path, key: bytes) -> sqlite3.Connection:
     _migrate_notes_format_column(conn)
     _migrate_categories_keywords_column(conn)
     _migrate_notes_sort_order_column(conn)
+    _migrate_notes_linked_columns(conn)
     conn.executescript(_SCHEMA)
     _backfill_note_versions(conn)
     conn.execute(
@@ -445,6 +484,7 @@ def insert_note(
     is_hidden: bool = False,
     created_at: Optional[str] = None,
     updated_at: Optional[str] = None,
+    linked: Optional[dict] = None,
 ) -> int:
     """`content` is always the real text; preview/content_length derive from it either way.
 
@@ -457,12 +497,14 @@ def insert_note(
     preview = content_preview if content_preview is not None else _preview_of(content)
     now = time.strftime("%Y-%m-%dT%H:%M:%S")
     persisted_content = content if content_storage_mode == "encrypted_db" else ""
+    linked = linked or {}
     cur = conn.execute(
         """
         INSERT INTO notes
             (title, category, content, content_storage_mode, content_path, format,
-             preview, content_length, is_pinned, is_hidden, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             preview, content_length, is_pinned, is_hidden, created_at, updated_at,
+             is_linked, linked_encoding, linked_newline, linked_mtime, linked_folder_id)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             title,
@@ -477,6 +519,11 @@ def insert_note(
             1 if is_hidden else 0,
             created_at or now,
             updated_at or now,
+            1 if linked else 0,
+            linked.get("encoding", ""),
+            linked.get("newline", ""),
+            linked.get("mtime", 0.0),
+            linked.get("folder_id"),
         ),
     )
     conn.commit()
@@ -810,10 +857,113 @@ def _content_paths_for_notes(conn: sqlite3.Connection, note_ids: list[int]) -> l
     placeholders = ",".join("?" for _ in note_ids)
     cur = conn.execute(
         f"SELECT content_path FROM notes WHERE id IN ({placeholders}) "
-        f"AND content_storage_mode = 'disk_plain' AND content_path IS NOT NULL",
+        f"AND content_storage_mode = 'disk_plain' AND content_path IS NOT NULL AND is_linked = 0",
         note_ids,
     )
     return [row[0] for row in cur.fetchall()]
+
+
+def linked_files_for_notes(conn: sqlite3.Connection, note_ids: list[int]) -> list[dict]:
+    """关联笔记的原文件（含所属关联文件夹）。硬删时由 service 决定送回收站还是只解除关联。"""
+    if not note_ids:
+        return []
+    placeholders = ",".join("?" for _ in note_ids)
+    cur = conn.execute(
+        f"SELECT id, content_path, linked_folder_id FROM notes WHERE id IN ({placeholders}) AND is_linked = 1",
+        note_ids,
+    )
+    return [{"id": row[0], "path": row[1], "folder_id": row[2]} for row in cur.fetchall()]
+
+
+def expired_linked_files(conn: sqlite3.Connection, days: int = 7) -> list[dict]:
+    """purge_expired_deleted 即将清掉的关联笔记的原文件（同一截止时间）。"""
+    ids = [row[0] for row in conn.execute(
+        "SELECT id FROM notes WHERE is_deleted = 1 AND is_linked = 1 AND updated_at < ?", (_purge_cutoff(days),)
+    ).fetchall()]
+    return linked_files_for_notes(conn, ids)
+
+
+def linked_note_index(conn: sqlite3.Connection) -> list[dict]:
+    """全部关联笔记（含回收站里的）的路径与同步状态，供文件夹同步比对。"""
+    cur = conn.execute(
+        "SELECT id, content_path, is_deleted, linked_mtime, content_length, linked_folder_id "
+        "FROM notes WHERE is_linked = 1"
+    )
+    return [
+        {"id": r[0], "path": r[1], "is_deleted": bool(r[2]), "mtime": r[3], "size": r[4], "folder_id": r[5]}
+        for r in cur.fetchall()
+    ]
+
+
+def update_linked_state(
+    conn: sqlite3.Connection,
+    note_id: int,
+    *,
+    content_path: Optional[str] = None,
+    encoding: Optional[str] = None,
+    mtime: Optional[float] = None,
+    folder_id: Optional[int] = -1,
+) -> None:
+    """改关联笔记的文件位置/编码/同步时间；folder_id=-1 表示不动，None 表示脱离文件夹。"""
+    sets: list[str] = []
+    values: list = []
+    if content_path is not None:
+        sets.append("content_path = ?")
+        values.append(content_path)
+    if encoding is not None:
+        sets.append("linked_encoding = ?")
+        values.append(encoding)
+    if mtime is not None:
+        sets.append("linked_mtime = ?")
+        values.append(mtime)
+    if folder_id != -1:
+        sets.append("linked_folder_id = ?")
+        values.append(folder_id)
+    if not sets:
+        return
+    values.append(note_id)
+    conn.execute(f"UPDATE notes SET {', '.join(sets)} WHERE id = ? AND is_linked = 1", values)
+    conn.commit()
+
+
+def list_linked_folders(conn: sqlite3.Connection) -> list[dict]:
+    cur = conn.execute(f"SELECT {_LINKED_FOLDER_COLUMNS} FROM linked_folders ORDER BY id")
+    rows = [_row_to_dict(cur, row) for row in cur.fetchall()]
+    counts = dict(conn.execute(
+        "SELECT linked_folder_id, COUNT(*) FROM notes "
+        "WHERE is_linked = 1 AND is_deleted = 0 AND linked_folder_id IS NOT NULL GROUP BY linked_folder_id"
+    ).fetchall())
+    for row in rows:
+        row["is_hidden"] = bool(row["is_hidden"])
+        row["note_count"] = counts.get(row["id"], 0)
+    return rows
+
+
+def fetch_linked_folder(conn: sqlite3.Connection, folder_id: int) -> Optional[dict]:
+    cur = conn.execute(f"SELECT {_LINKED_FOLDER_COLUMNS} FROM linked_folders WHERE id = ?", (folder_id,))
+    row = cur.fetchone()
+    if row is None:
+        return None
+    folder = _row_to_dict(cur, row)
+    folder["is_hidden"] = bool(folder["is_hidden"])
+    return folder
+
+
+def insert_linked_folder(conn: sqlite3.Connection, *, path: str, category: str, is_hidden: bool) -> int:
+    cur = conn.execute(
+        "INSERT INTO linked_folders (path, category, is_hidden, created_at) VALUES (?, ?, ?, ?)",
+        (path, category, 1 if is_hidden else 0, time.strftime("%Y-%m-%dT%H:%M:%S")),
+    )
+    conn.commit()
+    return cur.lastrowid
+
+
+def delete_linked_folder(conn: sqlite3.Connection, folder_id: int) -> bool:
+    """只停止同步；已有笔记保留，仍关联各自的文件。"""
+    conn.execute("UPDATE notes SET linked_folder_id = NULL WHERE linked_folder_id = ?", (folder_id,))
+    cur = conn.execute("DELETE FROM linked_folders WHERE id = ?", (folder_id,))
+    conn.commit()
+    return cur.rowcount > 0
 
 
 def hard_delete(conn: sqlite3.Connection, note_id: int) -> tuple[bool, list[dict], list[str]]:
@@ -847,8 +997,12 @@ def hard_delete_bulk(conn: sqlite3.Connection, note_ids: list[int]) -> tuple[int
     return cur.rowcount, removed_images, removed_content_paths
 
 
+def _purge_cutoff(days: int) -> str:
+    return time.strftime("%Y-%m-%dT%H:%M:%S", time.gmtime(time.time() - days * 86400))
+
+
 def purge_expired_deleted(conn: sqlite3.Connection, days: int = 7) -> tuple[int, list[dict], list[str]]:
-    cutoff = time.strftime("%Y-%m-%dT%H:%M:%S", time.gmtime(time.time() - days * 86400))
+    cutoff = _purge_cutoff(days)
     expired_ids = [
         row[0]
         for row in conn.execute(
@@ -1341,7 +1495,8 @@ def _sanitize_fts_query(raw: str) -> str:
 
 _SEARCH_COLUMNS = (
     "notes.id, notes.title, notes.category, notes.preview, notes.content_length, notes.content_storage_mode, "
-    "notes.format, notes.is_pinned, notes.is_hidden, notes.is_deleted, notes.created_at, notes.updated_at"
+    "notes.format, notes.is_pinned, notes.is_hidden, notes.is_deleted, notes.created_at, notes.updated_at, "
+    "notes.is_linked, CASE WHEN notes.is_linked = 1 THEN notes.content_path END AS linked_path"
 )
 
 # 不用空格分词的文字。命中这些字符时，光靠 FTS5 的 MATCH 是搜不全的——见

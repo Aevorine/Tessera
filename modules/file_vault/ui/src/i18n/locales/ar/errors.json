@@ -233,5 +233,8 @@
   "recovery_codes.revision_not_found": "لم تعد هذه النسخة موجودة.",
   "recovery_codes.batch_not_found": "تعذّر العثور على دفعة التغييرات هذه.",
   "recovery_codes.bulk_empty": "اختر الخدمات المراد تعديلها أولًا.",
-  "recovery_codes.duplicates_invalid": "تغيّرت الخدمات المراد دمجها (حُذفت أو عُدّلت). أعد الفحص."
+  "recovery_codes.duplicates_invalid": "تغيّرت الخدمات المراد دمجها (حُذفت أو عُدّلت). أعد الفحص.",
+  "notes.linked_too_large": "لا يمكن ربط الملفات الأكبر من 8 ميغابايت",
+  "notes.linked_file_missing": "ملف هذه الملاحظة المحلي مفقود: {{path}}",
+  "notes.linked_folder_not_found": "لم يعد هذا المجلد المرتبط موجودًا"
 }

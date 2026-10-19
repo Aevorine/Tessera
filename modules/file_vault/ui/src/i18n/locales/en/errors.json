@@ -233,5 +233,8 @@
   "recovery_codes.revision_not_found": "This revision no longer exists.",
   "recovery_codes.batch_not_found": "This batch of changes can no longer be found.",
   "recovery_codes.bulk_empty": "Select the services to change first.",
-  "recovery_codes.duplicates_invalid": "The services to merge have changed (deleted or edited). Scan again."
+  "recovery_codes.duplicates_invalid": "The services to merge have changed (deleted or edited). Scan again.",
+  "notes.linked_too_large": "Files over 8 MB can't be linked as the original file",
+  "notes.linked_file_missing": "The local file for this note is missing: {{path}}",
+  "notes.linked_folder_not_found": "This linked folder no longer exists"
 }

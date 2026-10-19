@@ -233,5 +233,8 @@
   "recovery_codes.revision_not_found": "Cette révision n'existe plus.",
   "recovery_codes.batch_not_found": "Ce lot de modifications est introuvable.",
   "recovery_codes.bulk_empty": "Sélectionnez d'abord les services à modifier.",
-  "recovery_codes.duplicates_invalid": "Les services à fusionner ont changé (supprimés ou modifiés). Relancez l'analyse."
+  "recovery_codes.duplicates_invalid": "Les services à fusionner ont changé (supprimés ou modifiés). Relancez l'analyse.",
+  "notes.linked_too_large": "Les fichiers de plus de 8 Mo ne peuvent pas être liés",
+  "notes.linked_file_missing": "Le fichier local de cette note est introuvable : {{path}}",
+  "notes.linked_folder_not_found": "Ce dossier lié n'existe plus"
 }
