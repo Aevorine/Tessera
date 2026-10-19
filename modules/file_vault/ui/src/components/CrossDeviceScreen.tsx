@@ -25,6 +25,7 @@ import {
   Hash,
   Keyboard,
   Laptop,
+  LayoutGrid,
   Link2,
   Loader2,
   Monitor,
@@ -73,6 +74,8 @@ import { ClipTimelinePanel } from '@/components/crossdevice/ClipTimelinePanel'
 import { LatencySparkline } from '@/components/crossdevice/LatencySparkline'
 import { FeatureGrid, type FeatureTileSpec } from '@/components/feature/FeatureGrid'
 import { FeaturePanel } from '@/components/feature/FeaturePanel'
+import { HubSearchResults, type HubSearchHandle } from '@/components/crossdevice/HubSearchResults'
+import { hubSearcher, type HubEntry, type HubGroup } from '@/lib/search/fields/hub'
 import { ClipSendDialog } from '@/components/crossdevice/ClipSendDialog'
 import { DevicePolicyPanel, type ClipPolicy, type FilePolicy } from '@/components/crossdevice/DevicePolicyPanel'
 import { latencyStats, type LatencyPoint } from '@/lib/latencyStats'
@@ -928,6 +931,53 @@ export function CrossDeviceScreen() {
   const [transferQuery, setTransferQuery] = useState('')
   const deviceSearch = useSmartSearch(devices, deviceSearcher, deviceQuery)
   const transferSearch = useSmartSearch(transfers, transferSearcher, transferQuery)
+
+  // 主页一处搜全部：设备、传输、同步记录（功能格在下面渲染时并入）。
+  const [hubQuery, setHubQuery] = useState('')
+  const hubBoxRef = useRef<HTMLInputElement>(null)
+  const hubResultsRef = useRef<HubSearchHandle>(null)
+  const hubEntries = useMemo<HubEntry[]>(() => {
+    const out: HubEntry[] = []
+    for (const d of devices) {
+      const on = ONLINE_STATES.has(d.state)
+      out.push({
+        key: `dev:${d.device_id}`,
+        group: 'devices',
+        title: d.name,
+        sub: [t(`state.${d.state}`), d.rtt_ms !== undefined ? `${d.rtt_ms} ms` : ''].filter(Boolean).join(' · '),
+        extra: `${d.state} ${d.type} ${tCommon(`searchType_${d.type}`)} ${tCommon(on ? 'search_online' : 'search_offline')} ${d.route ?? ''}`,
+        tone: on ? 'ok' : undefined,
+        icon: DEVICE_ICON[d.type] ?? Laptop,
+      })
+    }
+    for (const r of transfers) {
+      out.push({
+        key: `xfer:${r.key}`,
+        group: 'transfers',
+        title: r.name,
+        sub: r.direction === 'send' ? t('dirTo', { name: r.deviceName }) : t('dirFrom', { name: r.deviceName }),
+        extra: `${r.kind} ${r.itemKind} ${r.error ?? ''}`,
+        at: r.at,
+        tone: r.kind === 'error' ? 'error' : undefined,
+        icon: ITEM_ICON[r.itemKind] ?? FileIcon,
+      })
+    }
+    clipSyncLog.forEach((e, i) => {
+      const kind = t(CLIP_MIME_KIND[e.mime] ?? 'clipKind.generic')
+      out.push({
+        key: `sync:${i}`,
+        group: 'synclog',
+        title: e.ok ? t('clipSyncFrom', { device: e.device_name, kind }) : t('clipSyncFailedFrom', { device: e.device_name, kind }),
+        sub: e.error,
+        extra: e.mime,
+        at: e.at,
+        tone: e.ok ? 'ok' : 'error',
+        icon: e.ok ? CheckCircle2 : Ban,
+      })
+    })
+    return out
+  }, [devices, transfers, clipSyncLog, t, tCommon])
+  const hubSearch = useSmartSearch(hubEntries, hubSearcher, hubQuery)
   const deviceTypes = useMemo(() => [...new Set(devices.map((d) => d.type))].sort(), [devices])
   const visibleDevices = useMemo(() => {
     const rows = deviceSearch.items.filter((d) =>
@@ -1611,6 +1661,43 @@ export function CrossDeviceScreen() {
     },
   ]
   const panelTile = tiles.find((x) => x.id === panel) ?? null
+
+  const tileHits = hubSearch.active
+    ? hubSearcher.search(tiles.map((x) => ({ key: `tile:${x.id}`, group: 'features', title: x.title, sub: x.badge, icon: x.icon })), hubQuery)
+    : null
+  const hubResult = tileHits
+    ? {
+        ...hubSearch,
+        items: [...hubSearch.items, ...tileHits.items],
+        approximate: hubSearch.approximate && tileHits.approximate,
+        ranges: (e: HubEntry, f: string) => hubSearch.ranges(e, f) ?? tileHits.ranges(e, f),
+      }
+    : hubSearch
+  const hubGroups: HubGroup[] = [
+    { id: 'devices', label: t('tileDevices'), icon: MonitorSmartphone },
+    { id: 'transfers', label: t('tileActivity'), icon: Activity },
+    { id: 'synclog', label: t('tileSyncLog'), icon: GitFork },
+    { id: 'features', label: tCommon('searchGroupFeatures'), icon: LayoutGrid },
+  ]
+
+  function openHubEntry(e: HubEntry, el: HTMLElement) {
+    const at = e.key.indexOf(':')
+    const kind = e.key.slice(0, at)
+    const id = e.key.slice(at + 1)
+    if (kind === 'tile') return openPanel(id, el)
+    if (kind === 'dev') {
+      setDeviceQuery('')
+      setDeviceState('all')
+      setDeviceType('all')
+      setDetailDeviceId(id)
+      return openPanel('devices', el)
+    }
+    if (kind === 'xfer') {
+      setTransferQuery(`"${e.title}"`)
+      return openPanel('activity', el)
+    }
+    openPanel('synclog', el)
+  }
 
   function openPanel(id: string, el: HTMLElement) {
     const root = rootRef.current
@@ -2623,6 +2710,18 @@ export function CrossDeviceScreen() {
           </div>
 
           <div className="relative flex flex-wrap items-center gap-2 border-t border-border/60 bg-surface/50 px-5 py-2.5">
+            <SmartSearchBox
+              ref={hubBoxRef}
+              scope="crossdevice-hub"
+              value={hubQuery}
+              onChange={setHubQuery}
+              placeholder={tCommon('searchHub')}
+              count={hubResult.items.length}
+              approximate={hubResult.approximate}
+              onArrowDown={() => hubResultsRef.current?.focusFirst()}
+              onSubmit={() => hubResultsRef.current?.openFirst()}
+              className="order-last ml-auto sm:w-80 xl:w-[28rem]"
+            />
             <span className="text-sm text-muted-foreground">{t('sendTo')}</span>
             <div className="inline-flex rounded-lg border bg-muted/40 p-0.5">
               {(['one', 'many'] as const).map((m) => (
@@ -2678,7 +2777,17 @@ export function CrossDeviceScreen() {
           )}
         </section>
 
-        <FeatureGrid tiles={tiles} onOpen={openPanel} className="min-h-[220px] flex-1" />
+        {hubResult.active ? (
+          <HubSearchResults
+            ref={hubResultsRef}
+            result={hubResult}
+            groups={hubGroups}
+            onOpen={openHubEntry}
+            onExitTop={() => hubBoxRef.current?.focus()}
+          />
+        ) : (
+          <FeatureGrid tiles={tiles} onOpen={openPanel} className="min-h-[220px] flex-1" />
+        )}
       </div>
 
       {panel && current && (

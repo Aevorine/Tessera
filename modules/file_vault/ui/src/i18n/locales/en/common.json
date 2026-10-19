@@ -132,5 +132,9 @@
   "searchOrder_recent": "Newest first",
   "searchOrder_oldest": "Oldest first",
   "searchOrder_frequent": "Most used",
-  "searchMostRemaining": "Most remaining"
+  "searchMostRemaining": "Most remaining",
+  "searchHotkey": "Search: Ctrl+F or /, ↑↓ to move, Enter to open",
+  "searchNoResults": "No matches",
+  "searchHub": "Search devices, files, sync history, functions",
+  "searchGroupFeatures": "Functions"
 }

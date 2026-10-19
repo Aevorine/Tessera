@@ -80,7 +80,8 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import { cn } from '@/lib/utils'
 import { vaultApi } from '@/lib/vaultApi'
 import { electronApi } from '@/lib/electronApi'
-import { useSmartSearch } from '@/lib/search'
+import { useResultCursor, useSmartSearch } from '@/lib/search'
+import { fullTime, shortTime } from '@/lib/timeLabel'
 import { clipboardSearcher } from '@/lib/search/fields/clipboard'
 import { SmartSearchBox } from '@/components/search/SmartSearchBox'
 import { LABEL_REGIONS } from '@/lib/labelMode'
@@ -939,6 +940,22 @@ export function ClipboardScreen({
     getItemKey: useCallback((index: number) => filtered[index]?.id ?? index, [filtered]),
   })
 
+  const rowIds = useMemo(() => filtered.map((e) => e.id), [filtered])
+  const pickRow = useCallback(
+    (id: number, index: number) => {
+      setDetailId(id)
+      if (!dragSortEnabled) rowVirtualizer.scrollToIndex(index, { align: 'auto' })
+    },
+    [rowVirtualizer, dragSortEnabled],
+  )
+  const cursor = useResultCursor(rowIds, detailId, pickRow)
+  // 历史视图里 Enter 直接复制当前（或第一条）结果。
+  const submitSearch = () => {
+    if (viewMode !== 'active') return cursor.onSubmit()
+    const entry = filtered.find((e) => e.id === detailId) ?? filtered[0]
+    if (entry) activateHistoryEntry(entry)
+  }
+
   // ---- 一行顶栏 ----
   // 分类等功能做成顶栏上的菜单，当前状态直接写在触发器上（「分类 · 链接 › github.com」「选择 · 已选
   // 3」），不展开就知道筛选与选择状态。
@@ -1355,7 +1372,8 @@ export function ClipboardScreen({
         trailing={
           <>
             <SmartSearchBox scope="history" value={search} onChange={setSearch} placeholder={t('searchPlaceholder')} count={filtered.length} approximate={searchState.approximate}
-              fields={clipboardSearcher.fields.map((f) => ({ key: f.key, token: f.key, label: tCommon(`searchField_${f.key}`) }))} />
+              fields={clipboardSearcher.fields.map((f) => ({ key: f.key, token: f.key, label: tCommon(`searchField_${f.key}`) }))}
+              onArrowDown={cursor.onArrowDown} onArrowUp={cursor.onArrowUp} onSubmit={submitSearch} />
             {viewMode === 'snippets' && (
               <Button size="sm" onClick={openNewSnippetDialog}>
                 <Plus className="size-4" aria-hidden="true" />
@@ -1947,7 +1965,7 @@ function ClipboardDetailPane({
       <WorkbenchDetailBody>
         <dl className="grid grid-cols-[auto_1fr] gap-x-6 gap-y-2 text-sm">
           <dt className="text-muted-foreground">{t('detailTimeLabel')}</dt>
-          <dd className={cn('min-w-0 break-words', NUMERIC_CLASS)}>{entry.created_at}</dd>
+          <dd className={cn('min-w-0 break-words', NUMERIC_CLASS)}>{fullTime(entry.created_at)}</dd>
           {entry.content_text != null && (
             <>
               <dt className="text-muted-foreground">{t('detailLengthLabel')}</dt>
@@ -2147,7 +2165,7 @@ function ClipboardRow({
           {t('typeLabel', { type: t(`type.${entry.content_type}`) })}
           {entry.source_app ? ` · ${entry.source_app}` : ''}
           {' · '}
-          {entry.created_at}
+          <span title={fullTime(entry.created_at)}>{shortTime(entry.created_at)}</span>
           {entry.is_truncated ? ` · ${t('truncatedBadge')}` : ''}
         </p>
       </div>

@@ -132,5 +132,9 @@
   "searchOrder_recent": "الأحدث أولاً",
   "searchOrder_oldest": "الأقدم أولاً",
   "searchOrder_frequent": "الأكثر استخدامًا",
-  "searchMostRemaining": "الأكثر بقاءً"
+  "searchMostRemaining": "الأكثر بقاءً",
+  "searchHotkey": "بحث: Ctrl+F أو /، ↑↓ للتنقل، Enter للفتح",
+  "searchNoResults": "لا توجد نتائج",
+  "searchHub": "ابحث في الأجهزة والملفات وسجل المزامنة والوظائف",
+  "searchGroupFeatures": "الوظائف"
 }

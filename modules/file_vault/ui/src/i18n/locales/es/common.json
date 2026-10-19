@@ -132,5 +132,9 @@
   "searchOrder_recent": "Más recientes",
   "searchOrder_oldest": "Más antiguos",
   "searchOrder_frequent": "Más usados",
-  "searchMostRemaining": "Mayor cantidad restante"
+  "searchMostRemaining": "Mayor cantidad restante",
+  "searchHotkey": "Buscar: Ctrl+F o /, ↑↓ para moverse, Enter para abrir",
+  "searchNoResults": "Sin coincidencias",
+  "searchHub": "Buscar dispositivos, archivos, sincronización, funciones",
+  "searchGroupFeatures": "Funciones"
 }

@@ -55,7 +55,7 @@ import { vaultApi } from '@/lib/vaultApi'
 import { electronApi } from '@/lib/electronApi'
 import { translateError } from '@/i18n/errors'
 import { useVirtualizer } from '@tanstack/react-virtual'
-import { useSmartSearch } from '@/lib/search'
+import { useResultCursor, useSmartSearch } from '@/lib/search'
 import { passwordSearcher } from '@/lib/search/fields/passwords'
 import { SmartSearchBox } from '@/components/search/SmartSearchBox'
 import { StatTile } from '@/components/StatTile'
@@ -340,6 +340,16 @@ export function PasswordScreen({ isProfessional = false }: { isProfessional?: bo
         ? (el) => el.getBoundingClientRect().height
         : undefined,
   })
+
+  const rowIds = useMemo(() => flatRows.map((r) => r.entry.id), [flatRows])
+  const pickRow = useCallback(
+    (id: string, index: number) => {
+      setDetailId(id)
+      rowVirtualizer.scrollToIndex(index, { align: 'auto' })
+    },
+    [rowVirtualizer],
+  )
+  const cursor = useResultCursor(rowIds, detailId, pickRow)
 
   function toggleGroupExpanded(key: string) {
     setExpandedGroups((prev) => {
@@ -691,6 +701,7 @@ export function PasswordScreen({ isProfessional = false }: { isProfessional?: bo
               id="pw-search" scope="passwords" value={search} onChange={setSearch}
               placeholder={t('searchPlaceholder')} count={filtered.length} approximate={searchState.approximate}
               fields={passwordSearcher.fields.map((f) => ({ key: f.key, token: f.key, label: tCommon(`searchField_${f.key}`) }))}
+              className="sm:w-full" {...cursor}
             />
             <div className="flex gap-2">
               <Select value={sortMode} onValueChange={(v) => handleSortModeChange(v as PasswordSortMode)}>

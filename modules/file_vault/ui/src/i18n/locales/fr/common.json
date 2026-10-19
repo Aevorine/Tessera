@@ -132,5 +132,9 @@
   "searchOrder_recent": "Plus récents",
   "searchOrder_oldest": "Plus anciens",
   "searchOrder_frequent": "Plus utilisés",
-  "searchMostRemaining": "Stock décroissant"
+  "searchMostRemaining": "Stock décroissant",
+  "searchHotkey": "Rechercher : Ctrl+F ou /, ↑↓ pour naviguer, Entrée pour ouvrir",
+  "searchNoResults": "Aucun résultat",
+  "searchHub": "Rechercher appareils, fichiers, synchronisation, fonctions",
+  "searchGroupFeatures": "Fonctions"
 }

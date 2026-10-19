@@ -1,4 +1,4 @@
-import { useMemo, useState, type ReactNode } from 'react'
+import { useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { LucideIcon } from 'lucide-react'
 import { Check, ChevronDown, Search, X } from 'lucide-react'
@@ -275,12 +275,34 @@ export function TopBar({
 }) {
   const { t } = useTranslation('common')
   const shownMenus = visible(menus)
+  // 放不下时逐级收：0 全显示 → 1 去掉当前值 → 2 只留图标（悬停显示名称与当前值）。
+  const barRef = useRef<HTMLDivElement>(null)
+  const [level, setLevel] = useState(0)
+  const lastWidth = useRef(0)
+  const signature = shownMenus.map((m) => `${m.id}:${m.value ?? ''}`).join('|')
+  useLayoutEffect(() => setLevel(0), [signature])
+  useLayoutEffect(() => {
+    const el = barRef.current
+    if (el && level < 2 && el.scrollWidth > el.clientWidth + 1) setLevel(level + 1)
+  }, [level, signature])
+  useLayoutEffect(() => {
+    const el = barRef.current
+    if (!el) return
+    const ro = new ResizeObserver(() => {
+      const w = el.clientWidth
+      if (w > lastWidth.current + 1) setLevel(0)
+      lastWidth.current = w
+    })
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [])
   return (
     // 一行，绝不折行：折成两行就又回到「功能铺满好几行」的老样子了。
     // 放不下时菜单区自己横向滚动，两端的统计和搜索框保持可见。
     <div className={cn('@container flex w-full min-w-0 flex-nowrap items-center gap-2', className)}>
       {leading && <div className="flex shrink-0 items-center gap-1.5">{leading}</div>}
       <Menubar
+        ref={barRef}
         aria-label={ariaLabel ?? t('topbarMenuLabel')}
         className="scrollbar-none min-w-0 flex-1 overflow-x-auto rounded-lg border border-border/70 bg-surface/70 p-0.5"
       >
@@ -291,11 +313,12 @@ export function TopBar({
               <MenubarMenu>
                 <MenubarTrigger
                   disabled={menu.disabled}
+                  aria-label={level === 2 ? (menu.value ? `${menu.label} · ${menu.value}` : menu.label) : undefined}
                   className={cn(menu.active && 'bg-accent-soft text-primary hover:bg-accent-soft hover:text-primary')}
                 >
                   <Icon aria-hidden="true" />
-                  <span>{menu.label}</span>
-                  {menu.value && (
+                  {level < 2 && <span>{menu.label}</span>}
+                  {menu.value && level === 0 && (
                     <span
                       className={cn(
                         // 窄窗口先让「当前值」让位，菜单名本身保留。
