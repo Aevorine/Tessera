@@ -346,5 +346,19 @@
   "imageViewModeFullscreen": "Plein écran",
   "imageViewModeWindow": "Fenêtre flottante",
   "aiModelReleasedLabel": "Publié le {{date}}",
-  "aiModelDeprecatedWarning": "Retiré par DeepSeek le {{date}} - choisissez plutôt un modèle actuel."
+  "aiModelDeprecatedWarning": "Retiré par DeepSeek le {{date}} - choisissez plutôt un modèle actuel.",
+  "panelBack": "Retour",
+  "tileLockedModules": "{{count}} modules verrouillés",
+  "tileAutoLockMinutes": "Verrouillage après {{minutes}} min d'inactivité",
+  "tileAutoLockOff": "Verrouillage d'inactivité désactivé",
+  "tileVersion": "Version {{version}}",
+  "tileAboutBadge": "Mises à jour · diagnostic · licences",
+  "tileAutoStartOn": "Démarre avec Windows",
+  "tileAutoStartOff": "Ne démarre pas avec Windows",
+  "tileIntegrationBadge": "Démarrage · raccourcis fichiers · types de fichiers",
+  "tileShortcutsBadge": "Raccourcis globaux et de l'application",
+  "tileNoteTextEncrypted": "Texte des notes dans la base chiffrée",
+  "tileNoteTextPlain": "Texte des notes en fichiers clairs",
+  "tileContentBadge": "IA · presse-papiers · notes",
+  "tileOtherBadge": "Diagnostic · réinitialiser les préférences"
 }

@@ -540,4 +540,23 @@
     <string name="no_app_to_open">没有可以打开此文件的应用</string>
     <string name="open_file">打开文件</string>
     <string name="close">关闭</string>
+
+    <!-- 首页搜索 -->
+    <string name="search_hint">搜索设备、文件、剪贴板</string>
+    <string name="search_action">搜索</string>
+    <string name="search_clear">清除</string>
+    <string name="search_no_match">没有匹配项</string>
+    <string name="search_hits">%1$d 项匹配</string>
+    <string name="search_section_count">%1$s · %2$d</string>
+    <string name="search_section_files">收到的文件</string>
+    <string name="search_field_device">设备</string>
+    <string name="search_field_file">文件</string>
+    <string name="search_field_clip">剪贴板</string>
+    <string name="search_field_ip">地址</string>
+    <string name="search_field_status">状态</string>
+    <string name="search_type_phone">手机</string>
+    <string name="search_type_tablet">平板</string>
+    <string name="search_type_pc">电脑</string>
+    <string name="search_dir_send">发送</string>
+    <string name="search_dir_recv">接收</string>
 </resources>

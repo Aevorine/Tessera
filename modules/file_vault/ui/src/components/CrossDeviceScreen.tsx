@@ -1,3 +1,7 @@
+import { useSmartSearch } from '@/lib/search'
+import { createDeviceSearcher, createTransferSearcher } from '@/lib/search/fields/devices'
+import { SmartSearchBox } from '@/components/search/SmartSearchBox'
+import { Highlight } from '@/components/search/Highlight'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
@@ -67,8 +71,8 @@ import { buildPairLink, parsePairInput } from '@/lib/pairLink'
 import { copyText } from '@/lib/clipboard'
 import { ClipTimelinePanel } from '@/components/crossdevice/ClipTimelinePanel'
 import { LatencySparkline } from '@/components/crossdevice/LatencySparkline'
-import { FeatureGrid, type FeatureTileSpec } from '@/components/crossdevice/FeatureGrid'
-import { FeaturePanel } from '@/components/crossdevice/FeaturePanel'
+import { FeatureGrid, type FeatureTileSpec } from '@/components/feature/FeatureGrid'
+import { FeaturePanel } from '@/components/feature/FeaturePanel'
 import { ClipSendDialog } from '@/components/crossdevice/ClipSendDialog'
 import { DevicePolicyPanel, type ClipPolicy, type FilePolicy } from '@/components/crossdevice/DevicePolicyPanel'
 import { latencyStats, type LatencyPoint } from '@/lib/latencyStats'
@@ -267,6 +271,9 @@ interface TransferRow {
   /** 直连还是中继。必须在传输完成那一刻定格，事后查到的是当前链路而非那次传输的。 */
   relayed?: boolean
 }
+
+const deviceSearcher = createDeviceSearcher<Device>()
+const transferSearcher = createTransferSearcher<TransferRow>()
 
 // 走 @/lib/crossDeviceApi 而非直接用 window.crossDeviceAPI：它会剥掉 Electron 给 IPC 错误套的英文
 // 壳，让 toast.error(err.message) 显示守护进程的中文提示。见 lib/ipcError.ts。
@@ -914,21 +921,38 @@ export function CrossDeviceScreen() {
   // `?? []` 每次渲染都会造一个新数组，直接喂给下面的 useMemo 会让它每次都重算。
   // 设备列表变动很频繁（每条状态事件都会刷），所以这里也一并记忆化。
   const devices = useMemo(() => status?.devices ?? [], [status])
+  const [deviceQuery, setDeviceQuery] = useState('')
+  const [deviceState, setDeviceState] = useState('all')
+  const [deviceType, setDeviceType] = useState('all')
+  const [deviceSort, setDeviceSort] = useState('name')
+  const [transferQuery, setTransferQuery] = useState('')
+  const deviceSearch = useSmartSearch(devices, deviceSearcher, deviceQuery)
+  const transferSearch = useSmartSearch(transfers, transferSearcher, transferQuery)
+  const deviceTypes = useMemo(() => [...new Set(devices.map((d) => d.type))].sort(), [devices])
+  const visibleDevices = useMemo(() => {
+    const rows = deviceSearch.items.filter((d) =>
+      (deviceState === 'all' || (deviceState === 'online' ? ONLINE_STATES.has(d.state) : !ONLINE_STATES.has(d.state))) &&
+      (deviceType === 'all' || d.type === deviceType))
+    if (deviceSearch.active) return rows
+    return rows.sort((a, b) => deviceSort === 'latency'
+      ? (a.rtt_ms ?? Infinity) - (b.rtt_ms ?? Infinity) || a.name.localeCompare(b.name)
+      : deviceSort === 'recent' ? b.paired_at - a.paired_at : a.name.localeCompare(b.name))
+  }, [deviceSearch.items, deviceSearch.active, deviceState, deviceType, deviceSort])
   const online = useMemo(() => devices.filter((d) => ONLINE_STATES.has(d.state)), [devices])
-  const detailDevice = devices.find((d) => d.device_id === detailDeviceId) ?? null
+  const detailDevice = visibleDevices.find((d) => d.device_id === detailDeviceId) ?? null
 
   /**
    * 默认选中第一台设备，避免右栏空白（与其它四个界面一致）。判据是"当前选中的还在不在列表里"，设备被
    * 撤销或掉线后也要自动落到第一台。
    */
   useEffect(() => {
-    if (devices.length === 0) {
+    if (visibleDevices.length === 0) {
       if (detailDeviceId !== null) setDetailDeviceId(null)
       return
     }
-    if (detailDeviceId !== null && devices.some((d) => d.device_id === detailDeviceId)) return
-    setDetailDeviceId(devices[0].device_id)
-  }, [devices, detailDeviceId])
+    if (detailDeviceId !== null && visibleDevices.some((d) => d.device_id === detailDeviceId)) return
+    setDetailDeviceId(visibleDevices[0].device_id)
+  }, [visibleDevices, detailDeviceId])
   /** 传输中的条目。`[...active.values()]` 写在 JSX 里的话，倒计时每跳一秒
    *  都会重建一次这个数组——而它跟倒计时毫无关系。 */
   const activeTransfers = useMemo(() => [...active.values()], [active])
@@ -1674,8 +1698,26 @@ export function CrossDeviceScreen() {
               }
               list={
                 <div className="space-y-2 p-3">
-                  {devices.length === 0 && <p className="text-sm text-muted-foreground">{t('noDevices')}</p>}
-                  {devices.map((d) => {
+                  <div className="sticky top-0 z-10 space-y-2 bg-background pb-2">
+                    <SmartSearchBox scope="devices" value={deviceQuery} onChange={setDeviceQuery} placeholder={tCommon('searchDevices')} count={visibleDevices.length} approximate={deviceSearch.approximate}
+                      fields={deviceSearcher.fields.map((f) => ({ key: f.key, token: f.key, label: tCommon(`searchField_${f.key}`) }))} />
+                    <div className="grid grid-cols-3 gap-2">
+                      <Select value={deviceState} onValueChange={setDeviceState}>
+                        <SelectTrigger aria-label={tCommon('searchField_state')}><SelectValue /></SelectTrigger>
+                        <SelectContent>{['all', 'online', 'offline'].map((v) => <SelectItem key={v} value={v}>{tCommon(`search_${v}`)}</SelectItem>)}</SelectContent>
+                      </Select>
+                      <Select value={deviceType} onValueChange={setDeviceType}>
+                        <SelectTrigger aria-label={tCommon('searchField_type')}><SelectValue /></SelectTrigger>
+                        <SelectContent><SelectItem value="all">{tCommon('search_all')}</SelectItem>{deviceTypes.map((v) => <SelectItem key={v} value={v}>{tCommon(`searchType_${v}`, { defaultValue: v })}</SelectItem>)}</SelectContent>
+                      </Select>
+                      <Select value={deviceSort} onValueChange={setDeviceSort}>
+                        <SelectTrigger aria-label={tCommon('searchSort')}><SelectValue /></SelectTrigger>
+                        <SelectContent>{['name', 'latency', 'recent'].map((v) => <SelectItem key={v} value={v}>{tCommon(`searchSort_${v}`)}</SelectItem>)}</SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+                  {visibleDevices.length === 0 && <p className="text-sm text-muted-foreground">{t('noDevices')}</p>}
+                  {visibleDevices.map((d) => {
                     const Icon = DEVICE_ICON[d.type] ?? Laptop
                     const isOnline = ONLINE_STATES.has(d.state)
                     return (
@@ -1703,7 +1745,7 @@ export function CrossDeviceScreen() {
                         <Icon className="h-5 w-5 shrink-0 text-muted-foreground" />
                         <div className="min-w-0 flex-1">
                           <div className="flex items-center gap-2">
-                            <span className="truncate font-medium">{d.name}</span>
+                            <span className="truncate font-medium"><Highlight text={d.name} ranges={deviceSearch.ranges(d, 'name')} /></span>
                             <span
                               className={cn(
                                 'rounded px-1.5 py-0.5 text-2xs',
@@ -2054,14 +2096,16 @@ export function CrossDeviceScreen() {
 
       case 'activity':
         return {
-          actions:
-            transfers.length > 0 ? (
+          actions: <>
+            <SmartSearchBox scope="transfers" value={transferQuery} onChange={setTransferQuery} placeholder={tCommon('searchTransfers')} count={transferSearch.items.length} approximate={transferSearch.approximate}
+              fields={transferSearcher.fields.map((f) => ({ key: f.key, token: f.key, label: tCommon(`searchField_${f.key}`) }))} />
+            {transfers.length > 0 ? (
               <>
                 <label className="flex cursor-pointer items-center gap-1.5 text-sm text-muted-foreground">
                   <Checkbox
-                    checked={pickedRows.size > 0 && pickedRows.size === transfers.length}
+                    checked={transferSearch.items.length > 0 && transferSearch.items.every((r) => pickedRows.has(r.key))}
                     onCheckedChange={(v) =>
-                      setPickedRows(v === true ? new Set(transfers.map((r) => r.key)) : new Set())
+                      setPickedRows(v === true ? new Set(transferSearch.items.map((r) => r.key)) : new Set())
                     }
                     aria-label={t('activitySelectAll')}
                   />
@@ -2077,13 +2121,13 @@ export function CrossDeviceScreen() {
                   {t('activityClearAll')}
                 </Button>
               </>
-            ) : undefined,
+            ) : null}</>,
           body:
-            transfers.length === 0 ? (
+            transferSearch.items.length === 0 ? (
               <EmptyState icon={Activity} title={t('badgeEmpty')} className="h-full" />
             ) : (
               <div className="space-y-1 rounded-xl border bg-card p-2">
-                {transfers.map((r) => {
+                {transferSearch.items.map((r) => {
                   const ItemIcon = ITEM_ICON[r.itemKind] ?? FileIcon
                   return (
                     <label
@@ -2105,7 +2149,7 @@ export function CrossDeviceScreen() {
                         <ItemIcon className="size-4 shrink-0 text-muted-foreground" />
                       )}
                       <span className="truncate" title={r.name}>
-                        {r.name}
+                        <Highlight text={r.name} ranges={transferSearch.ranges(r, 'file')} />
                       </span>
                       <span className="shrink-0 text-sm text-muted-foreground">
                         {r.direction === 'send' ? t('dirTo', { name: r.deviceName }) : t('dirFrom', { name: r.deviceName })}

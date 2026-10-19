@@ -279,5 +279,18 @@
   "timelineSelectedMenuItem": "История изменений выбранных сервисов",
   "timelineTabCompare": "Сравнить с текущим",
   "timelineTabContent": "Содержимое",
-  "timelineUndoBatchButton": "Отменить пакет"
+  "timelineUndoBatchButton": "Отменить пакет",
+  "panelBack": "Назад",
+  "panelToggleOn": "Включено",
+  "panelToggleOff": "Выключено",
+  "tileBulkBadgeSelected": "Выбрано {{selected}} из {{total}}",
+  "tileBulkBadgeMode": "Выбор · сервисов: {{total}}",
+  "tileBulkBadgeIdle": "Сервисов: {{total}}",
+  "tileDedupeBadgeLikely": "Возможных дублей: {{count}}",
+  "tileDedupeBadgeClean": "Сервисов с одинаковым именем нет",
+  "tileTimelineBadge": "Недавних изменений: {{count}}",
+  "tileTimelineBadgeNone": "Недавних изменений нет",
+  "tileImportBadge": "Сохранено кодов: {{count}}",
+  "tileImportBadgeDamaged": "Повреждённых записей: {{count}}",
+  "tileExportBadgeSelected": "Выбрано {{count}} · {{formats}}"
 }

@@ -136,5 +136,11 @@
   "sectionPrivacy": "Where your data goes (privacy)",
   "privacy1": "Vault files, notes and passwords are encrypted and stay on this machine. They are never uploaded.",
   "privacy2": "The AI assistant sends the messages you type to DeepSeek’s cloud service. Do not enter passwords, one-time codes or ID numbers.",
-  "privacy3": "With desktop control on, the AI reads on-screen interface text and sends it to the model. Do not let it handle passwords, one-time codes, payments or deletions."
+  "privacy3": "With desktop control on, the AI reads on-screen interface text and sends it to the model. Do not let it handle passwords, one-time codes, payments or deletions.",
+  "searchPlaceholder": "Search the guide",
+  "noMatches": "No matching chapters",
+  "panelBack": "Back",
+  "tilePoints": "{{count}} points",
+  "tileShortcuts": "{{count}} shortcuts",
+  "tileMatches": "{{count}} matches"
 }

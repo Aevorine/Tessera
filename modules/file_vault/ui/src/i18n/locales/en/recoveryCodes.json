@@ -279,5 +279,18 @@
   "timelineSelectedMenuItem": "Timeline of selected services",
   "timelineTabCompare": "Compare with now",
   "timelineTabContent": "Content",
-  "timelineUndoBatchButton": "Undo batch"
+  "timelineUndoBatchButton": "Undo batch",
+  "panelBack": "Back",
+  "panelToggleOn": "On",
+  "panelToggleOff": "Off",
+  "tileBulkBadgeSelected": "{{selected}} of {{total}} selected",
+  "tileBulkBadgeMode": "Selecting - {{total}} services",
+  "tileBulkBadgeIdle": "{{total}} services",
+  "tileDedupeBadgeLikely": "{{count}} possible duplicate(s)",
+  "tileDedupeBadgeClean": "No same-name services",
+  "tileTimelineBadge": "{{count}} recent change(s)",
+  "tileTimelineBadgeNone": "No recent changes",
+  "tileImportBadge": "{{count}} codes saved",
+  "tileImportBadgeDamaged": "{{count}} damaged record(s)",
+  "tileExportBadgeSelected": "{{count}} selected · {{formats}}"
 }

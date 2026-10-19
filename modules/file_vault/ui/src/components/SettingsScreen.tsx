@@ -1,6 +1,7 @@
 import {
   useCallback,
   useEffect,
+  useRef,
   useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
@@ -46,7 +47,9 @@ import {
   Trash2,
   Wrench,
 } from 'lucide-react'
-import { PageHeader, PageSection, PageShell } from '@/components/ui/page'
+import { PageHeader } from '@/components/ui/page'
+import { FeatureGrid, type FeatureTileSpec } from '@/components/feature/FeatureGrid'
+import { FeaturePanel } from '@/components/feature/FeaturePanel'
 import { CODE_INPUT_CLASS, KEY_INPUT_CLASS } from '@/components/UnlockTabs'
 import { ShortcutSettings } from '@/components/ShortcutSettings'
 import { AboutSection } from '@/components/AboutSection'
@@ -114,6 +117,13 @@ const FIELD = 'space-y-2'
 // in backend_server.py) - these calls don't re-prompt for a factor.
 type ActiveDialog = 'password' | 'totp' | 'email' | 'recovery' | 'ai' | null
 
+// 设置首页：主功能铺成功能格，点开后全屏面板展示该主功能下的全部次功能。
+type SettingsPanelId = 'account' | 'about' | 'appearance' | 'integration' | 'shortcuts' | 'content' | 'other'
+
+// 面板正文：设置卡片宽屏两列、窄屏一列，铺满面板宽度。
+const PANEL_GRID = 'grid gap-4 lg:grid-cols-2 lg:items-start'
+const PANEL_CARD = 'space-y-3 rounded border p-3'
+
 export function SettingsScreen({
   moduleLocks,
   onModuleLocksChange,
@@ -124,7 +134,37 @@ export function SettingsScreen({
   isProfessional?: boolean
 }) {
   const { t } = useTranslation('settings')
+  const { globalMode } = useLabelModeContext()
   const [activeDialog, setActiveDialog] = useState<ActiveDialog>(null)
+  const [panel, setPanel] = useState<SettingsPanelId | null>(null)
+  const [panelOrigin, setPanelOrigin] = useState<{ x: number; y: number } | null>(null)
+  const rootRef = useRef<HTMLDivElement>(null)
+  const closePanel = useCallback(() => setPanel(null), [])
+
+  // 功能格上的实时小结；面板关闭时重读，反映刚改过的设置。
+  const [version, setVersion] = useState('')
+  const [autoLock, setAutoLock] = useState<AutoLockSettings | null>(null)
+  const [startup, setStartup] = useState<{ openAtLogin: boolean; silent: boolean } | null>(null)
+  const [noteTextMode, setNoteTextMode] = useState<NoteTextStorageMode | null>(null)
+  useEffect(() => {
+    if (panel !== null) return
+    let cancelled = false
+    void Promise.allSettled([
+      electronApi.getAppVersion(),
+      electronApi.getAutoLock(),
+      electronApi.getStartupSettings(),
+      vaultApi.call('note_text_storage_mode_get', {}),
+    ]).then(([v, lock, start, mode]) => {
+      if (cancelled) return
+      if (v.status === 'fulfilled') setVersion(v.value)
+      if (lock.status === 'fulfilled') setAutoLock(lock.value)
+      if (start.status === 'fulfilled') setStartup(start.value)
+      if (mode.status === 'fulfilled' && mode.value.ok) setNoteTextMode(mode.value.mode)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [panel])
 
   async function handleRebindFingerprint() {
     const res = await vaultApi.call('rebind_fingerprint', {})
@@ -147,123 +187,211 @@ export function SettingsScreen({
     else toast.error(t('preferencesResetFailedToast'), { description: res.error })
   }
 
+  const lockedCount = Object.values(moduleLocks).filter(Boolean).length
+  const autoLockLabel = !autoLock
+    ? ''
+    : autoLock.idleMinutes > 0
+      ? t('tileAutoLockMinutes', { minutes: autoLock.idleMinutes })
+      : t('tileAutoLockOff')
+  const fontTierKey = loadFontSizeTier() === 'sihao' ? 'fontSizeTierSihao' : 'fontSizeTierXiaosi'
+
+  const tiles: (FeatureTileSpec & { id: SettingsPanelId })[] = [
+    {
+      id: 'account',
+      icon: ShieldCheck,
+      title: t('settingsSectionAccount'),
+      badge: [t('tileLockedModules', { count: lockedCount }), autoLockLabel].filter(Boolean).join(' · '),
+      attention: autoLock !== null && autoLock.idleMinutes === 0 && autoLock.trayMinutes === 0,
+    },
+    {
+      id: 'about',
+      icon: Info,
+      title: t('settingsSectionAbout'),
+      badge: version ? t('tileVersion', { version }) : t('tileAboutBadge'),
+    },
+    {
+      id: 'appearance',
+      icon: Palette,
+      title: t('settingsSectionAppearance'),
+      badge: `${t(fontTierKey)} · ${t(globalMode === 'icons' ? 'labelModeIcons' : 'labelModeLabels')}`,
+    },
+    {
+      id: 'integration',
+      icon: Puzzle,
+      title: t('settingsSectionIntegration'),
+      badge: startup ? (startup.openAtLogin ? t('tileAutoStartOn') : t('tileAutoStartOff')) : t('tileIntegrationBadge'),
+    },
+    ...(isProfessional
+      ? [{ id: 'shortcuts' as const, icon: Keyboard, title: t('settingsSectionShortcuts'), badge: t('tileShortcutsBadge') }]
+      : []),
+    {
+      id: 'content',
+      icon: FileText,
+      title: t('settingsSectionContent'),
+      badge: noteTextMode
+        ? t(noteTextMode === 'encrypted_db' ? 'tileNoteTextEncrypted' : 'tileNoteTextPlain')
+        : t('tileContentBadge'),
+    },
+    ...(isProfessional
+      ? [{ id: 'other' as const, icon: Wrench, title: t('settingsSectionOther'), badge: t('tileOtherBadge') }]
+      : []),
+  ]
+  const panelTile = tiles.find((x) => x.id === panel) ?? null
+
+  function openPanel(id: string, el: HTMLElement) {
+    const root = rootRef.current
+    if (root) {
+      const r = el.getBoundingClientRect()
+      const b = root.getBoundingClientRect()
+      setPanelOrigin({ x: r.left - b.left + r.width / 2, y: r.top - b.top + r.height / 2 })
+    } else {
+      setPanelOrigin(null)
+    }
+    setPanel(id as SettingsPanelId)
+  }
+
+  function renderPanel(id: SettingsPanelId) {
+    switch (id) {
+      case 'account':
+        return (
+          <div className={PANEL_GRID}>
+            <div className="space-y-4">
+              <div className={PANEL_CARD}>
+                <div className="grid gap-2 sm:grid-cols-2">
+                  <Button variant="outline" className="justify-start" onClick={() => setActiveDialog('password')}>
+                    <KeyRound className="size-4" />
+                    {t('changePasswordButton')}
+                  </Button>
+                  <Button variant="outline" className="justify-start" onClick={() => setActiveDialog('totp')}>
+                    <ShieldCheck className="size-4" />
+                    {t('rebindTotpButton')}
+                  </Button>
+                  <Button variant="outline" className="justify-start" onClick={() => setActiveDialog('email')}>
+                    <Mail className="size-4" />
+                    {t('updateEmailButton')}
+                  </Button>
+                  <Button variant="outline" className="justify-start" onClick={() => setActiveDialog('recovery')}>
+                    <KeySquare className="size-4" />
+                    {t('regenRecoveryButton')}
+                  </Button>
+                  <Button variant="outline" className="justify-start" onClick={handleRebindFingerprint}>
+                    <Fingerprint className="size-4" />
+                    {t('rebindFingerprintButton')}
+                  </Button>
+                </div>
+              </div>
+              <ModuleLockSettings moduleLocks={moduleLocks} onModuleLocksChange={onModuleLocksChange} />
+            </div>
+            <div className="space-y-4">
+              <AutoLockSetting />
+              <DuressPasswordSetting />
+            </div>
+          </div>
+        )
+      case 'about':
+        return (
+          <div className={PANEL_GRID}>
+            <div className="space-y-4">
+              <UpdateSetting />
+              <DiagnosticLogSection />
+            </div>
+            <AboutSection />
+          </div>
+        )
+      case 'appearance':
+        return (
+          <div className={PANEL_GRID}>
+            <div className="space-y-4">
+              <AppearanceSettings />
+            </div>
+            <div className="space-y-4">
+              <FontSizeSetting />
+              <LabelModeSetting />
+              {isProfessional && <ProfessionalMetricsPanel />}
+            </div>
+          </div>
+        )
+      case 'integration':
+        return (
+          <div className={PANEL_GRID}>
+            <div className="space-y-4">
+              <AutoStartSetting />
+              <FileHookAutoStartSetting />
+              <TxtAssociationSetting />
+              <MdAssociationSetting />
+            </div>
+            <TaskCardPreferencesSetting />
+          </div>
+        )
+      case 'shortcuts':
+        return <ShortcutSettings />
+      case 'content':
+        return (
+          <div className={PANEL_GRID}>
+            <div className="space-y-4">
+              <div className={PANEL_CARD}>
+                <Button variant="outline" className="justify-start" onClick={() => setActiveDialog('ai')}>
+                  <Sparkles className="size-4" />
+                  {t('aiSettingsButton')}
+                </Button>
+              </div>
+              <NoteTextStorageModeSetting />
+              <NoteImageStorageModeSetting />
+              {isProfessional && <RecoveryCodesSettingsToggle />}
+            </div>
+            <div className="space-y-4">
+              <ClipboardImageViewModeSetting />
+              <ClipboardBlacklistSetting />
+              {isProfessional && <ClipboardCleanupSetting />}
+            </div>
+          </div>
+        )
+      case 'other':
+        return (
+          <div className={PANEL_CARD}>
+            <div className="grid gap-2 sm:grid-cols-2">
+              <Button variant="outline" className="justify-start" onClick={handleCopyDiagnostics}>
+                <ClipboardCopy className="size-4" />
+                {t('copyDiagnosticsButton')}
+              </Button>
+              <Button variant="outline" className="justify-start" onClick={handleResetPreferences}>
+                <RotateCcw className="size-4" />
+                {t('resetPreferencesButton')}
+              </Button>
+            </div>
+          </div>
+        )
+    }
+  }
+
   return (
-    <PageShell width="canvas">
-      <PageHeader title={t('pageTitle')} />
-
-      {/* 铺满宽度之后，**设置项不能跟着摊成一行 1700 像素**：标签在最左、开关在
-          最右，眼睛要横穿整块屏幕才能把"这一项叫什么"和"它现在是开还是关"对上。
-          所以宽屏下把分区排成两列——宽度用满了，每一列的阅读长度还是原来那样。
-          `items-start` 是必须的：不写的话同一行的两张卡会被拉成一样高，矮的那张
-          底下多出一大块空白。 */}
-      <div className="grid gap-6 lg:grid-cols-2 lg:items-start">
-      {/* 账户安全排第一，而且五个入口从"竖着排的五个等宽大按钮"改成两列网格：
-          原先每个按钮都跟"加密文件"那种主操作一样宽一样重，一屏里挤着十几个
-          同等份量的蓝条，谁也不比谁显眼，等于没有主次。 */}
-      <PageSection icon={ShieldCheck} title={t('settingsSectionAccount')}>
-        <div className="space-y-4">
-          <div className="grid gap-2 sm:grid-cols-2">
-            <Button variant="outline" className="justify-start" onClick={() => setActiveDialog('password')}>
-              <KeyRound className="size-4" />
-              {t('changePasswordButton')}
-            </Button>
-            <Button variant="outline" className="justify-start" onClick={() => setActiveDialog('totp')}>
-              <ShieldCheck className="size-4" />
-              {t('rebindTotpButton')}
-            </Button>
-            <Button variant="outline" className="justify-start" onClick={() => setActiveDialog('email')}>
-              <Mail className="size-4" />
-              {t('updateEmailButton')}
-            </Button>
-            <Button variant="outline" className="justify-start" onClick={() => setActiveDialog('recovery')}>
-              <KeySquare className="size-4" />
-              {t('regenRecoveryButton')}
-            </Button>
-            <Button variant="outline" className="justify-start" onClick={handleRebindFingerprint}>
-              <Fingerprint className="size-4" />
-              {t('rebindFingerprintButton')}
-            </Button>
-          </div>
-          <ModuleLockSettings moduleLocks={moduleLocks} onModuleLocksChange={onModuleLocksChange} />
-          <AutoLockSetting />
-          <DuressPasswordSetting />
-        </div>
-      </PageSection>
-
-      {/* 「更新」不再单独占一节，并进「关于」——两者说的是同一件事：**这个软件
-          本身**（我装的是哪一版 / 有没有更新的版本 / 归属与许可是什么）。拆成
-          相邻的两节只是让用户为同一个问题上下扫两遍。更新卡片排在最前，因为
-          这一节里只有它是"可以动手做的事"，其余都是只读信息。 */}
-      <PageSection icon={Info} title={t('settingsSectionAbout')}>
-        <div className="space-y-3">
-          <UpdateSetting />
-          <DiagnosticLogSection />
-          <AboutSection />
-        </div>
-      </PageSection>
-
-      <PageSection icon={Palette} title={t('settingsSectionAppearance')}>
-        <div className="space-y-3">
-          <AppearanceSettings />
-          {isProfessional && <ProfessionalMetricsPanel />}
-          <FontSizeSetting />
-          <LabelModeSetting />
-        </div>
-      </PageSection>
-
-      <PageSection icon={Puzzle} title={t('settingsSectionIntegration')}>
-        <div className="space-y-3">
-          <AutoStartSetting />
-          <FileHookAutoStartSetting />
-          <TaskCardPreferencesSetting />
-          <TxtAssociationSetting />
-          <MdAssociationSetting />
-        </div>
-      </PageSection>
-
-      {isProfessional && (
-        <PageSection icon={Keyboard} title={t('settingsSectionShortcuts')}>
-          <ShortcutSettings />
-        </PageSection>
-      )}
-
-      <PageSection icon={FileText} title={t('settingsSectionContent')}>
-        <div className="space-y-3">
-          <Button variant="outline" className="justify-start" onClick={() => setActiveDialog('ai')}>
-            <Sparkles className="size-4" />
-            {t('aiSettingsButton')}
-          </Button>
-          <ClipboardImageViewModeSetting />
-          <ClipboardBlacklistSetting />
-          {isProfessional && <ClipboardCleanupSetting />}
-          <NoteImageStorageModeSetting />
-          <NoteTextStorageModeSetting />
-          {isProfessional && <RecoveryCodesSettingsToggle />}
-        </div>
-      </PageSection>
-
-      {isProfessional && (
-        <PageSection icon={Wrench} title={t('settingsSectionOther')}>
-          <div className="grid gap-2 sm:grid-cols-2">
-            <Button variant="outline" className="justify-start" onClick={handleCopyDiagnostics}>
-              <ClipboardCopy className="size-4" />
-              {t('copyDiagnosticsButton')}
-            </Button>
-            <Button variant="outline" className="justify-start" onClick={handleResetPreferences}>
-              <RotateCcw className="size-4" />
-              {t('resetPreferencesButton')}
-            </Button>
-          </div>
-        </PageSection>
-      )}
+    <div ref={rootRef} className="relative flex min-h-0 flex-1 flex-col overflow-hidden">
+      <div
+        className="ds-page-wash flex min-h-0 flex-1 flex-col px-6 pt-5 pb-6"
+        aria-hidden={panel ? true : undefined}
+      >
+        <PageHeader title={t('pageTitle')} />
+        <FeatureGrid tiles={tiles} onOpen={openPanel} className="min-h-0 flex-1" />
       </div>
+
+      {panel && (
+        <FeaturePanel
+          key={panel}
+          label={panelTile?.title ?? ''}
+          origin={panelOrigin}
+          backLabel={t('panelBack')}
+          onClose={closePanel}
+        >
+          {renderPanel(panel)}
+        </FeaturePanel>
+      )}
 
       <ChangePasswordDialog open={activeDialog === 'password'} onOpenChange={(o) => !o && setActiveDialog(null)} />
       <RebindTotpDialog open={activeDialog === 'totp'} onOpenChange={(o) => !o && setActiveDialog(null)} />
       <UpdateEmailDialog open={activeDialog === 'email'} onOpenChange={(o) => !o && setActiveDialog(null)} />
       <RegenRecoveryDialog open={activeDialog === 'recovery'} onOpenChange={(o) => !o && setActiveDialog(null)} />
       <AiSettingsDialog open={activeDialog === 'ai'} onOpenChange={(o) => !o && setActiveDialog(null)} />
-    </PageShell>
+    </div>
   )
 }
 

@@ -279,5 +279,18 @@
   "timelineSelectedMenuItem": "السجل الزمني للخدمات المحددة",
   "timelineTabCompare": "مقارنة بالحالي",
   "timelineTabContent": "المحتوى",
-  "timelineUndoBatchButton": "تراجع عن الدفعة"
+  "timelineUndoBatchButton": "تراجع عن الدفعة",
+  "panelBack": "رجوع",
+  "panelToggleOn": "مفعّل",
+  "panelToggleOff": "متوقف",
+  "tileBulkBadgeSelected": "تم تحديد {{selected}} من {{total}}",
+  "tileBulkBadgeMode": "وضع التحديد · {{total}} خدمة",
+  "tileBulkBadgeIdle": "{{total}} خدمة",
+  "tileDedupeBadgeLikely": "تكرارات محتملة: {{count}}",
+  "tileDedupeBadgeClean": "لا توجد خدمات بالاسم نفسه",
+  "tileTimelineBadge": "تغييرات حديثة: {{count}}",
+  "tileTimelineBadgeNone": "لا توجد تغييرات حديثة",
+  "tileImportBadge": "الرموز المحفوظة: {{count}}",
+  "tileImportBadgeDamaged": "سجلات تالفة: {{count}}",
+  "tileExportBadgeSelected": "المحدد {{count}} · {{formats}}"
 }

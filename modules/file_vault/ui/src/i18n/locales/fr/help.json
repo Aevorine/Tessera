@@ -136,5 +136,11 @@
   "sectionPrivacy": "Où vont vos données (confidentialité)",
   "privacy1": "Les fichiers, notes et mots de passe du coffre sont chiffrés et restent sur cette machine. Ils ne sont jamais envoyés en ligne.",
   "privacy2": "L’assistant IA envoie les messages que vous saisissez au service cloud DeepSeek. N’y saisissez pas de mots de passe, de codes à usage unique ni de numéros d’identité.",
-  "privacy3": "Avec le contrôle du bureau activé, l’IA lit le texte affiché à l’écran et l’envoie au modèle. Ne lui confiez pas les mots de passe, codes, paiements ou suppressions."
+  "privacy3": "Avec le contrôle du bureau activé, l’IA lit le texte affiché à l’écran et l’envoie au modèle. Ne lui confiez pas les mots de passe, codes, paiements ou suppressions.",
+  "searchPlaceholder": "Rechercher dans le guide",
+  "noMatches": "Aucun chapitre correspondant",
+  "panelBack": "Retour",
+  "tilePoints": "{{count}} points",
+  "tileShortcuts": "{{count}} raccourcis",
+  "tileMatches": "{{count}} résultats"
 }

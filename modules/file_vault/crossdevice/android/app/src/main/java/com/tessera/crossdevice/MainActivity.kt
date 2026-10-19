@@ -57,6 +57,7 @@ class MainActivity : AppCompatActivity() {
         const val P_PRO = "pro"
     }
 
+    private lateinit var homeSearch: HomeSearch
     private lateinit var ui: ActivityMainBinding
     private val seq = AtomicInteger(0)
     private var appearanceConfig = AppearancePreferences.DEFAULT
@@ -234,6 +235,10 @@ class MainActivity : AppCompatActivity() {
         ui.listTransfers.isNestedScrollingEnabled = false
         // 进度每 250 ms 刷一次，默认的增删动画会让整行抖动。
         ui.listTransfers.itemAnimator = null
+        homeSearch = HomeSearch(this, ui, pairedDeviceAdapter, nearbyDeviceAdapter, transferAdapter,
+            onQuery = { renderTimeline(lastTimeline) },
+            onApplyClip = { applyTimelineItem(it, broadcast = false) },
+        )
 
         // 面板宿主要先于剪贴板时间线建：返回键回调后注册的先响应，时间线全屏应先收。
         setupTiles()
@@ -801,6 +806,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun renderTimeline(arr: org.json.JSONArray) {
         lastTimeline = arr
+        homeSearch.submitTimeline(arr)
         val hasAny = arr.length() > 0
         ui.btnTimelineClear.isEnabled = hasAny
         ui.btnTimelineClearFull.isEnabled = hasAny
@@ -829,9 +835,10 @@ class MainActivity : AppCompatActivity() {
         previewLines: Int,
     ) {
         box.removeAllViews()
+        val visible = homeSearch.filterTimeline(arr)
         var drawn = 0
-        for (i in 0 until minOf(arr.length(), maxRows)) {
-            val item = arr.optJSONObject(i) ?: continue
+        for (i in 0 until minOf(visible.length(), maxRows)) {
+            val item = visible.optJSONObject(i) ?: continue
             val row = layoutInflater.inflate(R.layout.item_clip_timeline, box, false)
             val local = item.optBoolean("local")
             val source = if (local) getString(R.string.this_device_short) else item.optString("source_name")
@@ -1708,7 +1715,7 @@ class MainActivity : AppCompatActivity() {
             // 换 Wi-Fi / 开热点后网卡全变，界面要重新发现，否则列表留着旧网络的设备，点配对必然失败且原因莫名。
             "network_changed" -> {
                 nearbyCache.clear()
-                nearbyDeviceAdapter.submitList(emptyList())
+                homeSearch.submitNearby(emptyList())
                 snack(getString(R.string.network_changed_rescan))
                 send("list_nearby")
                 return
@@ -2086,7 +2093,7 @@ class MainActivity : AppCompatActivity() {
                 if (rtt >= 0 && (bestRtt < 0 || rtt < bestRtt)) bestRtt = rtt
             }
         }
-        pairedDeviceAdapter.submitList(items) {
+        homeSearch.submitDevices(items) {
             // 列表真正换完之后再对账：submitList 是异步的，紧接着调 pruneSelection
             // 拿到的还是旧列表，刚删掉的设备会留在"已选 3 台"里。
             pairedDeviceAdapter.pruneSelection()
@@ -2112,7 +2119,7 @@ class MainActivity : AppCompatActivity() {
         val list = transfers.values.toList()
         ui.cardProgress.visibility =
             if (list.isEmpty()) android.view.View.GONE else android.view.View.VISIBLE
-        transferAdapter.submitList(list)
+        homeSearch.submitTransfers(list)
     }
 
     /** 进度那一行的详情文案：已传/总量 · 速度 · 剩余 · 对方设备。 */
@@ -2336,7 +2343,7 @@ class MainActivity : AppCompatActivity() {
         val empty = nearbyCache.isEmpty()
         ui.textNoNearby.visibility = if (empty) android.view.View.VISIBLE else android.view.View.GONE
         ui.textNoNearby.text = getString(if (empty) R.string.nearby_empty_hint else R.string.nearby_empty)
-        nearbyDeviceAdapter.submitList(nearbyCache.values.toList())
+        homeSearch.submitNearby(nearbyCache.values.toList())
     }
 
     /**
@@ -2604,6 +2611,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     override fun onDestroy() {
+        if (::homeSearch.isInitialized) homeSearch.close()
         metricsHandler.removeCallbacks(refreshMetrics)
         SyncService.listeners.remove(onEvent)
         super.onDestroy()

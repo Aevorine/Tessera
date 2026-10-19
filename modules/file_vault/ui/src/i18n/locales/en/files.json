@@ -191,5 +191,10 @@
   "topbarMetricsMenu": "Metrics in the top bar",
   "valueSecureDelete": "Secure delete",
   "verifyMenuLabel": "Verify integrity…",
-  "opsMetricJumpHint": "Show the encryption log"
+  "opsMetricJumpHint": "Show the encryption log",
+  "tileOpsBadge": "{{count}} operations this session",
+  "tileOpsEmpty": "No operations yet",
+  "tileToolsBadge": "{{count}} tools",
+  "panelBack": "Back",
+  "panelMetricsTitle": "Metrics shown at the top of the page"
 }

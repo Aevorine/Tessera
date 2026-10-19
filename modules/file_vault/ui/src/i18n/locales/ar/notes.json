@@ -449,5 +449,9 @@
   "linkedFolderMissing": "المجلد غير متاح",
   "linkedNoteBadge": "ملف محلي",
   "revealLinkedFile": "إظهار الملف في المستكشف",
-  "timelineKind.external": "تعديل خارجي"
+  "timelineKind.external": "تعديل خارجي",
+  "tileLinkedCount": "{{count}} مجلدات مرتبطة",
+  "tileBulkNone": "لا يوجد تحديد",
+  "tileCategoriesTitle": "الفئات والوسوم",
+  "tileCategoriesBadge": "{{categories}} فئات · {{tags}} وسوم"
 }

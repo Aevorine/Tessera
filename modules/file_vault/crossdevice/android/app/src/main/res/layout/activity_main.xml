@@ -13,13 +13,66 @@
         android:layout_height="match_parent"
         android:fillViewport="true">
 
+        <!-- 外壳：搜索框横跨整宽，下面才是会分栏的正文；系统栏让位加在这一层。 -->
+        <LinearLayout
+            android:id="@+id/mainShell"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:orientation="vertical"
+            android:padding="@dimen/screen_padding">
+
+        <com.google.android.material.textfield.TextInputLayout
+            android:id="@+id/searchBox"
+            style="?attr/textInputOutlinedStyle"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            app:boxCornerRadiusBottomEnd="16dp"
+            app:boxCornerRadiusBottomStart="16dp"
+            app:boxCornerRadiusTopEnd="16dp"
+            app:boxCornerRadiusTopStart="16dp"
+            app:hintEnabled="false"
+            app:startIconContentDescription="@string/search_action"
+            app:startIconDrawable="@drawable/ic_search">
+
+            <com.google.android.material.textfield.TextInputEditText
+                android:id="@+id/editSearch"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:hint="@string/search_hint"
+                android:imeOptions="actionSearch|flagNoExtractUi"
+                android:importantForAutofill="no"
+                android:inputType="text"
+                android:maxLines="1"
+                android:textAppearance="?attr/textAppearanceBodyLarge" />
+        </com.google.android.material.textfield.TextInputLayout>
+
+        <com.google.android.material.chip.ChipGroup
+            android:id="@+id/chipsSearch"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:visibility="gone"
+            app:chipSpacingVertical="4dp" />
+
+        <TextView
+            android:id="@+id/textSearchNoMatch"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:paddingHorizontal="4dp"
+            android:paddingVertical="12dp"
+            android:text="@string/search_no_match"
+            android:textAppearance="?attr/textAppearanceBodyMedium"
+            android:textColor="?attr/colorOnSurfaceVariant"
+            android:visibility="gone" />
+
         <LinearLayout
             android:id="@+id/mainContent"
             android:layout_width="match_parent"
-            android:layout_height="match_parent"
+            android:layout_height="0dp"
+            android:layout_marginTop="12dp"
+            android:layout_weight="1"
             android:baselineAligned="false"
-            android:orientation="vertical"
-            android:padding="@dimen/screen_padding">
+            android:orientation="vertical">
 
             <LinearLayout
                 android:id="@+id/colPrimary"
@@ -279,6 +332,7 @@
                                 android:layout_width="0dp"
                                 android:layout_weight="1"
                                 android:layout_height="wrap_content"
+                                android:id="@+id/textTransfersTitle"
                                 android:text="@string/transfer_in_progress"
                                 android:textAppearance="?attr/textAppearanceTitleSmall" />
                         </LinearLayout>
@@ -331,6 +385,7 @@
                                 android:layout_width="0dp"
                                 android:layout_weight="1"
                                 android:layout_height="wrap_content"
+                                android:id="@+id/textPairedTitle"
                                 android:text="@string/paired_devices"
                                 android:textAppearance="?attr/textAppearanceTitleSmall" />
 
@@ -393,6 +448,53 @@
                             android:nestedScrollingEnabled="false" />
                     </LinearLayout>
                 </com.google.android.material.card.MaterialCardView>
+
+                <!-- 搜索时才出现：收到的文件里命中的那些。 -->
+                <com.google.android.material.card.MaterialCardView
+                    android:id="@+id/cardSearchFiles"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="12dp"
+                    android:visibility="gone"
+                    app:cardCornerRadius="16dp">
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="vertical"
+                        android:padding="16dp">
+
+                        <LinearLayout
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:gravity="center_vertical"
+                            android:orientation="horizontal">
+
+                            <ImageView
+                                android:layout_width="20dp"
+                                android:layout_height="20dp"
+                                android:layout_marginEnd="10dp"
+                                android:importantForAccessibility="no"
+                                android:src="@drawable/ic_folder"
+                                android:tag="sectionIcon" />
+
+                            <TextView
+                                android:id="@+id/textSearchFilesTitle"
+                                android:layout_width="0dp"
+                                android:layout_height="wrap_content"
+                                android:layout_weight="1"
+                                android:text="@string/search_section_files"
+                                android:textAppearance="?attr/textAppearanceTitleSmall" />
+                        </LinearLayout>
+
+                        <androidx.recyclerview.widget.RecyclerView
+                            android:id="@+id/listSearchFiles"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="6dp"
+                            android:nestedScrollingEnabled="false" />
+                    </LinearLayout>
+                </com.google.android.material.card.MaterialCardView>
             </LinearLayout>
 
             <LinearLayout
@@ -400,6 +502,7 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:orientation="vertical" />
+        </LinearLayout>
         </LinearLayout>
     </androidx.core.widget.NestedScrollView>
 

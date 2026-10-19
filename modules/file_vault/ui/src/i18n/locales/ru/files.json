@@ -191,5 +191,10 @@
   "topbarMetricsMenu": "Показатели в верхней панели",
   "valueSecureDelete": "Безопасное удаление",
   "verifyMenuLabel": "Проверить целостность…",
-  "opsMetricJumpHint": "Показать журнал шифрования"
+  "opsMetricJumpHint": "Показать журнал шифрования",
+  "tileOpsBadge": "Операций за сеанс: {{count}}",
+  "tileOpsEmpty": "Операций пока нет",
+  "tileToolsBadge": "Инструментов: {{count}}",
+  "panelBack": "Назад",
+  "panelMetricsTitle": "Показатели вверху страницы"
 }

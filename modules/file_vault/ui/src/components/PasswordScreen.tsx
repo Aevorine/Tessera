@@ -1,3 +1,6 @@
+import { Highlight } from '@/components/search/Highlight'
+import { HostHighlight, NoteSnippet } from '@/components/passwords/searchHits'
+import type { Range } from '@/lib/search'
 import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent, type ReactNode } from 'react'
 import {
   closestCenter,
@@ -52,7 +55,9 @@ import { vaultApi } from '@/lib/vaultApi'
 import { electronApi } from '@/lib/electronApi'
 import { translateError } from '@/i18n/errors'
 import { useVirtualizer } from '@tanstack/react-virtual'
-import { useDebouncedValue } from '@/lib/useDebouncedValue'
+import { useSmartSearch } from '@/lib/search'
+import { passwordSearcher } from '@/lib/search/fields/passwords'
+import { SmartSearchBox } from '@/components/search/SmartSearchBox'
 import { StatTile } from '@/components/StatTile'
 import { ActionButton } from '@/components/ActionButton'
 import { LABEL_REGIONS } from '@/lib/labelMode'
@@ -258,7 +263,7 @@ export function PasswordScreen({ isProfessional = false }: { isProfessional?: bo
     }
   }
 
-  const debouncedSearch = useDebouncedValue(search, 150)
+  const searchState = useSmartSearch(entries, passwordSearcher, search)
 
   // 指标算一次，全页共用。时间只在 entries 变化时取一次，不是每次渲染：否则「陈旧」判定会在两次渲染间
   // 漂移，同一条一会儿陈旧一会儿不。页面时间尺度是"天"，会话内不必重取。
@@ -268,14 +273,12 @@ export function PasswordScreen({ isProfessional = false }: { isProfessional?: bo
   )
 
   const filtered = useMemo(() => {
-    const q = debouncedSearch.toLowerCase()
     const filterDef = metricFilter ? METRIC_BY_ID[metricFilter] : null
-    return entries.filter((e) => {
-      if (q && !(e.name.toLowerCase().includes(q) || e.url.toLowerCase().includes(q) || e.username.toLowerCase().includes(q))) return false
+    return searchState.items.filter((e) => {
       if (filterDef?.match && !filterDef.match(e, metricContext)) return false
       return true
     })
-  }, [entries, debouncedSearch, metricFilter, metricContext])
+  }, [searchState.items, metricFilter, metricContext])
 
   // 同网址+同用户名的多条独立记录（老数据）在主列表只显示最新一条（组头），其余折叠进"展开"；纯展示分
   // 组，不改底层数据。真正的密码修改历史（记录的 history 字段）走历史版本弹窗，与此无关。
@@ -291,6 +294,7 @@ export function PasswordScreen({ isProfessional = false }: { isProfessional?: bo
       const sorted = [...members].sort((a, b) => b.updated_at - a.updated_at)
       return { key, head: sorted[0], extra: sorted.slice(1) }
     })
+    if (searchState.active) return result
     switch (sortMode) {
       case 'alphabetical':
         result.sort((a, b) => a.head.name.localeCompare(b.head.name))
@@ -302,7 +306,7 @@ export function PasswordScreen({ isProfessional = false }: { isProfessional?: bo
         result.sort((a, b) => b.head.updated_at - a.head.updated_at)
     }
     return result
-  }, [filtered, sortMode])
+  }, [filtered, sortMode, searchState.active])
 
   // Flatten groups into rows for the virtualizer. Each group head is a row;
   // if the group is expanded, its extra entries follow immediately after.
@@ -683,12 +687,10 @@ export function PasswordScreen({ isProfessional = false }: { isProfessional?: bo
               整个页面，本来就不属于列表的局部工具），这里只留跟"找到那一条"
               直接相关的三件。
             */}
-            <Input
-              id="pw-search"
-              placeholder={t('searchPlaceholder')}
-              title={t('searchShortcutHint')}
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
+            <SmartSearchBox
+              id="pw-search" scope="passwords" value={search} onChange={setSearch}
+              placeholder={t('searchPlaceholder')} count={filtered.length} approximate={searchState.approximate}
+              fields={passwordSearcher.fields.map((f) => ({ key: f.key, token: f.key, label: tCommon(`searchField_${f.key}`) }))}
             />
             <div className="flex gap-2">
               <Select value={sortMode} onValueChange={(v) => handleSortModeChange(v as PasswordSortMode)}>
@@ -803,6 +805,7 @@ export function PasswordScreen({ isProfessional = false }: { isProfessional?: bo
                   >
                     <PasswordRow
                       entry={row.entry}
+                      matchRanges={(field) => searchState.ranges(row.entry, field)}
                       indented={row.isExtra}
                       selected={selectedIds.has(row.entry.id)}
                       isDetailActive={detailId === row.entry.id}
@@ -1135,6 +1138,7 @@ function MetricPickerDialog({
  */
 function PasswordRow({
   entry,
+  matchRanges,
   indented,
   selected,
   isDetailActive,
@@ -1146,6 +1150,7 @@ function PasswordRow({
   onToggleSelected,
 }: {
   entry: PasswordEntry
+  matchRanges: (field: string) => Range[] | undefined
   /** 分组展开后的子条目，缩进一档以示从属。 */
   indented: boolean
   selected: boolean
@@ -1200,7 +1205,7 @@ function PasswordRow({
         )}
       </span>
       <div className="min-w-0 flex-1">
-        <p className="truncate text-sm font-medium">{entry.name}</p>
+        <p className="truncate text-sm font-medium"><Highlight text={entry.name} ranges={matchRanges('name')} /></p>
         {/*
           第二行左边是账号、右边是密码本身。
           这一页叫「密码管理」，而上一版的列表里**一条密码都看不到**——名字、
@@ -1211,7 +1216,9 @@ function PasswordRow({
           宽度，谁长谁多占，两边都不会被压到零。
         */}
         <p className="flex items-baseline gap-2 text-sm text-muted-foreground">
-          <span className="min-w-0 flex-1 truncate">{entry.username || hostnameOf(entry.url)}</span>
+          <span className="min-w-0 flex-1 truncate">{entry.username
+            ? <Highlight text={entry.username} ranges={matchRanges('username')} />
+            : <HostHighlight url={entry.url} host={hostnameOf(entry.url)} ranges={matchRanges('url')} />}</span>
           <span
             role="button"
             tabIndex={0}
@@ -1229,6 +1236,7 @@ function PasswordRow({
             {revealed ? entry.password : maskOf(entry.password)}
           </span>
         </p>
+        <NoteSnippet notes={entry.notes} ranges={matchRanges('notes')} />
       </div>
       {reused && (
         <span className="shrink-0" title={t('metricReusedLabel')}>

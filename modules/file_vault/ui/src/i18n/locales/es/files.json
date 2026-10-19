@@ -191,5 +191,10 @@
   "topbarMetricsMenu": "Métricas en la barra superior",
   "valueSecureDelete": "Borrado seguro",
   "verifyMenuLabel": "Verificar integridad…",
-  "opsMetricJumpHint": "Ver el registro de cifrado"
+  "opsMetricJumpHint": "Ver el registro de cifrado",
+  "tileOpsBadge": "{{count}} operaciones en esta sesión",
+  "tileOpsEmpty": "Aún sin operaciones",
+  "tileToolsBadge": "{{count}} herramientas",
+  "panelBack": "Volver",
+  "panelMetricsTitle": "Métricas mostradas en la parte superior"
 }

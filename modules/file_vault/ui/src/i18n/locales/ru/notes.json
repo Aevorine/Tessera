@@ -449,5 +449,9 @@
   "linkedFolderMissing": "папка недоступна",
   "linkedNoteBadge": "Локальный файл",
   "revealLinkedFile": "Показать файл в проводнике",
-  "timelineKind.external": "Изменено вне приложения"
+  "timelineKind.external": "Изменено вне приложения",
+  "tileLinkedCount": "Связанных папок: {{count}}",
+  "tileBulkNone": "Ничего не выбрано",
+  "tileCategoriesTitle": "Категории и теги",
+  "tileCategoriesBadge": "Категорий: {{categories}} · тегов: {{tags}}"
 }

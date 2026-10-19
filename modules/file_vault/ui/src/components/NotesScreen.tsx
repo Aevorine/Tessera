@@ -124,6 +124,12 @@ import { EmptyState, FeatureTitle, PageHeader } from '@/components/ui/page'
 import { ActionButton } from '@/components/ActionButton'
 import { LABEL_REGIONS } from '@/lib/labelMode'
 import { Workbench } from '@/components/ui/workbench'
+import { FeatureStrip } from '@/components/feature/FeatureStrip'
+import { FeaturePanel } from '@/components/feature/FeaturePanel'
+import { useFeaturePanel } from '@/components/feature/useFeaturePanel'
+import type { FeatureTileSpec } from '@/components/feature/FeatureGrid'
+import { InfoHint } from '@/components/ui/info-hint'
+import { NodePanel } from '@/components/notes/NodePanel'
 import { StatTile } from '@/components/StatTile'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Label } from '@/components/ui/label'
@@ -594,6 +600,14 @@ export function NotesScreen({
     readOnlyBootstrapRef.current = readOnlyBootstrap
   }, [readOnlyBootstrap])
   const [fullscreen, setFullscreen] = useState(false)
+  // 功能条 → 全屏面板：导入 / 批量 / 查重 / 时间线 / 分类与标签。
+  const {
+    rootRef: pageRef,
+    panel: featurePanelId,
+    origin: featureOrigin,
+    open: openFeaturePanel,
+    close: closeFeaturePanel,
+  } = useFeaturePanel<'import' | 'bulk' | 'dedupe' | 'timeline' | 'categories'>()
   const [importing, setImporting] = useState(false)
   const [exporting, setExporting] = useState(false)
   // 详情页单条导出，与 exporting（列表批量导出选中项，仅 txt）是两套独立状态。docx/pdf 只在单条支持，
@@ -3529,7 +3543,7 @@ export function NotesScreen({
     return nodes
   }
 
-  const topBarMenus: TopBarMenu[] = [
+  const allMenus: TopBarMenu[] = [
     {
       // 列表范围跟左边四块数字是同一件事的两个入口：数字点一下直达，菜单里能看到
       // 全部选项和各自的条数。切到会露出隐藏笔记的范围照样走 changeNoteScope 的验证。
@@ -3659,8 +3673,8 @@ export function NotesScreen({
       onClear: () => setSelectedIds(new Set()),
       contentClassName: 'min-w-64',
       items: [
-        { id: 'select-all', type: 'item', label: t('selectAllLabel'), icon: SquareCheck, count: filtered.length, disabled: filtered.length === 0 || allFilteredSelected, onSelect: () => toggleSelectAll(true) },
-        { id: 'select-none', type: 'item', label: t('clearSelectionLabel'), icon: Square, disabled: needSelection, onSelect: () => toggleSelectAll(false) },
+        { id: 'select-all', type: 'item', label: t('selectAllLabel'), icon: SquareCheck, keepOpen: true, count: filtered.length, disabled: filtered.length === 0 || allFilteredSelected, onSelect: () => toggleSelectAll(true) },
+        { id: 'select-none', type: 'item', label: t('clearSelectionLabel'), icon: Square, keepOpen: true, disabled: needSelection, onSelect: () => toggleSelectAll(false) },
         { id: 'bulk-sep1', type: 'separator' },
         // ---- 回收站视图 ----
         { id: 'bulk-restore', type: 'item', label: t('restoreSelectedButton'), icon: RotateCcw, hidden: !isTrash, disabled: needSelection, onSelect: () => void handleBulkRestore() },
@@ -3805,13 +3819,266 @@ export function NotesScreen({
     },
   ]
 
+  // 顶栏只留作用于列表本身的菜单；批量 / 查重 / 时间线 / 导入搬进下面的功能条和全屏面板。
+  const LIST_MENU_IDS = ['view', 'category', 'filter', 'sort']
+  const topBarMenus = allMenus.filter((menu) => LIST_MENU_IDS.includes(menu.id))
+  const menuItems = (id: string): TopBarNode[] => allMenus.find((menu) => menu.id === id)?.items ?? []
+
+  const featureTiles: FeatureTileSpec[] = [
+    ...(isTrash
+      ? []
+      : [
+          {
+            id: 'import',
+            icon: Upload,
+            title: t('importMenuButton'),
+            badge: importing
+              ? t('importingLabel')
+              : `${importMode === 'link' ? t('importModeLink') : t('importModeCopy')} · ${t('tileLinkedCount', { count: visibleLinkedFolders.length })}`,
+          },
+        ]),
+    {
+      id: 'bulk',
+      icon: ListChecks,
+      title: t('menuBulk'),
+      badge: selectedCount > 0 ? t('selectedCountLabel', { count: selectedCount }) : t('tileBulkNone'),
+    },
+    ...(isTrash
+      ? []
+      : [
+          {
+            id: 'dedupe',
+            icon: CopyCheck,
+            title: t('menuDedupe'),
+            badge: `${t('statActiveLabel')} · ${t('statHiddenLabel')}`,
+          },
+        ]),
+    {
+      id: 'timeline',
+      icon: History,
+      title: t('menuTimeline'),
+      badge: detailNote && !creatingNew ? detailNote.title || t('untitledNote') : t('statTotalLabel'),
+    },
+    ...(isTrash
+      ? []
+      : [
+          {
+            id: 'categories',
+            icon: Tags,
+            title: t('tileCategoriesTitle'),
+            badge: t('tileCategoriesBadge', { categories: categoryStats.size, tags: scopedTags.length }),
+          },
+        ]),
+  ]
+  const featurePanelTile = featureTiles.find((tile) => tile.id === featurePanelId)
+
+  const sectionHeading = (text: string) => <h3 className="mb-2 text-sm font-medium text-muted-foreground">{text}</h3>
+
+  function renderFeaturePanel(id: NonNullable<typeof featurePanelId>) {
+    const done = closeFeaturePanel
+    switch (id) {
+      case 'import': {
+        const memory = getScopeMemory('import')
+        const dirs = [...memory.favorites, ...memory.recent.filter((dir) => !memory.favorites.includes(dir))]
+        return (
+          <div className="mx-auto flex w-full max-w-3xl flex-col gap-6">
+            <div className="flex flex-wrap gap-2">
+              <Button
+                variant="outline"
+                disabled={importing}
+                onClick={() => {
+                  done()
+                  void handleImportFiles()
+                }}
+              >
+                <Upload className="size-4" aria-hidden="true" />
+                {importing ? t('importingLabel') : t('importButton')}
+              </Button>
+              <Button
+                variant="outline"
+                onClick={() => {
+                  done()
+                  void handleOpenFolderImport()
+                }}
+              >
+                <FolderOpen className="size-4" aria-hidden="true" />
+                {t('folderImportButton')}
+              </Button>
+            </div>
+
+            <section>
+              {sectionHeading(t('importModeLabel'))}
+              <div role="radiogroup" aria-label={t('importModeLabel')} className="grid gap-3 sm:grid-cols-2">
+                {(['link', 'copy'] as const).map((mode) => {
+                  const ModeIcon = mode === 'link' ? Link2 : Lock
+                  return (
+                    <button
+                      key={mode}
+                      type="button"
+                      role="radio"
+                      aria-checked={importMode === mode}
+                      onClick={() => void changeImportMode(mode)}
+                      className={cn(
+                        'ds-focus-ring flex items-center gap-3 rounded-xl border bg-card p-4 text-left transition-colors hover:bg-surface',
+                        importMode === mode ? 'border-primary bg-primary/5' : 'border-border/70',
+                      )}
+                    >
+                      <span className="ds-icon-chip size-9 shrink-0 rounded-lg">
+                        <ModeIcon className="size-4" aria-hidden="true" />
+                      </span>
+                      <span className="min-w-0 flex-1 truncate font-medium">
+                        {mode === 'link' ? t('importModeLink') : t('importModeCopy')}
+                      </span>
+                      <InfoHint text={mode === 'link' ? t('importModeLinkHint') : t('importModeCopyHint')} />
+                      <Check className={cn('size-4 text-primary', importMode === mode ? 'opacity-100' : 'opacity-0')} aria-hidden="true" />
+                    </button>
+                  )
+                })}
+              </div>
+            </section>
+
+            <section>
+              {sectionHeading(t('pathHistoryButton'))}
+              {dirs.length === 0 ? (
+                <p className="text-sm text-muted-foreground">{t('recentFoldersEmpty')}</p>
+              ) : (
+                <div className="flex flex-col gap-1.5">
+                  {dirs.map((dir) => (
+                    <button
+                      key={dir}
+                      type="button"
+                      onClick={() => {
+                        done()
+                        void handleOpenFolderImport(dir)
+                      }}
+                      className="ds-focus-ring flex min-h-10 items-center gap-2.5 rounded-lg border border-border/70 bg-card px-3 text-left transition-colors hover:border-[var(--accent-line)] hover:bg-surface"
+                    >
+                      {memory.favorites.includes(dir) ? (
+                        <Star className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+                      ) : (
+                        <FolderOpen className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+                      )}
+                      <span className="min-w-0 flex-1 truncate" data-hint={dir}>
+                        {dir}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </section>
+
+            <section>
+              <div className="mb-2 flex items-center justify-between gap-2">
+                <h3 className="text-sm font-medium text-muted-foreground">{t('linkedFoldersMenu')}</h3>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={linkedFolders.length === 0 || linkedSyncing}
+                  onClick={() => void syncLinkedFolders({ manual: true })}
+                >
+                  <RefreshCw className={cn('size-4', linkedSyncing && 'animate-spin')} aria-hidden="true" />
+                  {t('linkedSyncAll')}
+                </Button>
+              </div>
+              <div className="flex flex-col gap-1.5">
+                {visibleLinkedFolders.map((folder) => (
+                  <div
+                    key={folder.id}
+                    className="flex min-h-12 items-center gap-2.5 rounded-lg border border-border/70 bg-card px-3 py-1.5"
+                  >
+                    {folder.exists === false ? (
+                      <FolderOpen className="size-4 shrink-0 text-warning" aria-hidden="true" />
+                    ) : (
+                      <Folder className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+                    )}
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate" data-hint={folder.path}>
+                        {folder.path}
+                      </span>
+                      {folder.exists === false && (
+                        <span className="block truncate text-sm text-warning">{t('linkedFolderMissing')}</span>
+                      )}
+                    </span>
+                    <span className="text-2xs tabular text-muted-foreground">{folder.note_count}</span>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="size-8"
+                      aria-label={t('linkedSyncNow')}
+                      disabled={linkedSyncing}
+                      onClick={() => void syncLinkedFolders({ manual: true, folderId: folder.id })}
+                    >
+                      <RefreshCw className="size-4" aria-hidden="true" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="size-8"
+                      aria-label={t('linkedRevealFolder')}
+                      onClick={() => void electronApi.showItemInFolder(folder.path)}
+                    >
+                      <FolderOpen className="size-4" aria-hidden="true" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="size-8 text-destructive"
+                      aria-label={t('linkedUnlink')}
+                      onClick={() => {
+                        done()
+                        void handleUnlinkFolder(folder)
+                      }}
+                    >
+                      <Unlink className="size-4" aria-hidden="true" />
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            </section>
+          </div>
+        )
+      }
+      case 'bulk':
+        return (
+          <div className="mx-auto w-full max-w-2xl">
+            <NodePanel nodes={menuItems('bulk')} onPicked={done} />
+          </div>
+        )
+      case 'dedupe':
+        return (
+          <div className="mx-auto w-full max-w-2xl">
+            <NodePanel nodes={menuItems('dedupe')} onPicked={done} />
+          </div>
+        )
+      case 'timeline':
+        return (
+          <div className="mx-auto w-full max-w-2xl">
+            <NodePanel nodes={menuItems('timeline')} onPicked={done} />
+          </div>
+        )
+      case 'categories':
+        return (
+          <div className="mx-auto w-full max-w-2xl">
+            <NodePanel
+              onPicked={done}
+              nodes={[
+                { id: 'cat-manage', type: 'item', label: t('manageCategoriesButton'), icon: Tags, onSelect: handleOpenCategoryManager },
+                { id: 'tag-manage', type: 'item', label: t('manageTagsButton'), icon: Hash, onSelect: () => setTagManagerOpen(true) },
+              ]}
+            />
+          </div>
+        )
+    }
+  }
+
   return (
     <div
+      ref={pageRef}
       className={cn(
         // 有界 flex 列，同 PageShell 的 fill 档（本页没套 PageShell）：`<main>` 是 overflow-hidden 定高盒
         // 子，不声明高度会裁掉下半截。用 `flex-1` 而非 `h-full`：main 里还压着「接着刚才」横幅，h-full 会比
         // 容器高出横幅高度导致底部被裁；flex-1 取剩余高度。pt-4 对齐 PageShell（见 page.tsx）。
-        'ds-page-wash flex min-h-0 w-full max-w-none flex-1 flex-col gap-4 px-8 pt-4 pb-7',
+        'ds-page-wash relative flex min-h-0 w-full max-w-none flex-1 flex-col gap-4 px-8 pt-4 pb-7',
         fullscreen && 'p-0',
       )}
       onDragOver={(event) => event.preventDefault()}
@@ -3820,6 +4087,7 @@ export function NotesScreen({
       {/* 跟其它面板共用 <PageHeader>。这里原本是第四份手抄
           （items-center gap-3.5 pb-4），跟 PageHeader 的 items-start/pb-5 又差
           一档——四个面板四种写法，正是「切过去标题会跳一下」的来源。 */}
+      <div className="contents" aria-hidden={featurePanelId ? true : undefined}>
       {!fullscreen && (
         <div className="shrink-0">
           <PageHeader title={viewMode === 'trash' ? t('trashTitle') : t('pageTitle')} />
@@ -3947,6 +4215,10 @@ export function NotesScreen({
             }
           />
         </div>
+      )}
+
+      {!fullscreen && (
+        <FeatureStrip tiles={featureTiles} onOpen={(id, el) => openFeaturePanel(id as NonNullable<typeof featurePanelId>, el)} />
       )}
 
       {/* 左右分栏：列表在左（可折叠）、详情/编辑区始终占据右侧主视觉位置
@@ -4838,6 +5110,19 @@ export function NotesScreen({
             </div>
           }
         />
+      </div>
+
+      {featurePanelId && (
+        <FeaturePanel
+          key={featurePanelId}
+          label={featurePanelTile?.title ?? ''}
+          origin={featureOrigin}
+          backLabel={tCommon('backToList')}
+          onClose={closeFeaturePanel}
+        >
+          {renderFeaturePanel(featurePanelId)}
+        </FeaturePanel>
+      )}
 
       {!fullscreen && recoverySnapshot && (
         <div className="flex flex-wrap items-center justify-between gap-2 rounded border border-warning/40 bg-warning/10 p-3 text-sm">
@@ -4849,7 +5134,7 @@ export function NotesScreen({
         </div>
       )}
 
-      {!fullscreen && viewMode === 'active' && (
+      {!fullscreen && !featurePanelId && viewMode === 'active' && (
         <Button
           className="fixed bottom-6 right-6 z-40 rounded-full shadow-lg"
           onClick={handleOpenNew}

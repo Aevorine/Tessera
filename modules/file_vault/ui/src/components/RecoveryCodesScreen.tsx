@@ -1,3 +1,7 @@
+import { useSmartSearch } from '@/lib/search'
+import { recoverySearcher } from '@/lib/search/fields/recovery'
+import { SmartSearchBox } from '@/components/search/SmartSearchBox'
+import { Highlight } from '@/components/search/Highlight'
 import {
   useEffect,
   useMemo,
@@ -35,7 +39,6 @@ import {
   Square,
   SquareCheck,
   Trash2,
-  Upload,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
@@ -46,9 +49,14 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { StatTile } from '@/components/StatTile'
-import { TopBar, TopBarSearch, type TopBarMenu, type TopBarNode } from '@/components/TopBar'
+import { TopBar, type TopBarMenu, type TopBarNode } from '@/components/TopBar'
 import { EmptyState, FeatureTitle, PageHeader } from '@/components/ui/page'
 import { Workbench } from '@/components/ui/workbench'
+import { FeatureStrip } from '@/components/feature/FeatureStrip'
+import { FeaturePanel } from '@/components/feature/FeaturePanel'
+import type { FeatureTileSpec } from '@/components/feature/FeatureGrid'
+import { useFeaturePanel } from '@/components/feature/useFeaturePanel'
+import { RecoveryActionCard, RecoveryActionGrid } from '@/components/recovery/RecoveryActionCard'
 import { RecoveryTimelineDialog, type TimelineScope } from '@/components/recovery/RecoveryTimelineDialog'
 import { RecoveryBulkEditDialog } from '@/components/recovery/RecoveryBulkEditDialog'
 import { RecoveryDuplicatesDialog } from '@/components/recovery/RecoveryDuplicatesDialog'
@@ -76,7 +84,8 @@ import type {
 } from '@/shared/ipcTypes'
 import { copyTextWithAutoClear, readClipboardText } from '@/lib/clipboard'
 
-type SortMode = 'name' | 'remaining' | 'recent'
+type SortMode = 'name' | 'remaining' | 'recent' | 'relevance' | 'oldest' | 'mostRemaining'
+type RecoveryPanel = 'bulk' | 'dedupe' | 'timeline' | 'import' | 'export'
 
 // 表单弹窗统一规格，与 SettingsScreen / PasswordScreen / AIChatScreen 同名同值。
 // CONFIRM 确认框；FORM ≤3 字段；WIDE_FORM 字段多或带长列表；REVIEW 逐条复核列表。
@@ -91,16 +100,6 @@ const FORM_BODY = 'min-h-0 flex-1 space-y-5 overflow-y-auto'
 const DIALOG_ACTIONS = 'flex shrink-0 flex-col-reverse gap-2.5 border-t border-border pt-5 sm:flex-row sm:justify-end'
 /** 单个字段：标签与输入框之间的距离，全应用一个值。 */
 const FIELD = 'space-y-2'
-
-// 300ms 防抖搜索（spec 3.7）：恢复码总览后续要在同批数据上跑较重的派生计算，先加防抖。
-function useDebouncedValue<T>(value: T, delayMs: number): T {
-  const [debounced, setDebounced] = useState(value)
-  useEffect(() => {
-    const timer = setTimeout(() => setDebounced(value), delayMs)
-    return () => clearTimeout(timer)
-  }, [value, delayMs])
-  return debounced
-}
 
 const CLIPBOARD_AUTO_CLEAR_MS = 30_000
 
@@ -264,7 +263,6 @@ export function RecoveryCodesScreen({ isProfessional = false }: { isProfessional
   const [groups, setGroups] = useState<RecoveryCodeGroup[]>([])
   const [damaged, setDamaged] = useState<DamagedRecoveryCodeRecord[]>([])
   const [search, setSearch] = useState('')
-  const debouncedSearch = useDebouncedValue(search, 300)
   const [sortMode, setSortMode] = useState<SortMode>('recent')
   const [detailId, setDetailId] = useState<string | null>(null)
   const [revealedByGroup, setRevealedByGroup] = useState<Record<string, RevealedRecoveryCode[]>>({})
@@ -334,6 +332,7 @@ export function RecoveryCodesScreen({ isProfessional = false }: { isProfessional
   const [timelineScope, setTimelineScope] = useState<TimelineScope | null>(null)
   const [bulkEditTargets, setBulkEditTargets] = useState<RecoveryCodeGroup[] | null>(null)
   const [dedupeOpen, setDedupeOpen] = useState(false)
+  const { rootRef, panel, origin: panelOrigin, open: openPanel, close: closePanel } = useFeaturePanel<RecoveryPanel>()
 
   const detailGroup = groups.find((g) => g.id === detailId) ?? null
 
@@ -374,15 +373,17 @@ export function RecoveryCodesScreen({ isProfessional = false }: { isProfessional
     }
   }, [])
 
+  const searchState = useSmartSearch(groups, recoverySearcher, search)
   const filtered = useMemo(() => {
-    const q = debouncedSearch.trim().toLowerCase()
-    const result = groups.filter(
-      (g) =>
-        matchesRecoveryFilter(g, filter) &&
-        (!q || g.service.toLowerCase().includes(q) || g.accountLabel.toLowerCase().includes(q)),
-    )
+    const result = searchState.items.filter((g) => matchesRecoveryFilter(g, filter))
     const sorted = [...result]
     switch (sortMode) {
+      case 'relevance':
+        return sorted
+      case 'oldest':
+        return sorted.sort((a, b) => a.lastUpdatedAt - b.lastUpdatedAt)
+      case 'mostRemaining':
+        return sorted.sort((a, b) => b.remainingCount - a.remainingCount)
       case 'name':
         sorted.sort((a, b) => a.service.localeCompare(b.service))
         break
@@ -393,7 +394,7 @@ export function RecoveryCodesScreen({ isProfessional = false }: { isProfessional
         sorted.sort((a, b) => b.lastUpdatedAt - a.lastUpdatedAt)
     }
     return sorted
-  }, [groups, debouncedSearch, sortMode, filter])
+  }, [searchState.items, sortMode, filter])
 
   const facets = useMemo(() => buildServiceFacets(groups), [groups])
 
@@ -1166,6 +1167,9 @@ export function RecoveryCodesScreen({ isProfessional = false }: { isProfessional
   ]
 
   const sortOptions: Array<{ mode: SortMode; label: string }> = [
+    { mode: 'relevance', label: tCommon('searchOrder_relevance') },
+    { mode: 'oldest', label: tCommon('searchOrder_oldest') },
+    { mode: 'mostRemaining', label: tCommon('searchMostRemaining') },
     { mode: 'recent', label: t('sortModeRecent') },
     { mode: 'name', label: t('sortModeName') },
     { mode: 'remaining', label: t('sortModeRemaining') },
@@ -1225,179 +1229,218 @@ export function RecoveryCodesScreen({ isProfessional = false }: { isProfessional
         }),
       ),
     },
+  ]
+
+  // 打开对话框 / 触发动作前先收起面板，对话框和提示才看得见。
+  const runClosing = (fn: () => void) => () => {
+    closePanel()
+    fn()
+  }
+
+  // 同名同账号的服务视为疑似重复（只数本地，精确扫描在对话框里）。
+  const likelyDuplicateCount = useMemo(() => {
+    const seen = new Set<string>()
+    let n = 0
+    for (const g of groups) {
+      const key = `${g.service.trim().toLowerCase()}\u0000${g.accountLabel.trim().toLowerCase()}`
+      if (seen.has(key)) n++
+      else seen.add(key)
+    }
+    return n
+  }, [groups])
+
+  const exportFormats = isProfessional ? 'TXT · CSV · JSON · PDF' : 'TXT · CSV · JSON'
+
+  const featureTiles: FeatureTileSpec[] = [
     {
-      // 批量动作只作用于看得见的已选项（visibleSelectedIds）；未选时置灰并说明，不做"点了没东西"的按钮。
       id: 'bulk',
-      label: t('menuBulk'),
       icon: ListChecks,
-      value: selectedCount > 0 ? t('selectedCountLabel', { count: selectedCount }) : undefined,
-      active: selectedCount > 0,
-      onClear: () => setSelectedIds(new Set()),
-      contentClassName: 'min-w-64',
-      items: [
-        {
-          id: 'select-mode',
-          type: 'toggle',
-          label: t('selectModeToggle'),
-          description: t('selectModeHint'),
-          checked: selectMode,
-          onCheckedChange: (next) => {
-            setSelectMode(next)
-            if (next) setView('list')
-            else setSelectedIds(new Set())
-          },
-        },
-        {
-          id: 'select-all',
-          type: 'item',
-          label: t('selectAllLabel'),
-          icon: SquareCheck,
-          count: filtered.length,
-          disabled: filtered.length === 0 || allFilteredSelected,
-          onSelect: selectAllFiltered,
-        },
-        {
-          id: 'select-none',
-          type: 'item',
-          label: t('clearSelectionLabel'),
-          icon: Square,
-          disabled: needSelection,
-          onSelect: () => setSelectedIds(new Set()),
-        },
-        { id: 'bulk-sep', type: 'separator' },
-        {
-          id: 'bulk-edit',
-          type: 'item',
-          label: t('bulkEditMenuItem'),
-          icon: PencilLine,
-          description: selectionHint,
-          disabled: needSelection,
-          onSelect: () => setBulkEditTargets(selectedGroups),
-        },
-        {
-          id: 'bulk-checked',
-          type: 'item',
-          label: t('markCheckedButton'),
-          icon: CalendarCheck,
-          disabled: needSelection,
-          onSelect: () => void handleBulkMarkChecked(),
-        },
-        {
-          id: 'bulk-export',
-          type: 'item',
-          label: t('exportSelectedButton'),
-          icon: ArrowUpFromLine,
-          disabled: needSelection,
-          onSelect: () => void handleExport(visibleSelectedIds),
-        },
-        {
-          id: 'bulk-pdf',
-          type: 'item',
-          label: t('pdfExportSelectedButton'),
-          icon: Printer,
-          hidden: !isProfessional,
-          disabled: needSelection,
-          onSelect: () => handleExportPdf(selectedGroups),
-        },
-        {
-          id: 'bulk-delete',
-          type: 'item',
-          label: t('deleteSelectedButton'),
-          icon: Trash2,
-          destructive: true,
-          disabled: needSelection,
-          onSelect: () => void handleBulkDelete(),
-        },
-      ],
+      title: t('menuBulk'),
+      badge:
+        selectedCount > 0
+          ? t('tileBulkBadgeSelected', { selected: selectedCount, total: filtered.length })
+          : selectMode
+            ? t('tileBulkBadgeMode', { total: filtered.length })
+            : t('tileBulkBadgeIdle', { total: filtered.length }),
     },
     {
       id: 'dedupe',
-      label: t('menuDedupe'),
       icon: CopyCheck,
-      items: [
-        {
-          id: 'dedupe-scan',
-          type: 'item',
-          label: t('dedupeScanMenuItem'),
-          icon: CopyCheck,
-          description: t('dedupeScanHint'),
-          disabled: groups.length === 0,
-          onSelect: () => setDedupeOpen(true),
-        },
-      ],
+      title: t('menuDedupe'),
+      badge: likelyDuplicateCount > 0 ? t('tileDedupeBadgeLikely', { count: likelyDuplicateCount }) : t('tileDedupeBadgeClean'),
+      attention: likelyDuplicateCount > 0,
     },
     {
       id: 'timeline',
-      label: t('menuTimeline'),
       icon: History,
-      items: [
-        {
-          id: 'timeline-all',
-          type: 'item',
-          label: t('timelineAllMenuItem'),
-          icon: History,
-          onSelect: () => setTimelineScope({ title: t('timelineDialogTitleAll') }),
-        },
-        {
-          id: 'timeline-selected',
-          type: 'item',
-          label: t('timelineSelectedMenuItem'),
-          icon: ListChecks,
-          description: selectionHint,
-          disabled: needSelection,
-          onSelect: () =>
-            setTimelineScope({ ids: [...visibleSelectedIds], title: t('timelineDialogTitleSome', { count: selectedCount }) }),
-        },
-        {
-          id: 'timeline-current',
-          type: 'item',
-          label: t('timelineCurrentMenuItem', { service: detailGroup?.service ?? '' }),
-          icon: KeyRound,
-          hidden: !detailGroup || view !== 'list',
-          onSelect: () => detailGroup && openGroupTimeline(detailGroup),
-        },
-      ],
+      title: t('menuTimeline'),
+      badge: recentActivity.length > 0 ? t('tileTimelineBadge', { count: recentActivity.length }) : t('tileTimelineBadgeNone'),
     },
     {
-      // 导入与导出图标成对区分（箭头指向线 = 进，离开线 = 出），纯图标模式下才不会一模一样。
-      id: 'data',
-      label: t('menuData'),
-      icon: Upload,
-      items: [
-        {
-          id: 'import-sub',
-          type: 'submenu',
-          label: t('importButton'),
-          icon: ArrowDownToLine,
-          children: [
-            { id: 'import', type: 'item', label: t('importFromFileMenuItem'), icon: ArrowDownToLine, onSelect: () => void handleImportFiles() },
-            { id: 'import-clipboard', type: 'item', label: t('importClipboardButton'), icon: Clipboard, onSelect: () => void handleClipboardImport() },
-            { id: 'import-ocr', type: 'item', label: t('importOcrButton'), icon: ScanText, onSelect: () => setOcrDialogOpen(true) },
-            // JSON 导入独立于上面那条"从文件导入"：那条走文本解析，只认得出码；
-            // 这条是无损的，会把 used/备注/阈值/历史一起带回来，并给出逐组差异。
-            { id: 'json-import', type: 'item', label: t('jsonImportButton'), icon: FileJson, onSelect: () => void handleJsonImportPickFile() },
-            { id: 'backup-import', type: 'item', label: t('backupImportButton'), icon: FolderInput, hidden: !isProfessional, onSelect: () => void handleBackupImportPickFile() },
-          ],
-        },
-        {
-          id: 'export-sub',
-          type: 'submenu',
-          label: t('exportButton'),
-          icon: ArrowUpFromLine,
-          children: [
-            { id: 'export', type: 'item', label: t('exportFormatsMenuItem'), icon: ArrowUpFromLine, onSelect: () => setExportMenuOpen(true) },
-            { id: 'export-pdf-all', type: 'item', label: t('pdfExportAllButton'), icon: Printer, hidden: !isProfessional, onSelect: () => handleExportPdf(groups) },
-            { id: 'backup-export', type: 'item', label: t('backupExportButton'), icon: FolderArchive, hidden: !isProfessional, onSelect: handleBackupExportOpen },
-          ],
-        },
-      ],
+      id: 'import',
+      icon: ArrowDownToLine,
+      title: t('importButton'),
+      badge: damaged.length > 0 ? t('tileImportBadgeDamaged', { count: damaged.length }) : t('tileImportBadge', { count: totals.codes }),
+      attention: damaged.length > 0,
+    },
+    {
+      id: 'export',
+      icon: ArrowUpFromLine,
+      title: t('exportButton'),
+      badge: selectedCount > 0 ? t('tileExportBadgeSelected', { count: selectedCount, formats: exportFormats }) : exportFormats,
     },
   ]
+  const panelTile = featureTiles.find((x) => x.id === panel)
+
+  function renderPanel(id: RecoveryPanel) {
+    const selBadge = needSelection ? undefined : t('selectedCountLabel', { count: selectedCount })
+    switch (id) {
+      case 'bulk':
+        return (
+          <RecoveryActionGrid>
+            <RecoveryActionCard
+              icon={ListChecks}
+              label={t('selectModeToggle')}
+              hint={t('selectModeHint')}
+              toggle={{ checked: selectMode, onLabel: t('panelToggleOn'), offLabel: t('panelToggleOff') }}
+              onRun={() => {
+                const next = !selectMode
+                setSelectMode(next)
+                if (next) setView('list')
+                else setSelectedIds(new Set())
+              }}
+            />
+            <RecoveryActionCard
+              icon={SquareCheck}
+              label={t('selectAllLabel')}
+              badge={String(filtered.length)}
+              disabled={filtered.length === 0 || allFilteredSelected}
+              onRun={selectAllFiltered}
+            />
+            <RecoveryActionCard
+              icon={Square}
+              label={t('clearSelectionLabel')}
+              badge={selBadge}
+              disabled={needSelection}
+              onRun={() => setSelectedIds(new Set())}
+            />
+            <RecoveryActionCard
+              icon={PencilLine}
+              label={t('bulkEditMenuItem')}
+              hint={selectionHint}
+              badge={selBadge}
+              disabled={needSelection}
+              onRun={runClosing(() => setBulkEditTargets(selectedGroups))}
+            />
+            <RecoveryActionCard
+              icon={CalendarCheck}
+              label={t('markCheckedButton')}
+              hint={selectionHint}
+              badge={selBadge}
+              disabled={needSelection}
+              onRun={runClosing(() => void handleBulkMarkChecked())}
+            />
+            <RecoveryActionCard
+              icon={ArrowUpFromLine}
+              label={t('exportSelectedButton')}
+              hint={selectionHint}
+              badge={selBadge}
+              disabled={needSelection}
+              onRun={runClosing(() => void handleExport(visibleSelectedIds))}
+            />
+            {isProfessional && (
+              <RecoveryActionCard
+                icon={Printer}
+                label={t('pdfExportSelectedButton')}
+                hint={selectionHint}
+                badge={selBadge}
+                disabled={needSelection}
+                onRun={runClosing(() => handleExportPdf(selectedGroups))}
+              />
+            )}
+            <RecoveryActionCard
+              icon={Trash2}
+              label={t('deleteSelectedButton')}
+              hint={selectionHint}
+              badge={selBadge}
+              destructive
+              disabled={needSelection}
+              onRun={runClosing(() => void handleBulkDelete())}
+            />
+          </RecoveryActionGrid>
+        )
+      case 'dedupe':
+        return (
+          <RecoveryActionGrid>
+            <RecoveryActionCard
+              icon={CopyCheck}
+              label={t('dedupeScanMenuItem')}
+              hint={t('dedupeScanHint')}
+              disabled={groups.length === 0}
+              onRun={runClosing(() => setDedupeOpen(true))}
+            />
+          </RecoveryActionGrid>
+        )
+      case 'timeline':
+        return (
+          <RecoveryActionGrid>
+            <RecoveryActionCard
+              icon={History}
+              label={t('timelineAllMenuItem')}
+              onRun={runClosing(() => setTimelineScope({ title: t('timelineDialogTitleAll') }))}
+            />
+            <RecoveryActionCard
+              icon={ListChecks}
+              label={t('timelineSelectedMenuItem')}
+              hint={selectionHint}
+              badge={selBadge}
+              disabled={needSelection}
+              onRun={runClosing(() =>
+                setTimelineScope({ ids: [...visibleSelectedIds], title: t('timelineDialogTitleSome', { count: selectedCount }) }),
+              )}
+            />
+            {detailGroup && view === 'list' && (
+              <RecoveryActionCard
+                icon={KeyRound}
+                label={t('timelineCurrentMenuItem', { service: detailGroup.service })}
+                onRun={runClosing(() => openGroupTimeline(detailGroup))}
+              />
+            )}
+          </RecoveryActionGrid>
+        )
+      case 'import':
+        return (
+          <RecoveryActionGrid>
+            <RecoveryActionCard icon={ArrowDownToLine} label={t('importFromFileMenuItem')} onRun={runClosing(() => void handleImportFiles())} />
+            <RecoveryActionCard icon={Clipboard} label={t('importClipboardButton')} onRun={runClosing(() => void handleClipboardImport())} />
+            <RecoveryActionCard icon={ScanText} label={t('importOcrButton')} onRun={runClosing(() => setOcrDialogOpen(true))} />
+            {/* JSON 导入是无损的：used/备注/阈值/历史一起带回来，并给出逐组差异。 */}
+            <RecoveryActionCard icon={FileJson} label={t('jsonImportButton')} onRun={runClosing(() => void handleJsonImportPickFile())} />
+            {isProfessional && (
+              <RecoveryActionCard icon={FolderInput} label={t('backupImportButton')} onRun={runClosing(() => void handleBackupImportPickFile())} />
+            )}
+          </RecoveryActionGrid>
+        )
+      case 'export':
+        return (
+          <RecoveryActionGrid>
+            <RecoveryActionCard icon={ArrowUpFromLine} label={t('exportFormatsMenuItem')} badge={exportFormats} onRun={runClosing(() => setExportMenuOpen(true))} />
+            {isProfessional && (
+              <RecoveryActionCard icon={Printer} label={t('pdfExportAllButton')} onRun={runClosing(() => handleExportPdf(groups))} />
+            )}
+            {isProfessional && (
+              <RecoveryActionCard icon={FolderArchive} label={t('backupExportButton')} onRun={runClosing(handleBackupExportOpen)} />
+            )}
+          </RecoveryActionGrid>
+        )
+    }
+  }
 
   return (
     // h-full 改 min-h-0 flex-1：height:100% 与 main 等高，但 main 里还有「接着刚才」横幅，
     // 多出的一截会被 overflow-hidden 裁掉；flex-1 取剩余高度。
-    <div className="ds-page-wash flex min-h-0 flex-1 flex-col">
+    <div ref={rootRef} className="relative flex min-h-0 flex-1 flex-col overflow-hidden">
+    <div className="ds-page-wash flex min-h-0 flex-1 flex-col" aria-hidden={panel ? true : undefined}>
       {/* px-6 是这一页自己的左右留白（它整页自管滚动，不套 PageShell）。
           `shrink-0`：下面那块要滚，它自己绝不能被压扁。 */}
       <div className="shrink-0 px-6 pt-4 pb-3">
@@ -1435,7 +1478,8 @@ export function RecoveryCodesScreen({ isProfessional = false }: { isProfessional
           menus={topBarMenus}
           trailing={
             <>
-              <TopBarSearch value={search} onChange={setSearch} placeholder={t('searchPlaceholder')} />
+              <SmartSearchBox scope="recovery" value={search} onChange={(value) => { setSearch(value); if (value.trim()) setView('list') }} placeholder={t('searchPlaceholder')} count={filtered.length} approximate={searchState.approximate}
+                fields={recoverySearcher.fields.map((f) => ({ key: f.key, token: f.key, label: tCommon(`searchField_${f.key}`) }))} />
               <Button size="sm" onClick={() => void handleImportFiles()}>
                 <ArrowDownToLine className="size-4" aria-hidden="true" />
                 {t('importButton')}
@@ -1443,11 +1487,12 @@ export function RecoveryCodesScreen({ isProfessional = false }: { isProfessional
             </>
           }
         />
+        <FeatureStrip tiles={featureTiles} onOpen={(id, el) => openPanel(id as RecoveryPanel, el)} className="pt-3" />
       </div>
 
       {view === 'dashboard' && (
         <RecoveryCodesDashboard
-          groups={groups}
+          groups={filtered}
           recentActivity={recentActivity}
           onOpenGroup={openGroupInList}
         />
@@ -1535,8 +1580,8 @@ export function RecoveryCodesScreen({ isProfessional = false }: { isProfessional
                             aria-label={t('selectServiceAriaLabel', { service: g.service })}
                           />
                         )}
-                        <span className="font-medium">{g.service}</span>
-                        {g.accountLabel && <span className="text-sm text-muted-foreground">{g.accountLabel}</span>}
+                        <span className="font-medium"><Highlight text={g.service} ranges={searchState.ranges(g, 'service')} /></span>
+                        {g.accountLabel && <span className="text-sm text-muted-foreground"><Highlight text={g.accountLabel} ranges={searchState.ranges(g, 'account')} /></span>}
                       </div>
                       <div className="flex flex-wrap gap-1 text-sm">
                         <span className="rounded bg-muted px-1.5 py-0.5">{t('remainingCountLabel', { remaining: g.remainingCount, total: g.codes.length })}</span>
@@ -2298,6 +2343,13 @@ export function RecoveryCodesScreen({ isProfessional = false }: { isProfessional
         }}
         onUnlocked={handleReverifySuccess}
       />
+    </div>
+
+    {panel && (
+      <FeaturePanel key={panel} label={panelTile?.title ?? ''} origin={panelOrigin} backLabel={t('panelBack')} onClose={closePanel}>
+        {renderPanel(panel)}
+      </FeaturePanel>
+    )}
     </div>
   )
 }

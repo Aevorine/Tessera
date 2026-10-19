@@ -4,7 +4,9 @@ Click a desktop clipboard history entry to copy its full stored content and show
 
 Received files are one click away: use **Open folder** on Devices & sync or beside the save location. The Android phone/tablet companion opens the selected folder in Files, with an in-app file browser when a system file manager cannot display it.
 
-Download the signed Windows portable application or installer from [GitHub Releases](https://github.com/Aevorine/Tessera/releases/latest). Version 0.1.46 uses this repository for application updates by default and can be switched to the [Tessera-releases](https://github.com/Aevorine/Tessera-releases) mirror in Settings. Downloads use 16 concurrent range connections, adaptive chunks and resume records, routed through the Windows system proxy when one is configured. There is no application bandwidth cap; throughput depends on your connection and GitHub's CDN. Releases retain the latest two versions. This release was packaged without running tests.
+Download the signed Windows portable application or installer from [GitHub Releases](https://github.com/Aevorine/Tessera/releases/latest). Version 0.1.47 uses this repository for application updates by default and can be switched to the [Tessera-releases](https://github.com/Aevorine/Tessera-releases) mirror in Settings. Downloads use 16 concurrent range connections, adaptive chunks and resume records, routed through the Windows system proxy when one is configured. There is no application bandwidth cap; throughput depends on your connection and GitHub's CDN. Releases retain the latest two versions. This release was packaged without running tests.
+
+Version 0.1.47 adds shared local search for passwords, recovery codes, clipboard history and devices: pinyin, field qualifiers, phrases, exclusions and approximate matching when exact results are absent. History adds time ranges and usage sorting; devices combine connection state, device type and latency sorting. Search queries stay in page-session memory. Android phone/tablet search covers paired and nearby devices, transfers, received file names and clipboard previews, with direct open/copy actions. [Search behavior and limits](docs/search-workspace.md).
 
 **English** · [简体中文](README.zh-CN.md) · [Français](README.fr.md) · [Español](README.es.md) · [Русский](README.ru.md) · [العربية](README.ar.md)
 
@@ -19,7 +21,7 @@ toolbox of the small utilities Windows buries several clicks deep.
 Nothing is uploaded, nothing phones home, and nothing leaves your machine unless you
 explicitly configure it to.
 
-> Status: `0.1.46`, under active development. Windows 10/11 x64 only — several features
+> Status: `0.1.47`, under active development. Windows 10/11 x64 only — several features
 > (Windows Hello, shell integration, global file hotkeys) are bound to Windows APIs.
 
 ---
