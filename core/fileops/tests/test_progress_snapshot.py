@@ -4,6 +4,7 @@ import ctypes
 from dataclasses import FrozenInstanceError, asdict
 import pickle
 import threading
+import time
 
 import pytest
 
@@ -47,29 +48,30 @@ def test_transfer_report_pickle_roundtrip_keeps_snapshot_available():
     assert restored.snapshot().operation == "copy"
 
 
-def test_streaming_directory_reports_scanning_then_freezes_totals_before_running(
+def test_copy_starts_while_scanning_and_totals_freeze_when_scan_completes(
     tmp_path, monkeypatch
 ):
     source = tmp_path / "source"
     destination = tmp_path / "destination"
     source.mkdir()
     destination.mkdir()
-    report_ready = threading.Event()
+    first_window_out = threading.Event()
     continue_scan = threading.Event()
     copy_started = threading.Event()
     finish_copy = threading.Event()
     reports = []
 
     def staged_tasks(src, dst, report, idx, item_error_count):
-        report.note_scanned_file(str(source / "one.bin"), 3)
-        yield str(source / "one.bin"), str(destination / "one.bin"), 3, idx
-        report_ready.set()
+        for index in range(257):
+            path = source / f"{index}.bin"
+            report.note_scanned_file(str(path), 1)
+            yield str(path), str(destination / path.name), 1, idx
+        first_window_out.set()
         assert continue_scan.wait(2)
-        report.note_scanned_file(str(source / "two.bin"), 5)
-        yield str(source / "two.bin"), str(destination / "two.bin"), 5, idx
+        report.note_scanned_file(str(source / "last.bin"), 5)
+        yield str(source / "last.bin"), str(destination / "last.bin"), 5, idx
 
     def blocked_copy(src, dst, size, idx, overwrite, cancel_flag, progress, report, item_error_count):
-        progress.set_current_path(src)
         copy_started.set()
         assert finish_copy.wait(2)
         progress.add_bytes(size)
@@ -87,48 +89,47 @@ def test_streaming_directory_reports_scanning_then_freezes_totals_before_running
         )
     )
     thread.start()
-    assert report_ready.wait(2)
+    assert first_window_out.wait(2)
+    assert copy_started.wait(2)
     live = reports[0]
 
-    scanning = live.snapshot()
-    assert scanning.phase == "scanning"
-    assert (scanning.files_total, scanning.bytes_total) == (1, 3)
-    assert scanning.items_total == scanning.items_done == 0
+    copying = live.snapshot()
+    assert copying.phase == "running"
+    assert copying.scan_complete is False
+    assert copying.eta_seconds is None
+    assert copying.files_total == 257
 
     continue_scan.set()
-    assert copy_started.wait(2)
-    running = live.snapshot()
-    assert running.phase == "running"
-    assert (running.files_total, running.bytes_total) == (2, 8)
-
     finish_copy.set()
-    thread.join(2)
+    thread.join(5)
     assert not thread.is_alive()
-    assert reports[-1].snapshot().phase == "completed"
+    final = reports[-1].snapshot()
+    assert final.phase == "completed"
+    assert final.scan_complete is True
+    assert (final.files_done, final.files_total, final.bytes_total) == (258, 258, 262)
 
 
-def test_streaming_enumeration_finishes_before_any_copy_worker_starts(
-    tmp_path, monkeypatch
-):
+def test_copy_workers_start_before_enumeration_finishes(tmp_path, monkeypatch):
     source = tmp_path / "source"
     destination = tmp_path / "destination"
     source.mkdir()
     destination.mkdir()
     enumeration_paused = threading.Event()
     finish_enumeration = threading.Event()
-    worker_phases = []
+    worker_states = []
 
     def many_tasks(src, dst, report, idx, item_error_count):
-        for index in range(257):
+        for index in range(300):
             path = source / f"{index}.bin"
             report.note_scanned_file(str(path), index + 1)
-            if index == 256:
+            if index == 299:
                 enumeration_paused.set()
                 assert finish_enumeration.wait(2)
             yield str(path), str(destination / path.name), index + 1, idx
 
     def record_copy(src, dst, size, idx, overwrite, cancel_flag, progress, report, item_error_count):
-        worker_phases.append(report.snapshot().phase)
+        snapshot = report.snapshot()
+        worker_states.append((snapshot.phase, snapshot.scan_complete))
         progress.add_bytes(size)
         progress.file_done()
 
@@ -137,17 +138,21 @@ def test_streaming_enumeration_finishes_before_any_copy_worker_starts(
 
     thread = threading.Thread(
         target=lambda: engine.transfer(
-            [str(source)], str(destination), threads=1, live_progress=False,
+            [str(source)], str(destination), threads=2, live_progress=False,
         )
     )
     thread.start()
     assert enumeration_paused.wait(2)
-    assert worker_phases == []
+    deadline = time.monotonic() + 2
+    while len(worker_states) < 256 and time.monotonic() < deadline:
+        time.sleep(0.01)
+    assert len(worker_states) == 256
+    assert {state for state in worker_states} == {("running", False)}
 
     finish_enumeration.set()
-    thread.join(2)
+    thread.join(5)
     assert not thread.is_alive()
-    assert worker_phases and set(worker_phases) == {"running"}
+    assert len(worker_states) == 300
 
 
 def test_snapshot_keeps_byte_totals_separate_from_fast_move_item_totals():

@@ -1,13 +1,15 @@
 r"""高速文件拷贝/移动引擎（纯 ctypes 调 Win32 API）。
 
-单文件用 CopyFileExW（内核级、释放 GIL）；海量小文件线程池并行；>=256MB 加
-COPY_FILE_NO_BUFFERING；同盘剪切用 MoveFileExW 改名；内部统一 \\?\ 长路径。
+单文件用 CopyFileExW（内核级、释放 GIL）；扫描与拷贝流水线并行；海量小文件多线程；
+机械盘自动降并发、大文件串行；>=256MB 加 COPY_FILE_NO_BUFFERING；同盘剪切用 MoveFileExW
+改名；内部统一 \\?\ 长路径。
 """
 
 import ctypes
 import hashlib
 import json
 import os
+import queue
 import random
 import tempfile
 import threading
@@ -36,7 +38,10 @@ FILE_ATTRIBUTE_NORMAL = 0x80
 PROGRESS_CONTINUE = 0
 
 NO_BUFFERING_THRESHOLD = 256 * 1024 * 1024  # 大于此值用无缓冲直写
-PROGRESS_CB_THRESHOLD = 32 * 1024 * 1024  # 大于此值挂进度回调
+PROGRESS_CB_THRESHOLD = 4 * 1024 * 1024  # 大于此值挂进度回调，进度条随字节平滑前进
+BIG_FILE_THRESHOLD = 32 * 1024 * 1024  # 机械盘上大于此值的文件串行拷，避免磁头来回寻道
+TASK_QUEUE_MAX = 65536  # 扫描领先拷贝的最大任务数，限住内存
+HDD_THREADS = 4
 SECURE_ERASE_PASSES = 3  # 安全擦除覆写次数
 
 LPPROGRESS_ROUTINE = ctypes.WINFUNCTYPE(
@@ -66,7 +71,59 @@ kernel32.MoveFileExW.restype = wintypes.BOOL
 kernel32.SetFileAttributesW.argtypes = [wintypes.LPCWSTR, wintypes.DWORD]
 kernel32.SetFileAttributesW.restype = wintypes.BOOL
 
+
+class _FileAttributeData(ctypes.Structure):
+    _fields_ = [
+        ("dwFileAttributes", wintypes.DWORD),
+        ("ftCreationTime", wintypes.FILETIME),
+        ("ftLastAccessTime", wintypes.FILETIME),
+        ("ftLastWriteTime", wintypes.FILETIME),
+        ("nFileSizeHigh", wintypes.DWORD),
+        ("nFileSizeLow", wintypes.DWORD),
+    ]
+
+
+class _StoragePropertyQuery(ctypes.Structure):
+    _fields_ = [
+        ("PropertyId", ctypes.c_int),
+        ("QueryType", ctypes.c_int),
+        ("AdditionalParameters", ctypes.c_ubyte * 1),
+    ]
+
+
+class _SeekPenaltyDescriptor(ctypes.Structure):
+    _fields_ = [
+        ("Version", wintypes.DWORD),
+        ("Size", wintypes.DWORD),
+        ("IncursSeekPenalty", ctypes.c_ubyte),
+    ]
+
+
+kernel32.GetFileAttributesExW.argtypes = [wintypes.LPCWSTR, ctypes.c_int, ctypes.c_void_p]
+kernel32.GetFileAttributesExW.restype = wintypes.BOOL
+kernel32.GetVolumePathNameW.argtypes = [wintypes.LPCWSTR, wintypes.LPWSTR, wintypes.DWORD]
+kernel32.GetVolumePathNameW.restype = wintypes.BOOL
+kernel32.GetVolumeNameForVolumeMountPointW.argtypes = [wintypes.LPCWSTR, wintypes.LPWSTR, wintypes.DWORD]
+kernel32.GetVolumeNameForVolumeMountPointW.restype = wintypes.BOOL
+kernel32.CreateFileW.argtypes = [
+    wintypes.LPCWSTR, wintypes.DWORD, wintypes.DWORD, ctypes.c_void_p,
+    wintypes.DWORD, wintypes.DWORD, wintypes.HANDLE,
+]
+kernel32.CreateFileW.restype = wintypes.HANDLE
+kernel32.DeviceIoControl.argtypes = [
+    wintypes.HANDLE, wintypes.DWORD, ctypes.c_void_p, wintypes.DWORD,
+    ctypes.c_void_p, wintypes.DWORD, ctypes.POINTER(wintypes.DWORD), ctypes.c_void_p,
+]
+kernel32.DeviceIoControl.restype = wintypes.BOOL
+kernel32.CloseHandle.argtypes = [wintypes.HANDLE]
+kernel32.CloseHandle.restype = wintypes.BOOL
+
+_INVALID_HANDLE = ctypes.c_void_p(-1).value
+_IOCTL_STORAGE_QUERY_PROPERTY = 0x002D1400
+_STORAGE_DEVICE_SEEK_PENALTY_PROPERTY = 7
+
 _NULL_PROGRESS = ctypes.cast(None, LPPROGRESS_ROUTINE)
+_perf_now = time.perf_counter  # 绑定本模块时钟，不随别处对 time 的替换漂移
 
 
 # ---- 路径工具：内部统一扩展路径，展示时还原 ----
@@ -103,6 +160,67 @@ def _win_err_msg(err: int) -> str:
         return f"[WinError {err}]"
 
 
+def _file_size(path: str) -> int:
+    """一次 GetFileAttributesExW 取大小，比 os.stat 少开一次句柄（杀软会拦每次打开）。"""
+    data = _FileAttributeData()
+    if not kernel32.GetFileAttributesExW(path, 0, ctypes.byref(data)):
+        raise OSError(_win_err_msg(ctypes.get_last_error()))
+    return (data.nFileSizeHigh << 32) | data.nFileSizeLow
+
+
+_SEEK_PENALTY_CACHE: Dict[str, Optional[bool]] = {}
+_SEEK_PENALTY_LOCK = threading.Lock()
+
+
+def _seek_penalty(path: str) -> Optional[bool]:
+    """路径所在卷是否机械盘（有寻道开销）；网络路径或查不到返回 None。"""
+    shown = _disp(path)
+    if shown.startswith("\\\\"):
+        return None
+    root_buf = ctypes.create_unicode_buffer(1024)
+    if not kernel32.GetVolumePathNameW(shown, root_buf, len(root_buf)):
+        return None
+    root = root_buf.value
+    with _SEEK_PENALTY_LOCK:
+        if root in _SEEK_PENALTY_CACHE:
+            return _SEEK_PENALTY_CACHE[root]
+    result = None
+    name_buf = ctypes.create_unicode_buffer(64)
+    if kernel32.GetVolumeNameForVolumeMountPointW(root, name_buf, len(name_buf)):
+        handle = kernel32.CreateFileW(name_buf.value.rstrip("\\"), 0, 0x3, None, 3, 0, None)
+        if handle and handle != _INVALID_HANDLE:
+            try:
+                query = _StoragePropertyQuery(_STORAGE_DEVICE_SEEK_PENALTY_PROPERTY, 0)
+                desc = _SeekPenaltyDescriptor()
+                returned = wintypes.DWORD(0)
+                if kernel32.DeviceIoControl(
+                    handle, _IOCTL_STORAGE_QUERY_PROPERTY,
+                    ctypes.byref(query), ctypes.sizeof(query),
+                    ctypes.byref(desc), ctypes.sizeof(desc), ctypes.byref(returned), None,
+                ) and returned.value >= ctypes.sizeof(desc):
+                    result = bool(desc.IncursSeekPenalty)
+            finally:
+                kernel32.CloseHandle(handle)
+    with _SEEK_PENALTY_LOCK:
+        _SEEK_PENALTY_CACHE[root] = result
+    return result
+
+
+def _auto_tuning(paths: Iterable[str]) -> Tuple[int, bool]:
+    """按涉及的卷选并发：任一端是机械盘 → 少线程 + 大文件串行；否则 SSD/网络多线程。"""
+    rotational = False
+    for path in paths:
+        try:
+            if _seek_penalty(path):
+                rotational = True
+                break
+        except Exception:
+            continue
+    if rotational:
+        return HDD_THREADS, True
+    return min(32, max(8, (os.cpu_count() or 4) * 2)), False
+
+
 # ---- 结果报告 ----
 
 @dataclass(frozen=True)
@@ -128,6 +246,7 @@ class TaskProgress:
     recycle: bool
     indeterminate: bool = False
     can_cancel: bool = False
+    scan_complete: bool = True  # False = 边扫边拷，总量仍在增长
 
 
 @dataclass
@@ -141,8 +260,10 @@ class _ReportProgressState:
     items_total: int = 0
     started_at: float = field(default_factory=time.time)
     started_perf: float = field(default_factory=time.perf_counter)
+    running_perf: Optional[float] = None
     indeterminate: bool = False
     can_cancel: bool = False
+    scan_complete: bool = True
 
 
 _REPORT_STATES: Dict[int, _ReportProgressState] = {}
@@ -200,12 +321,18 @@ class TransferReport:
         so it can be rendered after the lock is released."""
         state = _report_state(self)
         with state.lock:
-            elapsed = self.elapsed or max(0.0, time.perf_counter() - state.started_perf)
-            speed = self.bytes_done / elapsed if elapsed > 0 else 0.0
+            now = _perf_now()
+            elapsed = self.elapsed or max(0.0, now - state.started_perf)
+            # 速度只算拷贝阶段：扫描用掉的时间不该把速度摊低、把剩余时间拉长。
+            running_for = (now - state.running_perf) if state.running_perf is not None else 0.0
+            if self.elapsed and state.running_perf is not None:
+                running_for = max(0.0, self.elapsed - (state.running_perf - state.started_perf))
+            speed = self.bytes_done / running_for if running_for > 0 else 0.0
             eta = None
             if (
                 state.phase == "running"
-                and elapsed >= 1.0
+                and state.scan_complete
+                and running_for >= 1.0
                 and self.bytes_total > self.bytes_done
                 and speed > 0
             ):
@@ -230,6 +357,7 @@ class TransferReport:
                 recycle=self.operation == "recycle",
                 indeterminate=state.indeterminate,
                 can_cancel=state.can_cancel,
+                scan_complete=state.scan_complete,
             )
 
     def note_scanned_file(self, path: str, size: int) -> None:
@@ -290,12 +418,26 @@ class TransferReport:
         with state.lock:
             if state.phase == "scanning":
                 state.phase = "running"
+                if state.running_perf is None:
+                    state.running_perf = _perf_now()
 
     def mark_scanning(self) -> None:
         state = _report_state(self)
         with state.lock:
             if state.phase == "running":
                 state.phase = "scanning"
+
+    def set_scan_complete(self, complete: bool) -> None:
+        state = _report_state(self)
+        with state.lock:
+            state.scan_complete = complete
+
+    def mark_cleanup(self) -> None:
+        """跨盘移动拷完后删源的阶段：拷贝进度已满，界面改显示「清理源文件」。"""
+        state = _report_state(self)
+        with state.lock:
+            if state.phase in ("scanning", "running"):
+                state.phase = "cleanup"
 
     def mark_cancelled(self) -> None:
         state = _report_state(self)
@@ -327,7 +469,7 @@ class _Progress:
 
     def add_bytes(self, n: int) -> None:
         with self.lock:
-            self.report.bytes_done += n
+            self.report.bytes_done = max(0, self.report.bytes_done + n)
 
     def file_done(self) -> None:
         with self.lock:
@@ -567,59 +709,38 @@ def transfer(
             report.note_scanned_file(src, size)
             yield src, dst, size, idx
 
-    # 先把流式枚举写入临时任务清单：无需二次扫描或物化整棵目录树，即可在首个
-    # CopyFileExW 前冻结总量；排序只占 _buffered_size_priority 固定窗口，清单结束后自动删除。
+    # 5) 流水线：扫描线程边走目录边投任务，拷贝线程立即开工，扫描时间被拷贝掩盖。
+    # 扫描结束前总量仍在增长（scan_complete=False），界面据此不报百分比与剩余时间。
+    serialize_big = False
     if threads is None:
-        threads = min(16, max(4, (os.cpu_count() or 4) * 2))
+        threads, serialize_big = _auto_tuning(
+            [dest_dir] + [src for src, _dst, _is_dir in copy_items[:8]]
+        )
     if cancel_flag is None:
         cancel_flag = wintypes.BOOL(0)
     progress = _Progress(report, live=live_progress and _stdout_is_tty())
     progress.start()
     overwrite = on_conflict == "overwrite"
-    pool = ThreadPoolExecutor(max_workers=threads) if copy_items else None
-    try:
-        if copy_items:
-            with tempfile.TemporaryFile(mode="w+t", encoding="utf-8") as task_spool:
-                for task in _buffered_size_priority(iter_tasks()):
-                    task_spool.write(json.dumps(task, ensure_ascii=False) + "\n")
-                report.mark_running()
-                task_spool.seek(0)
-
-                def spooled_tasks() -> Iterator[Tuple[str, str, int, int]]:
-                    for line in task_spool:
-                        src, dst, size, idx = json.loads(line)
-                        yield src, dst, size, idx
-
-                if pool:
-                    _run_bounded(
-                        pool,
-                        lambda task: _copy_one(
-                            task[0], task[1], task[2], task[3], overwrite,
-                            cancel_flag, progress, report, item_error_count,
-                        ),
-                        spooled_tasks(),
-                        max_pending=max(threads * 2, 8),
-                        collect_results=False,
-                    )
-    except KeyboardInterrupt:
-        # 先立起取消旗，正在拷贝的 CopyFileExW 会立即中止并清掉半成品文件
-        cancel_flag.value = 1
-        report.mark_cancelled()
-        logger.warning("用户中断，已停止拷贝")
-    finally:
-        if pool:
-            pool.shutdown(wait=True, cancel_futures=True)
-        progress.stop()
+    if copy_items:
+        _run_copy_pipeline(
+            iter_tasks(), threads, serialize_big, overwrite,
+            cancel_flag, progress, report, item_error_count,
+        )
+    progress.stop()
     if cancel_flag.value and not report.cancelled:
         report.mark_cancelled()  # 外部（GUI 取消按钮）置旗
 
     # 6) 跨盘移动：拷贝全部成功的条目，删除源
     if move and not report.cancelled:
+        deletable = []
         for idx, (src, is_dir) in enumerate(item_srcs):
             if item_error_count[idx] > 0:
                 report.add_error(_disp(src), "有文件拷贝失败，为安全起见源文件保留未删")
                 continue
-            _delete_source(src, is_dir, report)
+            deletable.append((src, is_dir))
+        if deletable:
+            report.mark_cleanup()
+            _delete_sources(deletable, report, threads)
 
     report.finish()
     logger.info(
@@ -881,6 +1002,127 @@ def _iter_copy_tasks(
             item_error_count[idx] += 1
 
 
+def _run_copy_pipeline(
+    tasks: Iterable[Tuple[str, str, int, int]],
+    threads: int,
+    serialize_big: bool,
+    overwrite: bool,
+    cancel_flag: "wintypes.BOOL",
+    progress: _Progress,
+    report: TransferReport,
+    item_error_count: List[int],
+) -> None:
+    """一个扫描线程 + threads 个拷贝线程，经有界队列交接；任何线程异常都不会卡住其它线程。"""
+    task_queue: "queue.Queue" = queue.Queue(maxsize=TASK_QUEUE_MAX)
+    big_gate = threading.Semaphore(1) if serialize_big else None
+    report.set_scan_complete(False)
+
+    def scan() -> None:
+        try:
+            for task in _buffered_size_priority(tasks):
+                if cancel_flag.value:
+                    break
+                report.mark_running()
+                task_queue.put(task)
+        except Exception as exc:
+            logger.exception("copy scan failed")
+            report.add_error("扫描", str(exc))
+        finally:
+            report.mark_running()
+            report.set_scan_complete(True)
+            for _ in range(threads):
+                task_queue.put(None)
+
+    def work() -> None:
+        while True:
+            task = task_queue.get()
+            if task is None:
+                return
+            src, dst, size, idx = task
+            try:
+                if big_gate is not None and size >= BIG_FILE_THRESHOLD:
+                    with big_gate:
+                        _copy_one(src, dst, size, idx, overwrite, cancel_flag, progress, report, item_error_count)
+                else:
+                    _copy_one(src, dst, size, idx, overwrite, cancel_flag, progress, report, item_error_count)
+            except Exception as exc:
+                logger.exception("copy worker failed on %s", src)
+                with progress.lock:
+                    report.add_error(_disp(src), str(exc))
+                    item_error_count[idx] += 1
+
+    workers = [threading.Thread(target=work, name=f"fileops-copy-{i}", daemon=True) for i in range(threads)]
+    scanner = threading.Thread(target=scan, name="fileops-scan", daemon=True)
+    for worker in workers:
+        worker.start()
+    scanner.start()
+    try:
+        for thread in [scanner, *workers]:
+            while thread.is_alive():
+                thread.join(0.2)
+    except KeyboardInterrupt:
+        # 先立起取消旗，正在拷贝的 CopyFileExW 会立即中止并清掉半成品文件
+        cancel_flag.value = 1
+        report.mark_cancelled()
+        logger.warning("用户中断，已停止拷贝")
+        for thread in [scanner, *workers]:
+            thread.join()
+
+
+def _delete_sources(items: List[Tuple[str, bool]], report: TransferReport, threads: int) -> None:
+    """跨盘移动收尾：并行删除已全部拷好的源，再自底向上删空目录；每个条目最多报一条错。"""
+    failures: Dict[str, str] = {}
+    failures_lock = threading.Lock()
+
+    def note_failure(item: str, message: str) -> None:
+        with failures_lock:
+            failures.setdefault(item, message)
+
+    def delete_file(job: Tuple[str, str]) -> None:
+        item, path = job
+        report.set_current_path(path)
+        if kernel32.DeleteFileW(path):
+            return
+        err = ctypes.get_last_error()
+        if err == ERROR_ACCESS_DENIED:
+            kernel32.SetFileAttributesW(path, FILE_ATTRIBUTE_NORMAL)
+            if kernel32.DeleteFileW(path):
+                return
+            err = ctypes.get_last_error()
+        note_failure(item, _win_err_msg(err))
+
+    dirs: List[Tuple[str, str]] = []
+
+    def iter_files() -> Iterator[Tuple[str, str]]:
+        for src, is_dir in items:
+            if not is_dir:
+                yield src, src
+                continue
+            pending = [src]
+            while pending:
+                current = pending.pop()
+                dirs.append((src, current))
+                try:
+                    with os.scandir(current) as entries:
+                        for entry in entries:
+                            if entry.is_dir(follow_symlinks=False):
+                                pending.append(entry.path)
+                            else:
+                                yield src, entry.path
+                except OSError as exc:
+                    note_failure(src, str(exc))
+
+    with ThreadPoolExecutor(max_workers=max(1, threads)) as pool:
+        _run_bounded(pool, delete_file, iter_files(), max_pending=max(threads * 4, 16), collect_results=False)
+    for item, path in sorted(dirs, key=lambda pair: pair[1].count("\\"), reverse=True):
+        if item in failures:
+            continue
+        if not kernel32.RemoveDirectoryW(path):
+            note_failure(item, _win_err_msg(ctypes.get_last_error()))
+    for item, message in failures.items():
+        report.add_error(_disp(item), f"删除源失败（目标已拷好）: {message}")
+
+
 def _copy_one(
     src: str,
     dst: str,
@@ -916,6 +1158,8 @@ def _copy_one(
             if not ok:
                 err = ctypes.get_last_error()
         if not ok:
+            if counted["v"]:
+                progress.add_bytes(-counted["v"])  # 半途失败/取消：回滚已计入的字节，进度不虚高
             if err != ERROR_REQUEST_ABORTED:
                 with progress.lock:
                     report.add_error(_disp(src), _win_err_msg(err))
@@ -924,13 +1168,15 @@ def _copy_one(
 
     # 廉价完整性校验：目标文件大小必须和源一致
     try:
-        actual = os.stat(dst).st_size
+        actual = _file_size(dst)
     except OSError as exc:
+        progress.add_bytes(-counted["v"])
         with progress.lock:
             report.add_error(_disp(dst), f"校验失败: {exc}")
             item_error_count[idx] += 1
         return
     if actual != size:
+        progress.add_bytes(-counted["v"])
         with progress.lock:
             report.add_error(_disp(dst), f"校验失败: 大小不一致 (源 {size} vs 目标 {actual})")
             item_error_count[idx] += 1
@@ -943,9 +1189,12 @@ def _copy_one(
 def _make_progress_cb(progress: _Progress, counted: dict) -> "LPPROGRESS_ROUTINE":
     @LPPROGRESS_ROUTINE
     def cb(total, transferred, ss, st, stream_num, reason, hsrc, hdst, data):
-        delta = transferred - counted["v"]
+        # 只记主数据流：备用数据流（如下载文件的 Zone.Identifier）不在 st_size 里。
+        if stream_num != 1:
+            return PROGRESS_CONTINUE
+        delta = st - counted["v"]
         if delta > 0:
-            counted["v"] = transferred
+            counted["v"] = st
             progress.add_bytes(delta)
         return PROGRESS_CONTINUE
 
@@ -982,23 +1231,6 @@ def _move_merge_same_volume(src: str, dst: str, report: TransferReport) -> None:
         report.add_error(_disp(src), "有文件合并失败，源目录保留未删")
     with report._lock:
         report.fast_moved.append((_disp(src), _disp(dst) + f"（合并 {moved} 个文件）"))
-
-
-def _delete_source(src: str, is_dir: bool, report: TransferReport) -> None:
-    """跨盘移动的收尾：拷贝成功后删除源。"""
-    try:
-        if is_dir:
-            for root, dirs, files in os.walk(src, topdown=False):
-                for name in files:
-                    p = os.path.join(root, name)
-                    kernel32.SetFileAttributesW(p, FILE_ATTRIBUTE_NORMAL)
-                    os.unlink(p)
-                os.rmdir(root)
-        else:
-            kernel32.SetFileAttributesW(src, FILE_ATTRIBUTE_NORMAL)
-            os.unlink(src)
-    except OSError as exc:
-        report.add_error(_disp(src), f"删除源失败（目标已拷好）: {exc}")
 
 
 def _remove_empty_tree(src: str, report: TransferReport) -> None:

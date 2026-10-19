@@ -4133,12 +4133,12 @@ def _throttled_progress(
     file_name because it handles a whole batch in one call)."""
     state = {"last_sent": 0.0}
 
-    def _progress(done: int, total: int) -> None:
+    def _progress(done: int, total: int, **fields) -> None:
         now = time.monotonic()
         if done < total and now - state["last_sent"] < min_interval_s:
             return
         state["last_sent"] = now
-        payload = {"done": done, "total": total}
+        payload = {"done": done, "total": total, **fields}
         if extra:
             payload.update(extra)
         _write({"id": request_id, "progress": payload})

@@ -210,33 +210,81 @@ def _prune_stale_runtimes(root: Path, keep) -> None:
         shutil.rmtree(entry, ignore_errors=True)
 
 
-def _publish_runtime(staging: Path, runtime_dir: Path, hook_exe: Path, cli_script: Path) -> None:
-    """把备好的 staging 目录搬到 runtime_dir，目标已存在时也要成立。
+# 杀毒软件 / 索引器扫描刚复制出的 exe 时会短暂持有句柄，目录改名随之 WinError 5。
+_RENAME_RETRY_DELAYS_S = (0.0, 0.05, 0.1, 0.2, 0.4, 0.8, 1.2)
 
-    `os.replace()` 换不掉已存在的目录：Windows 抛 **PermissionError**（WinError 5，
-    MOVEFILE_REPLACE_EXISTING 对目录无效），POSIX 抛 ENOTEMPTY/EEXIST，只接 FileExistsError
-    在 Windows 上一条也接不住，且 runtime_dir 一旦先存在就永远自愈不了。
-    目标完整可用 = 别的进程抢先装好了，丢掉自己这份；目标残缺 = 先改名挪走再删
-    （被映射的 hook_agent.exe 挡得住删除，挡不住改名）。
+
+def _replace_with_retry(src: Path, dst: Path) -> None:
+    """os.replace 遇 PermissionError 时退避重试（Git mingw_rename / graceful-fs 同法）。"""
+    for attempt, delay in enumerate(_RENAME_RETRY_DELAYS_S):
+        if delay:
+            _time.sleep(delay)
+        try:
+            os.replace(src, dst)
+            return
+        except PermissionError:
+            if dst.exists() or attempt == len(_RENAME_RETRY_DELAYS_S) - 1:
+                raise
+
+
+def _copy_into_place(staging: Path, runtime_dir: Path, hook_exe: Path, cli_script: Path) -> None:
+    """改名始终被拒时逐文件复制进目标；两个关键文件最后写，保证「二者都在 = 完整」。"""
+    staged_core = staging / "core"
+    keys = {
+        os.path.normcase(str(staged_core.joinpath(*_HOOK_EXE_RELATIVE))): hook_exe,
+        os.path.normcase(str(staged_core / "fileops" / "hook_cli.py")): cli_script,
+    }
+    deferred = []
+    for src in staged_core.rglob("*"):
+        if src.is_dir():
+            continue
+        dst = runtime_dir / "core" / src.relative_to(staged_core)
+        if os.path.normcase(str(src)) in keys:
+            deferred.append((src, dst))
+            continue
+        dst.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(src, dst)
+    for src, dst in sorted(deferred, key=lambda pair: pair[1] == hook_exe):
+        dst.parent.mkdir(parents=True, exist_ok=True)
+        part = dst.with_name(dst.name + f".{os.getpid()}.part")
+        shutil.copy2(src, part)
+        _replace_with_retry(part, dst)
+
+
+def _publish_runtime(staging: Path, runtime_dir: Path, hook_exe: Path, cli_script: Path) -> None:
+    """把备好的 staging 目录搬到 runtime_dir，目标已存在、或目录改名被拒时也要成立。
+
+    `os.replace()` 换不掉已存在的目录：Windows 抛 PermissionError（WinError 5），POSIX 抛
+    ENOTEMPTY/EEXIST。目标完整 = 别的进程抢先装好了，丢掉自己这份；目标残缺 = 先改名挪走再删。
+    目标不存在仍被拒 = 句柄被临时占用，退避重试后改为逐文件复制。
     """
     try:
-        os.replace(staging, runtime_dir)
+        _replace_with_retry(staging, runtime_dir)
         return
     except OSError:
         if not runtime_dir.exists():
-            raise  # 目标压根不在，那就不是"已存在"这回事，让调用方看到原始错误
+            _copy_into_place(staging, runtime_dir, hook_exe, cli_script)
+            shutil.rmtree(staging, ignore_errors=True)
+            return
 
     if hook_exe.is_file() and cli_script.is_file():
         shutil.rmtree(staging, ignore_errors=True)
         return
 
     retired = runtime_dir.with_name(f".retired-{runtime_dir.name}-{os.getpid()}-{int(_time.time())}")
-    os.replace(runtime_dir, retired)
     try:
-        os.replace(staging, runtime_dir)
+        _replace_with_retry(runtime_dir, retired)
     except OSError:
-        os.replace(retired, runtime_dir)  # 让位失败就把原样放回去，不留下一个空位置
-        raise
+        _copy_into_place(staging, runtime_dir, hook_exe, cli_script)
+        shutil.rmtree(staging, ignore_errors=True)
+        return
+    try:
+        _replace_with_retry(staging, runtime_dir)
+    except OSError:
+        _replace_with_retry(retired, runtime_dir)
+        _copy_into_place(staging, runtime_dir, hook_exe, cli_script)
+        shutil.rmtree(staging, ignore_errors=True)
+        return
     shutil.rmtree(retired, ignore_errors=True)
 
 
@@ -267,9 +315,8 @@ def provision_runtime(source_core_dir=None, install_root=None, hook_exe_source=N
 
     if not hook_exe.is_file() or not cli_script.is_file():
         root.mkdir(parents=True, exist_ok=True)
-        staging = root / f".runtime-{version}-{os.getpid()}.staging"
-        if staging.exists():
-            shutil.rmtree(staging)
+        # 每次唯一：上一次被占用而没删净的 staging 不能挡住这一次。
+        staging = root / f".runtime-{version}-{os.getpid()}-{_time.time_ns()}.staging"
         try:
             shutil.copytree(
                 source_core,

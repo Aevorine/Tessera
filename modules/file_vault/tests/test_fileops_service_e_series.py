@@ -52,8 +52,8 @@ def test_cross_volume_move_keeps_source_when_directory_scan_failed(tmp_path, mon
     monkeypatch.setattr(service.file_engine, "_iter_copy_tasks", failed_collect)
     monkeypatch.setattr(
         service.file_engine,
-        "_delete_source",
-        lambda src, is_dir, report: deleted.append((src, is_dir)),
+        "_delete_sources",
+        lambda items, report, threads: deleted.extend(items),
     )
 
     report = service.file_engine.transfer(

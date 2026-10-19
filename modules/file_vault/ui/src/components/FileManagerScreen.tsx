@@ -47,13 +47,29 @@ interface DirEntry {
 
 interface OperationProgress {
   label: string           // "Pasting..." / "Deleting..."
-  done: number
+  done: number            // 进度条单位：unit=bytes 时是字节
   total: number
+  unit: 'bytes' | 'items'
+  filesDone: number
+  filesTotal: number
   bytesDone: number
   bytesTotal: number
+  scanComplete: boolean   // false = 后端边扫边做，总量仍在增长
+  phase: string
+  speed: number           // unit 每秒
+  current: string
+  live: boolean           // 收到过后端进度帧（其速度/剩余时间优先）
   startTime: number       // performance.now() at start
   elapsed: number         // seconds, updated by timer
   eta: number | null      // seconds remaining, or null
+}
+
+function newOperationProgress(label: string, total: number, unit: 'bytes' | 'items'): OperationProgress {
+  return {
+    label, done: 0, total, unit, filesDone: 0, filesTotal: unit === 'items' ? total : 0,
+    bytesDone: 0, bytesTotal: 0, scanComplete: unit === 'items', phase: 'scanning', speed: 0,
+    current: '', live: false, startTime: performance.now(), elapsed: 0, eta: null,
+  }
 }
 
 function isEditableKeyboardTarget(target: EventTarget | null): boolean {
@@ -317,13 +333,13 @@ export function FileManagerScreen({ isProfessional = false }: { isProfessional?:
     }
     progressIntervalRef.current = window.setInterval(() => {
       setOperationProgress((prev) => {
-        if (!prev || prev.total === 0) return prev
+        if (!prev) return prev
         const elapsed = (performance.now() - prev.startTime) / 1000
-        const currentDone = prev.bytesDone || prev.done
-        const speed = currentDone / elapsed
-        const remaining = prev.bytesTotal - currentDone
-        const eta = speed > 0 ? remaining / speed : null
-        return { ...prev, elapsed, eta }
+        if (prev.live) return { ...prev, elapsed }
+        // 没有后端进度帧的逐项操作（加密/解密）：按已完成项的平均耗时估算
+        const eta = prev.done > 0 && prev.total > prev.done ? ((prev.total - prev.done) * elapsed) / prev.done : null
+        const speed = elapsed > 0 ? prev.done / elapsed : 0
+        return { ...prev, elapsed, eta, speed }
       })
     }, 1000)
     return () => {
@@ -450,11 +466,26 @@ export function FileManagerScreen({ isProfessional = false }: { isProfessional?:
         const data = payload as unknown as FileClipProgress
         setOperationProgress((prev) => {
           if (!prev) return prev
-          const newDone = data.done
-          const newTotal = data.total
-          // For delete/secure_erase, bytes aren't tracked - use file counts directly
-          const bytesDone = prev.bytesTotal > 0 ? (prev.bytesTotal * newDone / newTotal) : newDone
-          return { ...prev, done: newDone, total: newTotal, bytesDone }
+          if (data.files_total === undefined) {
+            // 安全擦除只回 done/total（条目数）
+            return { ...prev, done: data.done, total: data.total, filesDone: data.done, filesTotal: data.total, scanComplete: true, phase: 'running' }
+          }
+          return {
+            ...prev,
+            done: data.done,
+            total: data.total,
+            unit: data.unit ?? prev.unit,
+            filesDone: data.files_done ?? prev.filesDone,
+            filesTotal: data.files_total ?? prev.filesTotal,
+            bytesDone: data.bytes_done ?? prev.bytesDone,
+            bytesTotal: data.bytes_total ?? prev.bytesTotal,
+            scanComplete: data.scan_complete ?? true,
+            phase: data.phase ?? prev.phase,
+            speed: data.speed ?? 0,
+            eta: data.eta ?? null,
+            current: data.current ?? '',
+            live: true,
+          }
         })
       }
     })
@@ -546,7 +577,7 @@ export function FileManagerScreen({ isProfessional = false }: { isProfessional?:
 
   async function executePaste(onConflict: 'rename' | 'skip' | 'overwrite') {
     if (transferring) return
-    setOperationProgress({ label: t('pasteProgressLabel'), done: 0, total: 1, bytesDone: 0, bytesTotal: 0, startTime: performance.now(), elapsed: 0, eta: null })
+    setOperationProgress(newOperationProgress(t('pasteProgressLabel'), 1, 'bytes'))
     setOperationFiles(clipboardStatus.isCut ? [] : [])
     try {
       const res = await vaultApi.call('file_clip_paste', { dest_dir: currentPath, on_conflict: onConflict })
@@ -569,7 +600,7 @@ export function FileManagerScreen({ isProfessional = false }: { isProfessional?:
   async function runDelete(paths: string[], recycle: boolean) {
     if (paths.length === 0 || transferring) return
     const opLabel = recycle ? t('deleteProgressLabel') : t('permanentDeleteProgressLabel')
-    setOperationProgress({ label: opLabel, done: 0, total: paths.length, bytesDone: 0, bytesTotal: 0, startTime: performance.now(), elapsed: 0, eta: null })
+    setOperationProgress(newOperationProgress(opLabel, paths.length, 'items'))
     setOperationFiles(paths.map((p) => p.split('\\').pop() || p.split('/').pop() || p))
     try {
       const res = await vaultApi.call('file_clip_delete', { paths, recycle })
@@ -617,7 +648,7 @@ export function FileManagerScreen({ isProfessional = false }: { isProfessional?:
       : [entry]
     if (targets.length === 0 || transferring) return
     const paths = targets.map((e) => joinPath(currentPath, e.name))
-    setOperationProgress({ label: t('secureEraseProgressLabel'), done: 0, total: paths.length, bytesDone: 0, bytesTotal: 0, startTime: performance.now(), elapsed: 0, eta: null })
+    setOperationProgress(newOperationProgress(t('secureEraseProgressLabel'), paths.length, 'items'))
     setOperationFiles(paths.map((p) => p.split('\\').pop() || p.split('/').pop() || p))
     try {
       const res = await vaultApi.call('file_clip_secure_erase', { paths })
@@ -669,7 +700,7 @@ export function FileManagerScreen({ isProfessional = false }: { isProfessional?:
       ? entries.filter((e) => selected.has(e.name) && !e.isDirectory)
       : [entry]
     if (targets.length === 0 || transferring) return
-    setOperationProgress({ label: t('encryptProgressLabel'), done: 0, total: targets.length, bytesDone: 0, bytesTotal: 0, startTime: performance.now(), elapsed: 0, eta: null })
+    setOperationProgress(newOperationProgress(t('encryptProgressLabel'), targets.length, 'items'))
     setOperationFiles(targets.map((e) => e.name))
     try {
       const taken = new Set(entries.map((e) => e.name))
@@ -698,7 +729,7 @@ export function FileManagerScreen({ isProfessional = false }: { isProfessional?:
       ? entries.filter((e) => selected.has(e.name) && !e.isDirectory && /\.ivault$/i.test(e.name))
       : [entry]
     if (targets.length === 0 || transferring) return
-    setOperationProgress({ label: t('decryptProgressLabel'), done: 0, total: targets.length, bytesDone: 0, bytesTotal: 0, startTime: performance.now(), elapsed: 0, eta: null })
+    setOperationProgress(newOperationProgress(t('decryptProgressLabel'), targets.length, 'items'))
     setOperationFiles(targets.map((e) => e.name))
     try {
       const taken = new Set(entries.map((e) => e.name))
@@ -907,9 +938,11 @@ export function FileManagerScreen({ isProfessional = false }: { isProfessional?:
     rowVirtualizer.scrollToOffset(0)
   }, [currentPath, rowVirtualizer])
 
-  // Progress dialog percentage and bar value
-  const progressPct = operationProgress && operationProgress.total > 0
-    ? Math.min(100, Math.round((operationProgress.done / operationProgress.total) * 100))
+  // 总量冻结后才给百分比；边扫边拷、清理源文件阶段走不定进度
+  const progressDeterminate = !!operationProgress && operationProgress.scanComplete
+    && operationProgress.total > 0 && operationProgress.phase !== 'cleanup'
+  const progressPct = operationProgress && progressDeterminate
+    ? Math.min(100, Math.floor((operationProgress.done / operationProgress.total) * 100))
     : 0
 
   return (
@@ -1123,24 +1156,47 @@ export function FileManagerScreen({ isProfessional = false }: { isProfessional?:
             <DialogTitle>{operationProgress?.label || t('transferringLabel')}</DialogTitle>
           </DialogHeader>
           <div className="space-y-3">
-            <Progress value={progressPct} />
+            {progressDeterminate
+              ? <Progress value={progressPct} className="h-2" />
+              : <div className="h-2 w-full animate-pulse rounded-full bg-primary/40" />}
             {operationProgress && (
-              <div className="grid grid-cols-3 gap-2 text-sm text-muted-foreground">
+              <div className="grid grid-cols-3 gap-x-2 gap-y-3 text-sm text-muted-foreground">
                 <div>
                   <span className="font-medium text-foreground">{t('progressLabel')}</span>
-                  <br />{operationProgress.done} / {operationProgress.total} {operationProgress.total > 1 ? t('progressItems') : t('progressItem')}
+                  <br /><span className="tabular-nums">{operationProgress.filesDone.toLocaleString()} / {operationProgress.filesTotal.toLocaleString()}{operationProgress.scanComplete ? '' : '+'}</span>
+                  {progressDeterminate && <span className="tabular-nums">  {progressPct}%</span>}
+                </div>
+                <div>
+                  <span className="font-medium text-foreground">{t('progressSizeLabel')}</span>
+                  <br /><span className="tabular-nums">{operationProgress.unit === 'bytes' || operationProgress.bytesTotal > 0
+                    ? `${formatSizeCompact(operationProgress.bytesDone)} / ${formatSizeCompact(operationProgress.bytesTotal)}${operationProgress.scanComplete ? '' : '+'}`
+                    : '—'}</span>
+                </div>
+                <div>
+                  <span className="font-medium text-foreground">{t('progressSpeedLabel')}</span>
+                  <br /><span className="tabular-nums">{operationProgress.speed > 0
+                    ? (operationProgress.unit === 'bytes'
+                      ? `${formatSizeCompact(operationProgress.speed)}/s`
+                      : `${operationProgress.speed.toFixed(1)} ${t('progressItems')}/s`)
+                    : '—'}</span>
                 </div>
                 <div>
                   <span className="font-medium text-foreground">{t('progressElapsedLabel')}</span>
-                  <br />{formatDuration(operationProgress.elapsed)}
+                  <br /><span className="tabular-nums">{formatDuration(operationProgress.elapsed)}</span>
                 </div>
-                <div>
+                <div className="col-span-2">
                   <span className="font-medium text-foreground">{t('progressEtaLabel')}</span>
-                  <br />{operationProgress.eta !== null ? formatDuration(operationProgress.eta) : t('progressCalculating')}
+                  <br /><span className="tabular-nums">{operationProgress.phase === 'cleanup'
+                    ? t('progressCleanup')
+                    : !operationProgress.scanComplete
+                      ? t('progressScanning')
+                      : operationProgress.eta !== null ? formatDuration(operationProgress.eta) : t('progressCalculating')}</span>
                 </div>
               </div>
             )}
-            <Progress value={progressPct} className="h-2" />
+            {operationProgress?.current && (
+              <p className="truncate text-sm text-muted-foreground" title={operationProgress.current}>{operationProgress.current}</p>
+            )}
             {operationFiles.length > 0 && (
               <div className="max-h-24 space-y-0.5 overflow-y-auto rounded border p-2">
                 {operationFiles.map((name) => (
