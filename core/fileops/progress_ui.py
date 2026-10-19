@@ -19,8 +19,12 @@ logger = get_logger(__name__)
 # 热键触发的文件操作必须总是显示任务卡，哪怕小文件 0.3 秒内完成，
 # 否则 Ctrl+V/Delete 看起来像没反应。
 DELAY_SHOW_SECS = 0
-CARD_WIDTH = 390
-CARD_HEIGHT = 118
+CARD_WIDTH = 440  # 96 DPI 下的像素，运行时按屏幕 DPI 放大；高度按字体行高算
+CJK_FAMILY = "SimSun"  # 宋体
+LATIN_FAMILY = "Times New Roman"
+FONT_SIZE = 12  # 小四
+FULL_BODY_LINES = 5
+COMPACT_BODY_LINES = 2
 SAFE_MARGIN = 16
 MAX_CARD_SLOTS = 4
 MAX_ERROR_DETAILS = 6
@@ -390,6 +394,75 @@ def show_non_activating(root, x, y, width, height):
     _show_noactivate(hwnd, x, y, width, height)
 
 
+def _is_cjk(ch):
+    o = ord(ch)
+    return (
+        0x2E80 <= o <= 0x9FFF or 0xF900 <= o <= 0xFAFF
+        or 0xFE30 <= o <= 0xFE4F or 0xFF00 <= o <= 0xFFEF
+        or 0x20000 <= o <= 0x2FA1F
+    )
+
+
+def font_runs(text):
+    """切成 (片段, 是否中文)：中文走宋体，英文、数字、标点走 Times New Roman。"""
+    runs = []
+    for ch in text:
+        cjk = _is_cjk(ch)
+        if runs and runs[-1][1] == cjk:
+            runs[-1][0].append(ch)
+        else:
+            runs.append(([ch], cjk))
+    return [("".join(chars), cjk) for chars, cjk in runs]
+
+
+class _MixedText:
+    """只读多行文字，按字符分字体（Tk Label 只能一种字体）。"""
+
+    def __init__(self, parent, lines, bold=False):
+        import tkinter as tk
+
+        weight = "bold" if bold else "normal"
+        self.widget = tk.Text(
+            parent, height=lines, borderwidth=0, highlightthickness=0, wrap="none",
+            cursor="arrow", takefocus=0, background=parent.cget("background"),
+            font=(LATIN_FAMILY, FONT_SIZE, weight), padx=0, pady=0,
+        )
+        self.widget.tag_configure("cjk", font=(CJK_FAMILY, FONT_SIZE, weight))
+        self.widget.tag_configure("latin", font=(LATIN_FAMILY, FONT_SIZE, weight))
+        self.widget.configure(state="disabled")
+        self._text = None
+
+    def pack(self, **kwargs):
+        self.widget.pack(**kwargs)
+
+    def config(self, text=None, foreground=None):
+        if foreground is not None:
+            for tag in ("cjk", "latin"):
+                self.widget.tag_configure(tag, foreground=foreground)
+        if text is None or text == self._text:
+            return
+        self._text = text
+        self.widget.configure(state="normal")
+        self.widget.delete("1.0", "end")
+        for chunk, cjk in font_runs(text):
+            self.widget.insert("end", chunk, "cjk" if cjk else "latin")
+        self.widget.configure(state="disabled")
+
+
+def _card_size(root, compact):
+    """按实际字体行高与屏幕 DPI 算卡片尺寸，高 DPI 下文字不被截断。"""
+    import tkinter.font as tkfont
+
+    line = max(
+        tkfont.Font(root=root, family=family, size=FONT_SIZE).metrics("linespace")
+        for family in (CJK_FAMILY, LATIN_FAMILY)
+    )
+    scale = max(1.0, root.winfo_fpixels("1i") / 96.0)
+    body_lines = COMPACT_BODY_LINES if compact else FULL_BODY_LINES
+    chrome = (12 + 6 + 14 + 6 + 8 + 34 + 12) * scale  # 上下留白、进度条、按钮
+    return int(CARD_WIDTH * scale), int(line * (1 + body_lines) + chrome), scale
+
+
 class _ProgressWindow:
     def __init__(self, headline, cancel_flag, final, preferences, trigger_hwnd, card_slot):
         import tkinter as tk
@@ -401,13 +474,18 @@ class _ProgressWindow:
         self.root.title("FileHook")
         self.root.resizable(False, False)
         self.root.attributes("-topmost", True)
-        self.head = ttk.Label(self.root, text=headline, font=("Microsoft YaHei UI", 10, "bold"))
-        self.head.pack(anchor="w", padx=14, pady=(10, 3))
-        self.bar = ttk.Progressbar(self.root, length=CARD_WIDTH - 28, mode="indeterminate")
-        self.bar.pack(padx=14, pady=3)
+        ttk.Style(self.root).configure("TButton", font=(CJK_FAMILY, FONT_SIZE))
+        width, height, scale = _card_size(self.root, preferences["compact"])
+        pad = int(14 * scale)
+        self.head = _MixedText(self.root, 1, bold=True)
+        self.head.config(text=headline)
+        self.head.pack(fill="x", padx=pad, pady=(int(12 * scale), int(6 * scale)))
+        self.bar = ttk.Progressbar(self.root, length=width - 2 * pad, mode="indeterminate")
+        self.bar.pack(padx=pad, pady=(0, int(6 * scale)))
         self.bar.start(12)
-        self.body = ttk.Label(self.root, text="正在扫描…", justify="left", wraplength=CARD_WIDTH - 28)
-        self.body.pack(anchor="w", padx=14, pady=3)
+        self.body = _MixedText(self.root, COMPACT_BODY_LINES if preferences["compact"] else FULL_BODY_LINES)
+        self.body.config(text="正在扫描…")
+        self.body.pack(fill="x", padx=pad)
         self.btn = None
         self._running_started_at = None
         live_report = final.get("live_report")
@@ -418,9 +496,9 @@ class _ProgressWindow:
         self.root.protocol("WM_DELETE_WINDOW", self._on_cancel)
         x, y = stacked_card_origin(
             preferences["position"], _trigger_work_area(trigger_hwnd),
-            (CARD_WIDTH, CARD_HEIGHT), SAFE_MARGIN, card_slot.slot,
+            (width, height), SAFE_MARGIN, card_slot.slot,
         )
-        show_non_activating(self.root, x, y, CARD_WIDTH, CARD_HEIGHT)
+        show_non_activating(self.root, x, y, width, height)
         self._hwnd = self.root.winfo_id()
         self.smoothing = SpeedSmoother()
 

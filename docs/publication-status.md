@@ -17,3 +17,5 @@ Version 0.1.42 adds received-folder access on Windows and Android phones/tablets
 Version 0.1.43 makes desktop clipboard history selection copy the stored entry and update the right-side preview together. Pinned rows, virtualized rows and image thumbnails share the action; explicit Paste retains its behavior.
 
 Version 0.1.44 fixes the Windows file-shortcut switch failing with “Access is denied” while deploying its helper, corrects paste progress (counts, size, speed and remaining time) and pipelines scanning with copying for faster paste.
+
+Version 0.1.45 renders the Explorer task card in SimSun (Chinese) and Times New Roman (Latin, digits, punctuation) at 12 pt, with the card sized from font metrics and screen DPI.
