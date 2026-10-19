@@ -346,5 +346,19 @@
   "imageViewModeFullscreen": "Полный экран",
   "imageViewModeWindow": "Плавающее окно",
   "aiModelReleasedLabel": "Выпущено {{date}}",
-  "aiModelDeprecatedWarning": "DeepSeek прекратил поддержку {{date}} - выберите актуальную модель."
+  "aiModelDeprecatedWarning": "DeepSeek прекратил поддержку {{date}} - выберите актуальную модель.",
+  "panelBack": "Назад",
+  "tileLockedModules": "Заблокировано модулей: {{count}}",
+  "tileAutoLockMinutes": "Автоблокировка через {{minutes}} мин",
+  "tileAutoLockOff": "Блокировка по простою выключена",
+  "tileVersion": "Версия {{version}}",
+  "tileAboutBadge": "Обновления · диагностика · лицензии",
+  "tileAutoStartOn": "Запуск вместе с Windows",
+  "tileAutoStartOff": "Не запускается с Windows",
+  "tileIntegrationBadge": "Автозапуск · файловые сочетания · типы файлов",
+  "tileShortcutsBadge": "Глобальные и внутренние сочетания",
+  "tileNoteTextEncrypted": "Текст заметок в зашифрованной базе",
+  "tileNoteTextPlain": "Текст заметок в открытых файлах",
+  "tileContentBadge": "ИИ · буфер обмена · заметки",
+  "tileOtherBadge": "Диагностика · сброс настроек"
 }

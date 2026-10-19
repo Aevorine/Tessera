@@ -346,5 +346,19 @@
   "imageViewModeFullscreen": "Fullscreen",
   "imageViewModeWindow": "Floating window",
   "aiModelReleasedLabel": "Released {{date}}",
-  "aiModelDeprecatedWarning": "Retired by DeepSeek on {{date}} - pick a current model instead."
+  "aiModelDeprecatedWarning": "Retired by DeepSeek on {{date}} - pick a current model instead.",
+  "panelBack": "Back",
+  "tileLockedModules": "{{count}} modules locked",
+  "tileAutoLockMinutes": "Auto-lock after {{minutes}} min idle",
+  "tileAutoLockOff": "Idle lock off",
+  "tileVersion": "Version {{version}}",
+  "tileAboutBadge": "Updates · diagnostics · licenses",
+  "tileAutoStartOn": "Starts with Windows",
+  "tileAutoStartOff": "Doesn't start with Windows",
+  "tileIntegrationBadge": "Startup · file shortcuts · file types",
+  "tileShortcutsBadge": "Global and in-app shortcuts",
+  "tileNoteTextEncrypted": "Note text in the encrypted database",
+  "tileNoteTextPlain": "Note text as plain files",
+  "tileContentBadge": "AI · clipboard · note storage",
+  "tileOtherBadge": "Diagnostics · reset preferences"
 }

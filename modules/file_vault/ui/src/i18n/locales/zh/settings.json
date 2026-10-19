@@ -346,5 +346,19 @@
   "imageViewModeFullscreen": "全屏查看",
   "imageViewModeWindow": "普通窗口",
   "aiModelReleasedLabel": "发布于 {{date}}",
-  "aiModelDeprecatedWarning": "DeepSeek 已于 {{date}} 停用该模型，请改选当前在用的模型。"
+  "aiModelDeprecatedWarning": "DeepSeek 已于 {{date}} 停用该模型，请改选当前在用的模型。",
+  "panelBack": "返回",
+  "tileLockedModules": "{{count}} 个模块单独上锁",
+  "tileAutoLockMinutes": "闲置 {{minutes}} 分钟自动锁定",
+  "tileAutoLockOff": "未开启闲置锁定",
+  "tileVersion": "版本 {{version}}",
+  "tileAboutBadge": "更新 · 诊断 · 许可",
+  "tileAutoStartOn": "开机自启已开启",
+  "tileAutoStartOff": "开机自启未开启",
+  "tileIntegrationBadge": "开机自启 · 文件快捷键 · 打开方式",
+  "tileShortcutsBadge": "全局与界面快捷键",
+  "tileNoteTextEncrypted": "笔记正文存加密数据库",
+  "tileNoteTextPlain": "笔记正文存明文文件",
+  "tileContentBadge": "AI · 剪贴板 · 笔记存储",
+  "tileOtherBadge": "诊断信息 · 恢复默认偏好"
 }

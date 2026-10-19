@@ -346,5 +346,19 @@
   "imageViewModeFullscreen": "ملء الشاشة",
   "imageViewModeWindow": "نافذة عائمة",
   "aiModelReleasedLabel": "صدر في {{date}}",
-  "aiModelDeprecatedWarning": "أوقفت DeepSeek هذا النموذج في {{date}} - اختر نموذجاً حالياً بدلاً منه."
+  "aiModelDeprecatedWarning": "أوقفت DeepSeek هذا النموذج في {{date}} - اختر نموذجاً حالياً بدلاً منه.",
+  "panelBack": "رجوع",
+  "tileLockedModules": "{{count}} وحدات مقفلة",
+  "tileAutoLockMinutes": "قفل تلقائي بعد {{minutes}} دقيقة خمول",
+  "tileAutoLockOff": "القفل عند الخمول متوقف",
+  "tileVersion": "الإصدار {{version}}",
+  "tileAboutBadge": "التحديثات · التشخيص · التراخيص",
+  "tileAutoStartOn": "يبدأ مع Windows",
+  "tileAutoStartOff": "لا يبدأ مع Windows",
+  "tileIntegrationBadge": "بدء التشغيل · اختصارات الملفات · أنواع الملفات",
+  "tileShortcutsBadge": "اختصارات عامة وداخل التطبيق",
+  "tileNoteTextEncrypted": "نص الملاحظات في القاعدة المشفّرة",
+  "tileNoteTextPlain": "نص الملاحظات كملفات عادية",
+  "tileContentBadge": "الذكاء الاصطناعي · الحافظة · الملاحظات",
+  "tileOtherBadge": "التشخيص · إعادة ضبط التفضيلات"
 }
