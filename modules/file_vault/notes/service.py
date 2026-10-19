@@ -7,6 +7,7 @@ import hashlib
 import io
 import os
 import re
+import threading
 import time
 from collections import OrderedDict
 import uuid
@@ -17,7 +18,7 @@ from PIL import Image, UnidentifiedImageError
 
 from core.logging import get_logger
 from modules.file_vault import errors, ui_settings
-from modules.file_vault.notes import category_paths, classifier, segmented_content, storage
+from modules.file_vault.notes import category_paths, classifier, linked_files, segmented_content, storage
 
 logger = get_logger(__name__)
 
@@ -103,6 +104,11 @@ _CHUNK_CACHE_MAX_CHARS = 8 * 1024 * 1024
 _CHUNK_CACHE_TTL_SECONDS = 120.0
 
 
+def _disk_encoding(row: dict) -> str:
+    """disk_plain 文件的编码：关联笔记沿用原文件编码，库内明文固定 UTF-8。"""
+    return (row.get("linked_encoding") or "utf-8") if row.get("is_linked") else "utf-8"
+
+
 def _is_note_id(value) -> bool:
     # bool 是 int 的子类，不挡的话 True 会被当成 id=1。
     return isinstance(value, int) and not isinstance(value, bool)
@@ -133,9 +139,13 @@ class NotesService:
         self.texts_dir.mkdir(parents=True, exist_ok=True)
 
         self.conn = storage.connect(data_dir / "notes.db", key)
+        # 关联文件夹同步与导入可能同时跑在两个后台线程上，同一个新文件不能被关联两次。
+        self._link_lock = threading.RLock()
+        expired_linked = storage.expired_linked_files(self.conn, days=TRASH_RETENTION_DAYS)
         _, purged_images, purged_content_paths = storage.purge_expired_deleted(self.conn, days=TRASH_RETENTION_DAYS)
         self._cleanup_image_files(purged_images)
         self._cleanup_text_files(purged_content_paths)
+        self._recycle_linked_files(expired_linked)
         self._ensure_fts_index()
 
         # get_content_chunk 的 encrypted_db 解密缓存：小 LRU，用户常在几条笔记间来回跳，避免每次重新解密。
@@ -323,6 +333,8 @@ class NotesService:
         legacy = storage.fetch_one(self.conn, note_id)
         if legacy is None:
             raise errors.VaultError("notes.content_not_found")
+        if legacy.get("is_linked"):
+            raise errors.VaultError("notes.linked_too_large", limit_bytes=linked_files.LINK_MAX_BYTES)
         try:
             if row["content_storage_mode"] == "disk_plain":
                 path = legacy.get("content_path")
@@ -474,7 +486,7 @@ class NotesService:
         note_id = row["id"]
         if row.get("content_storage_mode") == "disk_plain" and row.get("content_path"):
             try:
-                with open(row["content_path"], "r", encoding="utf-8", errors="replace") as handle:
+                with open(row["content_path"], "r", encoding=_disk_encoding(row), errors="replace") as handle:
                     return _truncate_to_bytes(handle.read(max_bytes), max_bytes)
             except OSError:
                 # 文件读不到时退回 preview——索引少一点内容远好过让一次改标签/
@@ -530,7 +542,7 @@ class NotesService:
 
         if row["content_storage_mode"] == "disk_plain":
             try:
-                with open(row["content_path"], "r", encoding="utf-8") as f:
+                with open(row["content_path"], "r", encoding=_disk_encoding(row)) as f:
                     if cursor:
                         f.seek(cursor)
                     chunk = f.read(max_chars)
@@ -609,7 +621,9 @@ class NotesService:
                 raise errors.VaultError("notes.note_not_found")
             for other_id in list(self._write_sessions):
                 self._abort_write_session(other_id)
-            if row["content_storage_mode"] == "disk_plain":
+            if row.get("is_linked"):
+                self._write_sessions[note_id] = {"mode": "linked", "buffer": []}
+            elif row["content_storage_mode"] == "disk_plain":
                 temp_path = self.texts_dir / f".write-{note_id}-{uuid.uuid4().hex[:8]}.tmp"
                 self._write_sessions[note_id] = {
                     "mode": "disk_plain",
@@ -645,7 +659,12 @@ class NotesService:
             return {"done": False}
 
         self._ensure_baseline(note_id)
-        if session["mode"] == "disk_plain":
+        if session["mode"] == "linked":
+            full_content = "".join(self._write_sessions.pop(note_id)["buffer"])
+            self._write_linked(note_id, full_content)
+            if not storage.update_note(self.conn, note_id, content=full_content):
+                raise errors.VaultError("notes.note_not_found")
+        elif session["mode"] == "disk_plain":
             session["file"].close()
             self._write_sessions.pop(note_id, None)
             os.replace(session["temp_path"], session["content_path"])
@@ -676,7 +695,7 @@ class NotesService:
 
     def create_note(
         self, *, title: str, category: str, content: str, encrypt: bool = True, format: str = "plain",
-        hidden: bool = False
+        hidden: bool = False, linked: bool = False
     ) -> dict:
         """encrypt fixes content_storage_mode for this note once, forever.
 
@@ -685,7 +704,14 @@ class NotesService:
 
         `hidden` is applied at INSERT, not by a follow-up set_hidden: a note meant to be hidden must never
         be visible, even if a crash hit between two statements.
+
+        `linked`: when the category belongs to a linked folder, the note is created as a real file in
+        that folder (subcategory = subfolder) and stays linked to it; otherwise this flag is ignored.
         """
+        if linked:
+            note = self._create_linked_note(title=title, category=category, content=content, format=format, hidden=hidden)
+            if note is not None:
+                return note
         content_storage_mode = "encrypted_db" if encrypt else "disk_plain"
         content_path = self._write_text_file(content) if not encrypt else None
         note_id = storage.insert_note(
@@ -870,9 +896,13 @@ class NotesService:
         """update_note 本体，外加时间线：kind=None 时由 _record_revision 按实际
         变化判定是 edit 还是 metadata；批量修改 / 恢复 / 撤销传各自的 kind。"""
         self._ensure_baseline(note_id)
+        if title is not None:
+            self._rename_linked_file(note_id, title)
         if content is not None:
             current = storage.fetch_one(self.conn, note_id)
-            if current is not None and current["content_storage_mode"] == "disk_plain" and current["content_path"]:
+            if current is not None and current.get("is_linked"):
+                self._write_linked(note_id, content)
+            elif current is not None and current["content_storage_mode"] == "disk_plain" and current["content_path"]:
                 try:
                     Path(current["content_path"]).write_text(content, encoding="utf-8")
                 except OSError:
@@ -887,6 +917,8 @@ class NotesService:
     def update_note_metadata(self, note_id: int, *, title=None, category=None) -> Optional[dict]:
         """Updates title/category and returns a list-shaped row via fetch_metadata, never loading the body."""
         self._ensure_baseline(note_id)
+        if title is not None:
+            self._rename_linked_file(note_id, title)
         ok = storage.update_note(self.conn, note_id, title=title, category=category)
         if not ok:
             return None
@@ -969,13 +1001,21 @@ class NotesService:
         row = dict(row)
         if not include_content:
             row.pop("content", None)
+        elif row.get("is_linked"):
+            try:
+                row["content"] = linked_files.read_text(row["content_path"], _disk_encoding(row))
+            except OSError:
+                raise errors.VaultError("notes.linked_file_missing", path=row.get("content_path") or "")
         elif row.get("content_storage_mode") == "disk_plain":
             path = row.get("content_path")
             try:
                 row["content"] = Path(path).read_text(encoding="utf-8") if path else ""
             except OSError:
                 raise errors.VaultError("notes.content_not_found")
-        row.pop("content_path", None)
+        if row.get("is_linked"):
+            row["linked_path"] = row.get("content_path")
+        for key in ("content_path", "linked_encoding", "linked_newline", "linked_mtime", "linked_folder_id"):
+            row.pop(key, None)
         return row
 
     def set_pinned(self, note_id: int, pinned: bool) -> bool:
@@ -1045,15 +1085,19 @@ class NotesService:
         return self._merge_tags(storage.fetch_deleted(self.conn))
 
     def hard_delete_note(self, note_id: int) -> bool:
+        linked = storage.linked_files_for_notes(self.conn, [note_id])
         ok, removed_images, removed_content_paths = storage.hard_delete(self.conn, note_id)
         self._cleanup_image_files(removed_images)
         self._cleanup_text_files(removed_content_paths)
+        self._recycle_linked_files(linked)
         return ok
 
     def hard_delete_notes_bulk(self, note_ids: list[int]) -> int:
+        linked = storage.linked_files_for_notes(self.conn, note_ids)
         count, removed_images, removed_content_paths = storage.hard_delete_bulk(self.conn, note_ids)
         self._cleanup_image_files(removed_images)
         self._cleanup_text_files(removed_content_paths)
+        self._recycle_linked_files(linked)
         return count
 
     def list_categories(self, scope: str) -> list:
@@ -1229,6 +1273,269 @@ class NotesService:
             except OSError:
                 logger.exception("failed to remove note text file %s", path)
 
+    # --- 关联笔记：正文就是用户磁盘上的原文件 ---
+
+    def link_file(
+        self, source_path: str, *, title: str, category: str, hidden: bool = False,
+        folder_id: Optional[int] = None, on_progress: Optional[Callable[[int, int], None]] = None,
+        skip_dedupe: bool = False,
+    ) -> dict:
+        """把磁盘文件登记为关联笔记（不复制），返回列表形态的行；同一文件已关联则直接返回那条。
+
+        超过 linked_files.LINK_MAX_BYTES 抛 notes.linked_too_large，由调用方改走复制导入。
+        编码不是 UTF-8/GBK 时抛 UnicodeDecodeError。"""
+        path = os.path.abspath(source_path)
+        with self._link_lock:
+            if not skip_dedupe:
+                key = linked_files.norm_key(path)
+                for entry in storage.linked_note_index(self.conn):
+                    if entry["path"] and linked_files.norm_key(entry["path"]) == key and not entry["is_deleted"]:
+                        return self._linked_list_row(entry["id"])
+            stat = os.stat(path)
+            if stat.st_size > linked_files.LINK_MAX_BYTES:
+                raise errors.VaultError("notes.linked_too_large", limit_bytes=linked_files.LINK_MAX_BYTES)
+            raw = Path(path).read_bytes()
+            encoding, newline = linked_files.detect(raw)
+            text = raw.decode(encoding, errors="replace").replace("\r\n", "\n")
+            if not category:
+                scope = "hidden" if hidden else "normal"
+                excerpt = text[: classifier.CLASSIFY_EXCERPT_CHARS]
+                category = classifier.classify(title, excerpt, self._classify_candidates(scope)) or ""
+            note_id = storage.insert_note(
+                self.conn,
+                title=title,
+                category=category,
+                content="",
+                content_storage_mode="disk_plain",
+                content_path=path,
+                format=_detect_format_from_path(path),
+                content_byte_size=len(text.encode("utf-8")),
+                content_preview=text[: storage.PREVIEW_CHARS],
+                is_hidden=hidden,
+                linked={"encoding": encoding, "newline": newline, "mtime": stat.st_mtime, "folder_id": folder_id},
+            )
+            self._reindex_fts(note_id)
+            self._record_revision(note_id, "create", force=True)
+            if on_progress is not None:
+                on_progress(stat.st_size, stat.st_size or 1)
+            return self._linked_list_row(note_id)
+
+    def _linked_list_row(self, note_id: int) -> dict:
+        row = storage.fetch_metadata(self.conn, note_id)
+        row["tags"] = [t["name"] for t in storage.get_tags_for_note(self.conn, note_id)]
+        return row
+
+    def _write_linked(self, note_id: int, content: str) -> None:
+        """整篇写回原文件。文件在应用外被改过时，先把磁盘上那一版记进时间线再覆盖。"""
+        row = storage.fetch_one(self.conn, note_id)
+        path = row["content_path"]
+        try:
+            disk_mtime = os.stat(path).st_mtime
+        except OSError:
+            disk_mtime = None
+        if disk_mtime is not None and abs(disk_mtime - (row.get("linked_mtime") or 0)) > 1e-6:
+            self._record_revision(note_id, "external", force=True)
+        try:
+            Path(path).parent.mkdir(parents=True, exist_ok=True)
+            used = linked_files.write_text(path, content, _disk_encoding(row), row.get("linked_newline") or "\r\n")
+            mtime = os.stat(path).st_mtime
+        except OSError as exc:
+            raise errors.VaultError("notes.content_write_failed", detail=str(exc))
+        storage.update_linked_state(
+            self.conn, note_id, mtime=mtime, encoding=used if used != _disk_encoding(row) else None
+        )
+
+    def _rename_linked_file(self, note_id: int, title: str) -> None:
+        """关联笔记改标题时同步改文件名（同目录、保留扩展名）；重名或改名失败就保持原文件名。"""
+        row = storage.fetch_metadata(self.conn, note_id)
+        if row is None or not row.get("is_linked") or not title or title == row["title"]:
+            return
+        current = Path(row["linked_path"])
+        target = linked_files.unique_path(
+            current.parent, linked_files.safe_stem(title), current.suffix, current=str(current)
+        )
+        if linked_files.norm_key(str(target)) == linked_files.norm_key(str(current)):
+            return
+        try:
+            os.rename(current, target)
+        except OSError:
+            logger.warning("linked note %s: rename to %s failed", note_id, target)
+            return
+        storage.update_linked_state(self.conn, note_id, content_path=str(target), mtime=os.stat(target).st_mtime)
+
+    def _create_linked_note(self, *, title: str, category: str, content: str, format: str, hidden: bool) -> Optional[dict]:
+        folder, subpath = self._folder_for_category(category, hidden)
+        if folder is None:
+            return None
+        directory = Path(folder["path"]).joinpath(*[p for p in subpath.split(category_paths.SEPARATOR) if p])
+        suffix = ".md" if format == "markdown" else ".txt"
+        try:
+            directory.mkdir(parents=True, exist_ok=True)
+            target = linked_files.unique_path(directory, linked_files.safe_stem(title), suffix)
+            linked_files.write_text(str(target), content, "utf-8", "\r\n")
+        except OSError as exc:
+            raise errors.VaultError("notes.content_write_failed", detail=str(exc))
+        row = self.link_file(str(target), title=title, category=category, hidden=hidden, folder_id=folder["id"])
+        return self.get_note(row["id"])
+
+    def _folder_for_category(self, category: str, hidden: bool) -> tuple[Optional[dict], str]:
+        """分类落在哪个关联文件夹里（取最长匹配），以及相对它的子分类路径。"""
+        if not category:
+            return None, ""
+        best: Optional[dict] = None
+        for folder in storage.list_linked_folders(self.conn):
+            root = folder["category"]
+            if folder["is_hidden"] != hidden or not root:
+                continue
+            if category == root or category.startswith(root + category_paths.SEPARATOR):
+                if best is None or len(root) > len(best["category"]):
+                    best = folder
+        if best is None:
+            return None, ""
+        return best, category[len(best["category"]) + 1:]
+
+    def list_linked_folders(self) -> list:
+        folders = storage.list_linked_folders(self.conn)
+        for folder in folders:
+            folder["exists"] = os.path.isdir(folder["path"])
+        return folders
+
+    def add_linked_folder(self, path: str, *, category: str = "", hidden: bool = False) -> dict:
+        """登记关联文件夹并立即同步一次。同一文件夹重复添加只同步、不重复登记。"""
+        root = os.path.abspath(path)
+        if not os.path.isdir(root):
+            raise errors.VaultError("notes.scan_dir_not_found")
+        with self._link_lock:
+            key = linked_files.norm_key(root)
+            for folder in storage.list_linked_folders(self.conn):
+                if linked_files.norm_key(folder["path"]) == key:
+                    return {"folder": folder, "sync": self.sync_linked_folders(folder["id"])}
+            if not category:
+                category = linked_files.safe_stem(Path(root).name or root.rstrip("\\/:")).replace(category_paths.SEPARATOR, "_")
+            category = category_paths.validate_path(category)
+            folder_id = storage.insert_linked_folder(self.conn, path=root, category=category, is_hidden=hidden)
+            self.create_category(category, "hidden" if hidden else "normal")
+            sync = self.sync_linked_folders(folder_id)
+            return {"folder": storage.fetch_linked_folder(self.conn, folder_id), "sync": sync}
+
+    def remove_linked_folder(self, folder_id: int) -> bool:
+        with self._link_lock:
+            return storage.delete_linked_folder(self.conn, folder_id)
+
+    def sync_linked_folders(self, folder_id: Optional[int] = None) -> dict:
+        """对比磁盘与库：新文件建成关联笔记、改过的刷新摘要与索引、被删掉的移进回收站。
+
+        文件夹本身不在（拔掉的移动盘、断开的网络盘）时整个跳过，绝不据此删笔记。"""
+        added: list = []
+        updated: list[int] = []
+        removed: list[int] = []
+        skipped_large = 0
+        missing_folders: list[int] = []
+        with self._link_lock:
+            index = storage.linked_note_index(self.conn)
+            by_key = {linked_files.norm_key(e["path"]): e for e in index if e["path"]}
+            folders = storage.list_linked_folders(self.conn)
+            if folder_id is not None:
+                folders = [f for f in folders if f["id"] == folder_id]
+            for folder in folders:
+                root = folder["path"]
+                if not os.path.isdir(root):
+                    missing_folders.append(folder["id"])
+                    continue
+                scope = "hidden" if folder["is_hidden"] else "normal"
+                seen: set[str] = set()
+                for full, stat in linked_files.scan_folder(root):
+                    key = linked_files.norm_key(full)
+                    seen.add(key)
+                    entry = by_key.get(key)
+                    if entry is None:
+                        if stat.st_size > linked_files.LINK_MAX_BYTES:
+                            skipped_large += 1
+                            continue
+                        rel_parent = os.path.relpath(os.path.dirname(full), root)
+                        sub = "" if rel_parent == "." else rel_parent.replace(os.sep, category_paths.SEPARATOR)
+                        category = folder["category"] + (category_paths.SEPARATOR + sub if sub else "")
+                        try:
+                            category = category_paths.validate_path(category)
+                        except category_paths.CategoryPathError:
+                            category = folder["category"]
+                        try:
+                            note = self.link_file(
+                                full, title=Path(full).stem, category=category,
+                                hidden=folder["is_hidden"], folder_id=folder["id"], skip_dedupe=True,
+                            )
+                        except (UnicodeDecodeError, OSError, errors.VaultError):
+                            continue
+                        if category:
+                            self.create_category(category, scope)
+                        added.append(note)
+                    elif not entry["is_deleted"] and abs(entry["mtime"] - stat.st_mtime) > 1e-6:
+                        if self._refresh_linked(entry["id"], full, stat):
+                            updated.append(entry["id"])
+                for entry in index:
+                    if (
+                        entry["folder_id"] == folder["id"] and not entry["is_deleted"]
+                        and linked_files.norm_key(entry["path"]) not in seen and not os.path.exists(entry["path"])
+                    ):
+                        storage.soft_delete(self.conn, entry["id"])
+                        removed.append(entry["id"])
+            if folder_id is None:
+                # 单独关联的文件（不属于任何关联文件夹）也跟着刷新外部改动。
+                for entry in index:
+                    if entry["folder_id"] is not None or entry["is_deleted"]:
+                        continue
+                    try:
+                        stat = os.stat(entry["path"])
+                    except OSError:
+                        continue
+                    if abs(entry["mtime"] - stat.st_mtime) > 1e-6 and self._refresh_linked(entry["id"], entry["path"], stat):
+                        updated.append(entry["id"])
+        return {
+            "added": added,
+            "updated": updated,
+            "removed": removed,
+            "skipped_large": skipped_large,
+            "missing_folders": missing_folders,
+        }
+
+    def _refresh_linked(self, note_id: int, path: str, stat) -> bool:
+        """文件在应用外被改过：重算摘要/长度/索引，并把新内容记进时间线。"""
+        try:
+            raw = Path(path).read_bytes() if stat.st_size <= linked_files.LINK_MAX_BYTES else None
+        except OSError:
+            return False
+        row = storage.fetch_one(self.conn, note_id)
+        if row is None:
+            return False
+        encoding = _disk_encoding(row)
+        if raw is not None:
+            try:
+                encoding, _newline = linked_files.detect(raw)
+            except UnicodeDecodeError:
+                pass
+            text = raw.decode(encoding, errors="replace").replace("\r\n", "\n")
+        else:
+            text = linked_files.read_head(path, encoding, storage.PREVIEW_CHARS)
+        size = len(text.encode("utf-8")) if raw is not None else stat.st_size
+        storage.update_note(self.conn, note_id, content="", content_byte_size=size, content_preview=text[: storage.PREVIEW_CHARS])
+        storage.update_linked_state(self.conn, note_id, mtime=stat.st_mtime, encoding=encoding)
+        self.forget_cached_content(note_id)
+        self._reindex_fts(note_id)
+        self._record_revision(note_id, "external")
+        return True
+
+    def _recycle_linked_files(self, rows: list) -> None:
+        """彻底删除的关联笔记：属于关联文件夹的原文件送进系统回收站（可找回），单独关联的文件保留。"""
+        targets = [r["path"] for r in rows if r.get("folder_id") is not None and r.get("path") and os.path.exists(r["path"])]
+        if not targets:
+            return
+        from modules.file_vault.pcclean.actions import recycle
+
+        for path in targets:
+            ok, reason = recycle(Path(path))
+            if not ok:
+                logger.warning("failed to recycle linked note file %s: %s", path, reason)
+
     def _cleanup_image_files(self, rows: list) -> None:
         """Removes files for rows from storage.py's delete paths; only disk_plain rows have files.
 
@@ -1258,6 +1565,11 @@ class NotesService:
         if meta["content_length"] > storage.REVISION_CONTENT_LIMIT or storage.count_segments(self.conn, note_id):
             return meta, None
         row = storage.fetch_one(self.conn, note_id)
+        if row.get("is_linked"):
+            try:
+                return meta, linked_files.read_text(row["content_path"], _disk_encoding(row))
+            except OSError:
+                return meta, None
         if row["content_storage_mode"] == "disk_plain":
             # 不走 _bounded_content：它在文件读不到时退回 preview，那对索引是
             # 合理的降级，放进快照就成了"恢复后正文只剩 200 字"。

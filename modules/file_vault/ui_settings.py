@@ -256,6 +256,33 @@ def save_note_text_storage_mode(data_dir: Path, mode: str) -> None:
     tmp_path.replace(path)
 
 
+NOTE_IMPORT_SETTINGS_FILENAME = "notes_import_settings.json"
+# link：笔记直接关联原文件（保存写回原处）；copy：复制进笔记库。
+NOTE_IMPORT_MODES = ("link", "copy")
+DEFAULT_NOTE_IMPORT_MODE = "link"
+
+
+def load_note_import_mode(data_dir: Path) -> str:
+    """导入方式的界面默认值；每次导入请求自带 mode。"""
+    path = Path(data_dir) / NOTE_IMPORT_SETTINGS_FILENAME
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return DEFAULT_NOTE_IMPORT_MODE
+    mode = data.get("mode") if isinstance(data, dict) else None
+    return mode if mode in NOTE_IMPORT_MODES else DEFAULT_NOTE_IMPORT_MODE
+
+
+def save_note_import_mode(data_dir: Path, mode: str) -> None:
+    if mode not in NOTE_IMPORT_MODES:
+        raise ValueError(f"invalid note import mode: {mode!r}")
+    path = Path(data_dir) / NOTE_IMPORT_SETTINGS_FILENAME
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp_path = path.with_name(path.name + ".part")
+    tmp_path.write_text(json.dumps({"mode": mode}), encoding="utf-8")
+    tmp_path.replace(path)
+
+
 NOTE_SORT_SETTINGS_FILENAME = "notes_sort_settings.json"
 # 必须与 notes/storage.py 的 _SORT_CLAUSES 逐字对齐；不 import 它，因为会拉起 sqlcipher，
 # 而本模块只做不碰加密层的显示偏好。漂移由 test_notes_sort_order.py 的断言挡住。

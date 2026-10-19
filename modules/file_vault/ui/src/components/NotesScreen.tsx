@@ -40,6 +40,7 @@ import {
   ArrowUp,
   ArrowUpDown,
   BookOpen,
+  Check,
   Briefcase,
   CheckSquare,
   ChevronDown,
@@ -57,6 +58,7 @@ import {
   Filter,
   Folder,
   FolderOpen,
+  FolderSync,
   Globe,
   GraduationCap,
   Hash,
@@ -69,6 +71,7 @@ import {
   Landmark,
   Layers,
   LayoutGrid,
+  Link2,
   List,
   ListChecks,
   Locate,
@@ -87,6 +90,7 @@ import {
   Plus,
   PencilLine,
   Radio,
+  RefreshCw,
   Replace,
   RotateCcw,
   Search,
@@ -104,6 +108,7 @@ import {
   TextCursorInput,
   Trash2,
   Type,
+  Unlink,
   Unlock,
   Upload,
   Volleyball,
@@ -127,7 +132,14 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Input } from '@/components/ui/input'
 import { Progress } from '@/components/ui/progress'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 import { cn } from '@/lib/utils'
 import { vaultApi } from '@/lib/vaultApi'
 import { electronApi } from '@/lib/electronApi'
@@ -189,7 +201,9 @@ import type {
   NoteTag,
   NoteImageFull,
   NoteImageMeta,
+  NoteImportMode,
   NoteImportProgress,
+  NoteLinkedFolder,
   NoteListItem,
   NoteScanFile,
   NoteSortMode,
@@ -362,8 +376,20 @@ function toMetaItem(note: NoteListItem): NoteListItem {
     sort_order: note.sort_order,
     created_at: note.created_at,
     updated_at: note.updated_at,
+    is_linked: note.is_linked,
+    linked_path: note.linked_path,
   }
 }
+
+// 新导入的条目并进列表：同 id（重复关联同一文件）替换旧行，不出现两条。
+function upsertNotes(prev: NoteListItem[], items: NoteListItem[]): NoteListItem[] {
+  const ids = new Set(items.map((n) => n.id))
+  return [...items.map(toMetaItem), ...prev.filter((n) => !ids.has(n.id))]
+}
+
+// 关联文件夹自动同步：窗口回到前台时立即一次，前台期间每分钟一次。
+const LINKED_SYNC_INTERVAL_MS = 60_000
+const LINKED_SYNC_MIN_GAP_MS = 5_000
 
 /** 图标名 → 组件。偏好里存的是名字（好序列化），渲染时在这里查回组件。 */
 const CATEGORY_ICON_COMPONENTS: Record<string, typeof Folder> = {
@@ -610,6 +636,29 @@ export function NotesScreen({
     done: number
     total: number
   } | null>(null)
+  // 导入方式：link 打开原文件（保存写回本地），copy 复制进笔记库。真正导入时现读，见 resolveImportMode。
+  const [importMode, setImportMode] = useState<NoteImportMode>('link')
+  const [linkedFolders, setLinkedFolders] = useState<NoteLinkedFolder[]>([])
+  // 文件夹导入弹窗里「关联此文件夹」：开着时整个文件夹关联并持续同步，关掉则只导入勾选的文件。
+  const [scanLinkFolder, setScanLinkFolder] = useState(true)
+  const [linkedSyncing, setLinkedSyncing] = useState(false)
+  const linkedSyncBusyRef = useRef(false)
+  const [scanScrollEl, setScanScrollEl] = useState<HTMLDivElement | null>(null)
+
+  async function resolveImportMode(): Promise<NoteImportMode> {
+    const res = await vaultApi.call('note_import_mode_get', {})
+    return res.ok ? res.mode : 'link'
+  }
+
+  async function changeImportMode(mode: NoteImportMode) {
+    setImportMode(mode)
+    await vaultApi.call('note_import_mode_set', { mode })
+  }
+
+  async function reloadLinkedFolders() {
+    const res = await vaultApi.call('note_linked_folder_list', {})
+    if (res.ok) setLinkedFolders(res.folders)
+  }
 
   // 手动创建的分类目录（跟"笔记已经用过的分类"是两回事，见 note_category_*
   // 的类型注释）——普通/隐藏笔记各自一套，互相独立。
@@ -721,8 +770,81 @@ export function NotesScreen({
     vaultApi.call('note_text_storage_mode_get', {}).then((res) => {
       if (res.ok) setScanBatchEncrypt(res.mode === 'encrypted_db')
     })
+    vaultApi.call('note_import_mode_get', {}).then((res) => {
+      if (res.ok) setImportMode(res.mode)
+    })
+    void reloadLinkedFolders()
     // eslint-disable-next-line react-hooks/exhaustive-deps -- mount-once
   }, [])
+
+  // 关联文件夹同步：新文件出现、文件在外部被改、被删，都在这里反映到列表。
+  async function syncLinkedFolders(opts?: { manual?: boolean; folderId?: number }) {
+    if (linkedSyncBusyRef.current) return
+    linkedSyncBusyRef.current = true
+    if (opts?.manual) setLinkedSyncing(true)
+    try {
+      const res = await vaultApi.call('note_linked_sync', opts?.folderId !== undefined ? { folder_id: opts.folderId } : {})
+      if (!res.ok) {
+        if (opts?.manual) toast.error(t('linkedSyncFailedToast'), { description: translateError(res.error, res.error_params) })
+        return
+      }
+      const changed = res.added.length + res.updated.length + res.removed.length
+      if (changed > 0) {
+        await reload()
+        if (res.added.length > 0) await reloadCategories()
+        if (detailId !== null && res.removed.includes(detailId)) handleCloseDetail()
+        else if (detailId !== null && res.updated.includes(detailId) && !dirty) setDetailReloadKey((k) => k + 1)
+      }
+      if (opts?.manual || changed > 0) void reloadLinkedFolders()
+      if (opts?.manual) {
+        toast.success(
+          t('linkedSyncedToast', { added: res.added.length, updated: res.updated.length, removed: res.removed.length }),
+        )
+      }
+    } catch {
+      // 金库被锁等传输层错误：下次再同步。
+    } finally {
+      linkedSyncBusyRef.current = false
+      if (opts?.manual) setLinkedSyncing(false)
+    }
+  }
+  const syncLinkedRef = useRef(syncLinkedFolders)
+  useEffect(() => {
+    syncLinkedRef.current = syncLinkedFolders
+  })
+  useEffect(() => {
+    let last = 0
+    const run = () => {
+      if (document.visibilityState !== 'visible') return
+      const now = Date.now()
+      if (now - last < LINKED_SYNC_MIN_GAP_MS) return
+      last = now
+      void syncLinkedRef.current()
+    }
+    run()
+    window.addEventListener('focus', run)
+    document.addEventListener('visibilitychange', run)
+    const timer = window.setInterval(run, LINKED_SYNC_INTERVAL_MS)
+    return () => {
+      window.removeEventListener('focus', run)
+      document.removeEventListener('visibilitychange', run)
+      window.clearInterval(timer)
+    }
+  }, [])
+
+  async function handleUnlinkFolder(folder: NoteLinkedFolder) {
+    const res = await vaultApi.call('note_linked_folder_remove', { id: folder.id })
+    if (!res.ok) {
+      toast.error(t('linkedUnlinkFailedToast'), { description: translateError(res.error, res.error_params) })
+      return
+    }
+    toast.success(t('linkedUnlinkedToast'))
+    await reloadLinkedFolders()
+  }
+
+  function notifyCopied(copied?: number) {
+    if (copied) toast.info(t('importCopiedToast', { count: copied }))
+  }
 
   useEffect(() => {
     if (viewMode === 'trash') reloadTrash()
@@ -1528,17 +1650,22 @@ export function NotesScreen({
     }
     setImporting(true)
     try {
-      const res = await vaultApi.call('note_import_files', { paths, encrypt: await resolveDefaultEncrypt() })
+      const res = await vaultApi.call('note_import_files', {
+        paths,
+        encrypt: await resolveDefaultEncrypt(),
+        mode: await resolveImportMode(),
+      })
       if (!res.ok) {
         toast.error(t('importFailedToast'), { description: translateError(res.error, res.error_params) })
         return
       }
       if (res.imported.length > 0) {
-        setNotes((prev) => sortNotes([...res.imported.map(toMetaItem), ...prev]))
+        setNotes((prev) => sortNotes(upsertNotes(prev, res.imported)))
         handleOpenExisting(res.imported[0].id)
       }
       if (res.failed.length > 0) toast.error(t('importPartialToast', { success: res.imported.length, failed: res.failed.length }))
       else toast.success(t('importSuccessToast', { count: res.imported.length }))
+      notifyCopied(res.copied)
     } finally {
       setImporting(false)
     }
@@ -1562,14 +1689,22 @@ export function NotesScreen({
     recordUsedPath('import', dirnameOf(paths[0]))
     setImporting(true)
     try {
-      const res = await vaultApi.call('note_import_files', { paths, encrypt: await resolveDefaultEncrypt() })
+      const res = await vaultApi.call('note_import_files', {
+        paths,
+        encrypt: await resolveDefaultEncrypt(),
+        mode: await resolveImportMode(),
+      })
       if (!res.ok) {
         toast.error(t('importFailedToast'), { description: translateError(res.error, res.error_params) })
         return
       }
       if (res.imported.length > 0) {
-        setNotes((prev) => sortNotes([...res.imported.map(toMetaItem), ...prev]))
+        setNotes((prev) => sortNotes(upsertNotes(prev, res.imported)))
+        // 导入后直接打开第一条，所见即所得。
+        handleOpenExisting(res.imported[0].id)
+        await reloadCategories()
       }
+      notifyCopied(res.copied)
       if (res.failed.length === 0) {
         toast.success(t('importSuccessToast', { count: res.imported.length }))
       } else {
@@ -1594,6 +1729,7 @@ export function NotesScreen({
       const res = await vaultApi.call('note_import_files', {
         paths: [pendingImportPath],
         encrypt: await resolveDefaultEncrypt(),
+        mode: await resolveImportMode(),
       })
       if (cancelled) return
       onPendingImportHandled?.()
@@ -1601,8 +1737,9 @@ export function NotesScreen({
         toast.error(t('importFailedToast'), { description: translateError(res.error, res.error_params) })
         return
       }
+      notifyCopied(res.copied)
       if (res.imported.length > 0) {
-        setNotes((prev) => sortNotes([...res.imported.map(toMetaItem), ...prev]))
+        setNotes((prev) => sortNotes(upsertNotes(prev, res.imported)))
         toast.success(t('importSuccessToast', { count: res.imported.length }))
         handleOpenExisting(res.imported[0].id)
       }
@@ -1639,6 +1776,7 @@ export function NotesScreen({
     // 一批不相干的文件时会在毫无提示的情况下被整批藏起来。
     setScanImportHidden(false)
     setScanImportCategory('')
+    setScanLinkFolder(true)
     setFolderImportOpen(true)
     setScanning(true)
     try {
@@ -1658,6 +1796,8 @@ export function NotesScreen({
   // 扫描只发生一次（上面 handleOpenFolderImport 里那一次），这里纯粹是已经
   // 拿到手的数组在内存里过滤，不再触发新的 IPC/文件系统调用。
   const filteredScanFiles = useMemo(() => filterScanFiles(scanFiles, scanSearch), [scanFiles, scanSearch])
+
+  const linkWholeFolder = importMode === 'link' && scanLinkFolder
 
   const allScanFilteredSelected =
     filteredScanFiles.length > 0 && filteredScanFiles.every((f) => scanSelectedPaths.has(f.path))
@@ -1691,6 +1831,26 @@ export function NotesScreen({
   // 件粒度由前端分组）。带 scanRootDir 作 base_dir：后端把文件相对根目录的子文件夹路径（如
   // "Internet/Node"）写成多级分类；仅"从文件夹批量导入"入口有，单选文件导入不传。
   async function handleConfirmFolderImport() {
+    if (importMode === 'link' && scanLinkFolder) {
+      setScanImporting(true)
+      try {
+        const res = await vaultApi.call('note_linked_folder_add', {
+          dir: scanRootDir,
+          category: scanImportCategory.trim() || undefined,
+          hidden: scanImportHidden,
+        })
+        if (!res.ok) {
+          toast.error(t('importFailedToast'), { description: translateError(res.error, res.error_params) })
+          return
+        }
+        await Promise.all([reload(), reloadCategories(), reloadLinkedFolders()])
+        toast.success(t('folderLinkedToast', { count: res.sync.added.length, folder: res.folder.category }))
+        setFolderImportOpen(false)
+      } finally {
+        setScanImporting(false)
+      }
+      return
+    }
     const selectedPaths = scanFiles.filter((f) => scanSelectedPaths.has(f.path)).map((f) => f.path)
     if (selectedPaths.length === 0) return
     const encryptGroup = selectedPaths.filter((p) => scanEffectiveEncrypt(p))
@@ -1719,6 +1879,7 @@ export function NotesScreen({
             base_dir: scanRootDir,
             hidden: scanImportHidden,
             target_category: scanImportCategory,
+            mode: importMode,
           })
           if (!res.ok) {
             toast.error(t('importFailedToast'), { description: translateError(res.error, res.error_params) })
@@ -1732,7 +1893,7 @@ export function NotesScreen({
         }
       }
       if (imported.length > 0) {
-        setNotes((prev) => sortNotes([...imported.map(toMetaItem), ...prev]))
+        setNotes((prev) => sortNotes(upsertNotes(prev, imported)))
         // 导入会新建分类目录条目（子文件夹派生的及前缀中不存在的层级），不刷新则侧边栏看不到新分支，像没导
         // 进来。
         await reloadCategories()
@@ -2736,6 +2897,7 @@ export function NotesScreen({
           category: draftCategory,
           content: draftContent,
           encrypt: await resolveDefaultEncrypt(),
+          linked: (await resolveImportMode()) === 'link',
         })
         if (!res.ok) {
           toast.error(t('saveFailedToast'), { description: translateError(res.error, res.error_params) })
@@ -3155,10 +3317,9 @@ export function NotesScreen({
 
   // 扫描出来的 txt 文件列表也用虚拟滚动——文件夹里 txt 文件数量可能很多
   // （几千上万个），不管多长都只渲染可见区域，不会因为列表长就卡顿。
-  const scanScrollParentRef = useRef<HTMLDivElement>(null)
   const scanRowVirtualizer = useVirtualizer({
     count: filteredScanFiles.length,
-    getScrollElement: () => scanScrollParentRef.current,
+    getScrollElement: () => scanScrollEl,
     estimateSize: () => 60,
     overscan: 10,
     // 同上：这份列表在搜索框里每敲一个字就整体重排，下标当键必错。路径是
@@ -3312,6 +3473,61 @@ export function NotesScreen({
   const filterValue = [pinnedOnly ? t('pinnedOnlyFilter') : null, tagFilter !== 'all' ? `#${tagFilter}` : null]
     .filter(Boolean)
     .join(' · ')
+
+  // 隐藏区的关联文件夹只在已解锁查看隐藏笔记时列出，避免露出隐藏分类名。
+  const visibleLinkedFolders = linkedFolders.filter((f) => !f.is_hidden || noteScope !== 'active')
+
+  function linkedFolderNodes(): TopBarNode[] {
+    const nodes: TopBarNode[] = [
+      {
+        id: 'linked-sync-all',
+        type: 'item',
+        label: t('linkedSyncAll'),
+        icon: RefreshCw,
+        disabled: linkedFolders.length === 0 || linkedSyncing,
+        onSelect: () => void syncLinkedFolders({ manual: true }),
+      },
+      { id: 'linked-add', type: 'item', label: t('folderImportButton'), icon: FolderOpen, onSelect: () => void handleOpenFolderImport() },
+    ]
+    if (visibleLinkedFolders.length === 0) return nodes
+    nodes.push({ id: 'linked-sep', type: 'separator' })
+    for (const folder of visibleLinkedFolders) {
+      nodes.push({
+        id: `linked-${folder.id}`,
+        type: 'submenu',
+        label: folder.category || folder.path,
+        icon: folder.exists === false ? FolderOpen : Folder,
+        count: folder.note_count,
+        children: [
+          { id: `linked-${folder.id}-path`, type: 'label', label: folder.exists === false ? `${folder.path} · ${t('linkedFolderMissing')}` : folder.path },
+          {
+            id: `linked-${folder.id}-sync`,
+            type: 'item',
+            label: t('linkedSyncNow'),
+            icon: RefreshCw,
+            disabled: linkedSyncing,
+            onSelect: () => void syncLinkedFolders({ manual: true, folderId: folder.id }),
+          },
+          {
+            id: `linked-${folder.id}-open`,
+            type: 'item',
+            label: t('linkedRevealFolder'),
+            icon: FolderOpen,
+            onSelect: () => void electronApi.showItemInFolder(folder.path),
+          },
+          {
+            id: `linked-${folder.id}-unlink`,
+            type: 'item',
+            label: t('linkedUnlink'),
+            icon: Unlink,
+            destructive: true,
+            onSelect: () => void handleUnlinkFolder(folder),
+          },
+        ],
+      })
+    }
+    return nodes
+  }
 
   const topBarMenus: TopBarMenu[] = [
     {
@@ -3556,6 +3772,35 @@ export function NotesScreen({
           icon: History,
           children: recentFolderNodes('import', (dir) => void handleOpenFolderImport(dir)),
         },
+        { id: 'data-sep2', type: 'separator' },
+        { id: 'import-mode-label', type: 'label', label: t('importModeLabel') },
+        {
+          id: 'import-mode-link',
+          type: 'item',
+          label: t('importModeLink'),
+          icon: Link2,
+          selected: importMode === 'link',
+          keepOpen: true,
+          onSelect: () => void changeImportMode('link'),
+        },
+        {
+          id: 'import-mode-copy',
+          type: 'item',
+          label: t('importModeCopy'),
+          icon: Lock,
+          selected: importMode === 'copy',
+          keepOpen: true,
+          onSelect: () => void changeImportMode('copy'),
+        },
+        { id: 'data-sep3', type: 'separator' },
+        {
+          id: 'linked-folders',
+          type: 'submenu',
+          label: t('linkedFoldersMenu'),
+          icon: FolderSync,
+          count: visibleLinkedFolders.length,
+          children: linkedFolderNodes(),
+        },
       ],
     },
   ]
@@ -3641,6 +3886,49 @@ export function NotesScreen({
             trailing={
               <>
                 <TopBarSearch id="note-search" value={search} onChange={setSearch} placeholder={t('searchPlaceholder')} />
+                {!isTrash && (
+                  <DropdownMenu>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <DropdownMenuTrigger asChild>
+                          <Button size="sm" variant="outline" disabled={importing}>
+                            <Upload className="size-4" aria-hidden="true" />
+                            {importing ? t('importingLabel') : t('importMenuButton')}
+                          </Button>
+                        </DropdownMenuTrigger>
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        {importMode === 'link' ? t('importModeLinkHint') : t('importModeCopyHint')}
+                      </TooltipContent>
+                    </Tooltip>
+                    <DropdownMenuContent align="end" className="min-w-60">
+                      <DropdownMenuItem onSelect={() => void handleImportFiles()}>
+                        <Upload className="size-4" aria-hidden="true" />
+                        {t('importButton')}
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onSelect={() => void handleOpenFolderImport()}>
+                        <FolderOpen className="size-4" aria-hidden="true" />
+                        {t('folderImportButton')}
+                      </DropdownMenuItem>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuLabel>{t('importModeLabel')}</DropdownMenuLabel>
+                      {(['link', 'copy'] as const).map((mode) => (
+                        <DropdownMenuItem
+                          key={mode}
+                          role="menuitemradio"
+                          aria-checked={importMode === mode}
+                          onSelect={(event) => {
+                            event.preventDefault()
+                            void changeImportMode(mode)
+                          }}
+                        >
+                          <Check className={cn('size-4 text-primary', importMode === mode ? 'opacity-100' : 'opacity-0')} aria-hidden="true" />
+                          {mode === 'link' ? t('importModeLink') : t('importModeCopy')}
+                        </DropdownMenuItem>
+                      ))}
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                )}
                 {!isTrash && (
                   <Button size="sm" onClick={handleOpenNew}>
                     <Plus className="size-4" aria-hidden="true" />
@@ -4006,6 +4294,13 @@ export function NotesScreen({
                               icon: Trash2,
                               destructive: true,
                               onClick: () => detailNote && handleDelete(toMetaItem(detailNote)),
+                            },
+                            {
+                              id: 'reveal-linked',
+                              label: t('revealLinkedFile'),
+                              icon: FolderOpen,
+                              hidden: !detailNote?.is_linked || !detailNote?.linked_path,
+                              onClick: () => detailNote?.linked_path && void electronApi.showItemInFolder(detailNote.linked_path),
                             },
                             {
                               id: 'history',
@@ -4567,9 +4862,12 @@ export function NotesScreen({
       )}
 
       <Dialog open={folderImportOpen} onOpenChange={(o) => !o && setFolderImportOpen(false)}>
-        <DialogContent className="flex max-h-[85vh] flex-col sm:max-w-3xl">
+        <DialogContent className="flex h-[85vh] max-h-[85vh] flex-col overflow-hidden sm:max-w-3xl">
           <DialogHeader>
             <DialogTitle>{t('folderImportDialogHeading')}</DialogTitle>
+            <DialogDescription className="truncate" title={scanRootDir}>
+              {scanRootDir}
+            </DialogDescription>
           </DialogHeader>
           {scanning ? (
             <p className="text-sm text-muted-foreground">{t('folderScanningLabel')}</p>
@@ -4580,27 +4878,72 @@ export function NotesScreen({
                 value={scanSearch}
                 onChange={(e) => setScanSearch(e.target.value)}
               />
+              <div className="flex flex-wrap items-center gap-3">
+                <div role="radiogroup" aria-label={t('importModeLabel')} className="flex rounded-lg border border-border/70 p-0.5">
+                  {(['link', 'copy'] as const).map((mode) => (
+                    <Tooltip key={mode}>
+                      <TooltipTrigger asChild>
+                        <button
+                          type="button"
+                          role="radio"
+                          aria-checked={importMode === mode}
+                          onClick={() => void changeImportMode(mode)}
+                          className={cn(
+                            'flex items-center gap-1.5 rounded-md px-3 py-1 text-sm transition-colors',
+                            importMode === mode ? 'bg-accent-soft text-primary' : 'text-muted-foreground hover:text-foreground',
+                          )}
+                        >
+                          {mode === 'link' ? <Link2 className="h-4 w-4" /> : <Lock className="h-4 w-4" />}
+                          {mode === 'link' ? t('importModeLinkShort') : t('importModeCopyShort')}
+                        </button>
+                      </TooltipTrigger>
+                      <TooltipContent>{mode === 'link' ? t('importModeLinkHint') : t('importModeCopyHint')}</TooltipContent>
+                    </Tooltip>
+                  ))}
+                </div>
+                {importMode === 'link' && (
+                  <div className="flex items-center gap-2">
+                    <Checkbox
+                      id="folder-import-link-folder"
+                      checked={scanLinkFolder}
+                      onCheckedChange={(v) => setScanLinkFolder(v === true)}
+                    />
+                    <Label htmlFor="folder-import-link-folder" className="flex items-center gap-1.5 text-sm">
+                      <FolderSync className="h-4 w-4" />
+                      {t('folderLinkWatchLabel')}
+                    </Label>
+                  </div>
+                )}
+              </div>
               <div className="flex flex-wrap items-center justify-between gap-2">
-                <button
-                  type="button"
-                  className="flex items-center gap-2 text-sm text-muted-foreground"
-                  onClick={() => toggleScanSelectAll(!allScanFilteredSelected)}
-                >
-                  {allScanFilteredSelected ? <CheckSquare className="h-4 w-4" /> : <Square className="h-4 w-4" />}
-                  {t('selectAllLabel')}
-                </button>
+                {linkWholeFolder ? (
+                  <span />
+                ) : (
+                  <button
+                    type="button"
+                    className="flex items-center gap-2 text-sm text-muted-foreground"
+                    onClick={() => toggleScanSelectAll(!allScanFilteredSelected)}
+                  >
+                    {allScanFilteredSelected ? <CheckSquare className="h-4 w-4" /> : <Square className="h-4 w-4" />}
+                    {t('selectAllLabel')}
+                  </button>
+                )}
                 <span className="text-sm text-muted-foreground">
                   {t('folderImportFoundCountLabel', { count: filteredScanFiles.length })}
                 </span>
-                <button
-                  type="button"
-                  className="flex items-center gap-2 text-sm"
-                  onClick={() => setScanBatchEncrypt((v) => !v)}
-                  title={t('folderImportBatchEncryptHint')}
-                >
-                  {scanBatchEncrypt ? <Lock className="h-4 w-4" /> : <Unlock className="h-4 w-4" />}
-                  {scanBatchEncrypt ? t('folderImportBatchEncryptOnLabel') : t('folderImportBatchEncryptOffLabel')}
-                </button>
+                {importMode === 'copy' ? (
+                  <button
+                    type="button"
+                    className="flex items-center gap-2 text-sm"
+                    onClick={() => setScanBatchEncrypt((v) => !v)}
+                    title={t('folderImportBatchEncryptHint')}
+                  >
+                    {scanBatchEncrypt ? <Lock className="h-4 w-4" /> : <Unlock className="h-4 w-4" />}
+                    {scanBatchEncrypt ? t('folderImportBatchEncryptOnLabel') : t('folderImportBatchEncryptOffLabel')}
+                  </button>
+                ) : (
+                  <span />
+                )}
               </div>
 
               {/* 整批导入到隐藏分类。放在文件列表**上方**而不是折进"高级选项"：
@@ -4635,9 +4978,9 @@ export function NotesScreen({
               </div>
 
               {filteredScanFiles.length === 0 ? (
-                <p className="text-sm text-muted-foreground">{t('folderImportEmptyHint')}</p>
+                <p className="flex-1 text-sm text-muted-foreground">{t('folderImportEmptyHint')}</p>
               ) : (
-                <div ref={scanScrollParentRef} className="min-h-[55vh] flex-1 overflow-y-auto rounded border">
+                <div ref={setScanScrollEl} className="min-h-40 flex-1 overflow-y-auto rounded border">
                   <div style={{ height: scanRowVirtualizer.getTotalSize(), position: 'relative' }}>
                     {scanRowVirtualizer.getVirtualItems().map((virtualRow) => {
                       const file = filteredScanFiles[virtualRow.index]
@@ -4657,6 +5000,9 @@ export function NotesScreen({
                           }}
                           className="flex items-center gap-2 border-b px-2 py-1.5"
                         >
+                          {linkWholeFolder ? (
+                            <Link2 className="h-4 w-4 shrink-0 text-primary" aria-hidden="true" />
+                          ) : (
                           <Tooltip>
                             <TooltipTrigger asChild>
                               <button
@@ -4670,10 +5016,17 @@ export function NotesScreen({
                             </TooltipTrigger>
                             <TooltipContent>{selected ? t('folderImportRowUnselectedHint') : t('folderImportRowSelectedHint')}</TooltipContent>
                           </Tooltip>
+                          )}
                           <div className="min-w-0 flex-1">
                             <p className="truncate text-sm">{file.name}</p>
-                            <p className="truncate text-sm text-muted-foreground">{formatScanFileSize(file.size_bytes)}</p>
+                            <p className="truncate text-sm text-muted-foreground">
+                              {formatScanFileSize(file.size_bytes)}
+                              {scanRootDir && file.path.length > scanRootDir.length + file.name.length + 1
+                                ? ` · ${file.path.slice(scanRootDir.length + 1, file.path.length - file.name.length - 1)}`
+                                : ''}
+                            </p>
                           </div>
+                          {importMode === 'copy' && (
                           <Tooltip>
                             <TooltipTrigger asChild>
                               <button
@@ -4686,6 +5039,7 @@ export function NotesScreen({
                             </TooltipTrigger>
                             <TooltipContent>{encrypted ? t('folderImportRowEncryptedHint') : t('folderImportRowPlainHint')}</TooltipContent>
                           </Tooltip>
+                          )}
                         </div>
                       )
                     })}
@@ -4707,8 +5061,10 @@ export function NotesScreen({
                   />
                 </div>
               )}
-              <div className="flex items-center justify-between">
-                <p className="text-sm text-muted-foreground">{t('selectedCountLabel', { count: scanSelectedPaths.size })}</p>
+              <div className="flex shrink-0 items-center justify-between">
+                <p className="text-sm text-muted-foreground">
+                  {linkWholeFolder ? null : t('selectedCountLabel', { count: scanSelectedPaths.size })}
+                </p>
                 <div className="flex gap-2">
                   <Button size="sm" variant="outline" onClick={() => setFolderImportOpen(false)} disabled={scanImporting}>
                     {t('closeButton')}
@@ -4716,9 +5072,13 @@ export function NotesScreen({
                   <Button
                     size="sm"
                     onClick={handleConfirmFolderImport}
-                    disabled={scanImporting || scanSelectedPaths.size === 0}
+                    disabled={scanImporting || (!linkWholeFolder && scanSelectedPaths.size === 0)}
                   >
-                    {scanImporting ? t('importingLabel') : t('folderImportConfirmButton', { count: scanSelectedPaths.size })}
+                    {scanImporting
+                      ? t('importingLabel')
+                      : linkWholeFolder
+                        ? t('folderLinkConfirmButton', { count: scanFiles.length })
+                        : t('folderImportConfirmButton', { count: scanSelectedPaths.size })}
                   </Button>
                 </div>
               </div>
@@ -5309,7 +5669,17 @@ function NoteRow({
         </Tooltip>
       )}
       <div className="min-w-0 flex-1">
-        <p className="truncate font-medium">{note.title || t('untitledNote')}</p>
+        <p className="flex min-w-0 items-center gap-1.5 font-medium">
+          <span className="truncate">{note.title || t('untitledNote')}</span>
+          {note.is_linked ? (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Link2 className="h-3.5 w-3.5 shrink-0 text-primary" aria-label={t('linkedNoteBadge')} />
+              </TooltipTrigger>
+              <TooltipContent className="max-w-96 break-all">{note.linked_path || t('linkedNoteBadge')}</TooltipContent>
+            </Tooltip>
+          ) : null}
+        </p>
         <p className="truncate text-sm text-muted-foreground">
           {note.category && <span className="mr-1 rounded-full bg-muted px-1.5 py-0.5">{note.category}</span>}
           {note.preview}

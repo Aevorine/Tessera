@@ -233,5 +233,8 @@
   "recovery_codes.revision_not_found": "Esta revisión ya no existe.",
   "recovery_codes.batch_not_found": "No se encuentra este lote de cambios.",
   "recovery_codes.bulk_empty": "Selecciona primero los servicios que quieres cambiar.",
-  "recovery_codes.duplicates_invalid": "Los servicios que se iban a combinar han cambiado (eliminados o editados). Vuelve a analizar."
+  "recovery_codes.duplicates_invalid": "Los servicios que se iban a combinar han cambiado (eliminados o editados). Vuelve a analizar.",
+  "notes.linked_too_large": "Los archivos de más de 8 MB no se pueden vincular",
+  "notes.linked_file_missing": "Falta el archivo local de esta nota: {{path}}",
+  "notes.linked_folder_not_found": "Esta carpeta vinculada ya no existe"
 }

@@ -233,5 +233,8 @@
   "recovery_codes.revision_not_found": "Эта версия больше не существует.",
   "recovery_codes.batch_not_found": "Этот пакет изменений не найден.",
   "recovery_codes.bulk_empty": "Сначала выберите сервисы для изменения.",
-  "recovery_codes.duplicates_invalid": "Сервисы для объединения изменились (удалены или отредактированы). Запустите поиск ещё раз."
+  "recovery_codes.duplicates_invalid": "Сервисы для объединения изменились (удалены или отредактированы). Запустите поиск ещё раз.",
+  "notes.linked_too_large": "Файлы больше 8 МБ нельзя связать как исходный файл",
+  "notes.linked_file_missing": "Не найден локальный файл этой заметки: {{path}}",
+  "notes.linked_folder_not_found": "Эта связанная папка больше не существует"
 }
