@@ -368,7 +368,7 @@
     },
     {
       "name": "markdown-it",
-      "version": "14.3.2",
+      "version": "14.3.3",
       "license": "MIT",
       "url": "https://github.com/markdown-it/markdown-it",
       "group": "ui"

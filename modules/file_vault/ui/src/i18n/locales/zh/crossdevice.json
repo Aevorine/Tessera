@@ -301,5 +301,8 @@
   "badgeAskAccept": "接收前询问",
   "openDownloadDir": "打开文件夹",
   "openDownloadDirFailed": "无法打开收件文件夹。",
-  "recvDoneToast": "已收到 {{name}}"
+  "recvDoneToast": "已收到 {{name}}",
+  "defaultSendDevice": "默认发送设备",
+  "rememberLastTarget": "记住上次选择",
+  "defaultSendDeviceHelp": "文件、文件夹及手动发送剪贴板沿用所选目标；设置默认设备后，自动剪贴板同步仅发送给该设备。离线时保留选择，不改发其他设备，也不自动补发。"
 }

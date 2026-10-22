@@ -2,16 +2,17 @@ module github.com/Aevorine/Tessera/crossdevice
 
 go 1.26.1
 
-// 最低 1.26.9（1.27 系列要 1.27.2）：govulncheck 实测这个模块**可达**三个标准库漏洞，
+// 最低 1.26.10（1.27 系列要 1.27.3）：govulncheck 实测这个模块**可达**三个标准库漏洞，
 // 都在 QUIC/TLS 这条直接暴露在网络上的路径上，这两个版本才全部修掉。
-// 发布用的二进制按 1.27 系列构建，所以这里钉 1.27.2；用 1.27.0 / 1.27.1 编出来的包带着 GO-2026-6607。
+// 发布用的二进制按 1.27 系列构建，所以这里钉 1.27.3；用 1.27.0 / 1.27.1 编出来的包带着 GO-2026-6607。
 //   GO-2026-6090 crypto/tls    握手后消息不限量 -> transport.Endpoint.Dial 可达
 //   GO-2026-5972 encoding/asn1 递归深度不设限 -> transport.Open 可达
 //   GO-2026-6607 crypto/tls    ECH 外层扩展引用不校验 -> transport.Endpoint.Dial 可达
+//   GO-2026-6809 crypto/x509 证书信任撤销校验 -> Certificate.Verify 可达
 // 写 toolchain 而不是抬高上面那行 go 指令：go 指令是「源码用到哪一版的语言
 // 特性」，toolchain 是「用哪一版的编译器和标准库构建」。这里要修的是标准库，
 // 所以该动的是后者。
-toolchain go1.27.2
+toolchain go1.27.3
 
 require (
 	github.com/flynn/noise v1.1.0

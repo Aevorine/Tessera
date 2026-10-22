@@ -301,5 +301,8 @@
   "badgeAskAccept": "Demander avant réception",
   "openDownloadDir": "Ouvrir le dossier",
   "openDownloadDirFailed": "Impossible d’ouvrir le dossier des fichiers reçus.",
-  "recvDoneToast": "Fichier reçu : {{name}}"
+  "recvDoneToast": "Fichier reçu : {{name}}",
+  "defaultSendDevice": "Appareil destinataire par défaut",
+  "rememberLastTarget": "Mémoriser la sélection",
+  "defaultSendDeviceHelp": "Les envois réutilisent la sélection. Le presse-papiers automatique utilise uniquement cet appareil. Hors ligne : aucune redirection ni mise en attente."
 }

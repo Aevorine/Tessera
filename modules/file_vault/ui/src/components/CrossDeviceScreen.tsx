@@ -78,6 +78,7 @@ import { HubSearchResults, type HubSearchHandle } from '@/components/crossdevice
 import { hubSearcher, type HubEntry, type HubGroup } from '@/lib/search/fields/hub'
 import { ClipSendDialog } from '@/components/crossdevice/ClipSendDialog'
 import { DevicePolicyPanel, type ClipPolicy, type FilePolicy } from '@/components/crossdevice/DevicePolicyPanel'
+import { loadSendPreference, saveSendPreference } from '@/lib/sendPreference'
 import { latencyStats, type LatencyPoint } from '@/lib/latencyStats'
 
 // ---------- 守护进程返回的结构 ----------
@@ -112,6 +113,7 @@ interface Device {
 }
 
 interface Options {
+  default_send_device?: string
   clip_sync: boolean
   /** 只同步纯文本与图片，不带 HTML/RTF 富格式。 */
   clip_plain_only?: boolean
@@ -525,14 +527,26 @@ export function CrossDeviceScreen() {
   /** 指标每秒刷一次。只有指标区展开时才跑，收起来就不再占任何 CPU。 */
   const [metricsTick, setMetricsTick] = useState(0)
   const [metricsOpen, setMetricsOpen] = useState(false)
-  const [selected, setSelected] = useState<Set<string>>(new Set())
+  const [selected, setSelected] = useState<Set<string>>(() => new Set(loadSendPreference().selected))
   /** 右栏正在显示哪一台。存 id 不存整个对象——设备状态每秒都在刷，
    *  存对象的话右栏会一直显示一份过期的快照。 */
   const [detailDeviceId, setDetailDeviceId] = useState<string | null>(null)
 
   /** 发送目标模式：'one' 发一台，'many' 发勾选的多台。默认 'one'，群发应是明确动作。 */
-  const [fanout, setFanout] = useState<'one' | 'many'>('one')
-  const [soloTarget, setSoloTarget] = useState<string | null>(null)
+  const [fanout, setFanout] = useState<'one' | 'many'>(() => loadSendPreference().fanout)
+  const [soloTarget, setSoloTarget] = useState<string | null>(() => loadSendPreference().soloTarget)
+  const targetInitialized = useRef(false)
+  useEffect(() => {
+    if (!status || targetInitialized.current) return
+    targetInitialized.current = true
+    if (status.options.default_send_device) {
+      setFanout('one')
+      setSoloTarget(status.options.default_send_device)
+    }
+  }, [status])
+  useEffect(() => {
+    saveSendPreference({ fanout, soloTarget, selected: [...selected] })
+  }, [fanout, soloTarget, selected])
 
   /** 当前打开的全屏次功能面板，以及展开动画的圆心。 */
   const [panel, setPanel] = useState<string | null>(null)
@@ -1022,9 +1036,11 @@ export function CrossDeviceScreen() {
   // 让用户为唯一的选项点一下纯属多余。多于一台就不猜，必须他自己选。
   useEffect(() => {
     if (fanout !== 'one') return
-    if (soloTarget && online.some((d) => d.device_id === soloTarget)) return
-    setSoloTarget(online.length === 1 ? online[0].device_id : null)
-  }, [fanout, online, soloTarget])
+    if (soloTarget) return // Keep an offline selection: never silently send elsewhere.
+    const preferred = status?.options.default_send_device
+    if (preferred) setSoloTarget(preferred)
+    else if (online.length === 1) setSoloTarget(online[0].device_id)
+  }, [fanout, online, soloTarget, status?.options.default_send_device])
 
   /**
    * 配对成功后恢复配对面板。五条路径统一由 `paired` 事件触发：显示码的一端不调用任何配对函数，只能靠
@@ -1473,8 +1489,10 @@ export function CrossDeviceScreen() {
     try {
       const opts = await api.call<Options>('set_options', patch)
       setStatus((s) => (s ? { ...s, options: opts } : s))
+      return true
     } catch (err) {
       toast.error(err instanceof Error ? err.message : String(err))
+      return false
     }
   }
 
@@ -2661,7 +2679,7 @@ export function CrossDeviceScreen() {
                 <FolderOpen className="size-5" aria-hidden="true" />
                 {t('openDownloadDir')}
               </Button>
-              <Button size="lg" className="h-12 rounded-xl px-5" onClick={() => setClipPickOpen(true)} disabled={online.length === 0}>
+              <Button size="lg" className="h-12 rounded-xl px-5" onClick={() => setClipPickOpen(true)} disabled={sendTargets.length === 0}>
                 <Clipboard className="mr-2 size-5" />
                 {t('sendClipboard')}
               </Button>
@@ -2722,6 +2740,19 @@ export function CrossDeviceScreen() {
               onSubmit={() => hubResultsRef.current?.openFirst()}
               className="order-last ml-auto sm:w-80 xl:w-[28rem]"
             />
+            <Label className="text-sm" htmlFor="default-send-device">{t('defaultSendDevice')}</Label>
+            <Select value={status.options.default_send_device || '__none__'} onValueChange={(id) => {
+              void setOption({ default_send_device: id === '__none__' ? '' : id }).then((saved) => {
+                if (saved && id !== '__none__') { setFanout('one'); setSoloTarget(id) }
+              })
+            }}>
+              <SelectTrigger id="default-send-device" className="h-8 w-52"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__none__">{t('rememberLastTarget')}</SelectItem>
+                {devices.map((d) => <SelectItem key={d.device_id} value={d.device_id}>{d.name}</SelectItem>)}
+              </SelectContent>
+            </Select>
+            <InfoHint text={t('defaultSendDeviceHelp')} />
             <span className="text-sm text-muted-foreground">{t('sendTo')}</span>
             <div className="inline-flex rounded-lg border bg-muted/40 p-0.5">
               {(['one', 'many'] as const).map((m) => (
@@ -2744,7 +2775,7 @@ export function CrossDeviceScreen() {
                   <SelectValue placeholder={t('fanoutPickOne')} />
                 </SelectTrigger>
                 <SelectContent>
-                  {online.map((d) => (
+                  {devices.map((d) => (
                     <SelectItem key={d.device_id} value={d.device_id}>
                       {d.name}
                     </SelectItem>
@@ -2821,7 +2852,7 @@ export function CrossDeviceScreen() {
         </div>
       )}
 
-      <ClipSendDialog open={clipPickOpen} onOpenChange={setClipPickOpen} />
+      <ClipSendDialog open={clipPickOpen} onOpenChange={setClipPickOpen} deviceIds={sendTargets} />
 
       {/* 配对安全码确认：设备名可伪造，只有两端比对同一组安全码才能挡住中间人。 */}
       <Dialog open={!!pairReq} onOpenChange={(o) => !o && respondPair(false)}>

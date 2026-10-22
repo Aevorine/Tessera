@@ -107,6 +107,7 @@ func (p *Peer) Usable(now time.Time) bool {
 // Options 是用户可调的本机偏好，必须落盘：曾只在内存原子变量里，重启后接收目录之类的
 // 设置悄悄回到默认值，用户找不到文件也不知道设置没保住。
 type Options struct {
+	DefaultSendDevice string `json:"default_send_device,omitempty"`
 	// DeviceName 是用户起的本机名，空串表示没改过（调用方回落主机名）。必须持久化：
 	// 宿主每次启动都把主机名当默认值传入，不存则用户改的名字重启后被盖掉。
 	DeviceName string `json:"device_name,omitempty"`
