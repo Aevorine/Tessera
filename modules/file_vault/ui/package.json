@@ -2,7 +2,7 @@
   "name": "file-vault-ui",
   "private": true,
   "license": "AGPL-3.0-only OR LicenseRef-Ideal1-Commercial",
-  "version": "0.1.49",
+  "version": "0.1.50",
   "description": "Multi-factor encrypted vault for Windows",
   "author": "Aevorine",
   "type": "module",
