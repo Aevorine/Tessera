@@ -48,9 +48,9 @@ export function HelpScreen() {
 
   const chapters: Chapter[] = useMemo(
     () => [
-      { id: 'menus', icon: LayoutGrid, title: t('sectionMenus'), items: [t('menu1'), t('menu2'), t('menu3'), t('menu4'), t('menu5')] },
+      { id: 'menus', icon: LayoutGrid, title: t('sectionMenus'), items: [t('menu1'), t('menu2'), t('menu3'), t('menu4'), t('menu5'), t('menu6')] },
       { id: 'files', icon: Lock, title: t('sectionFiles'), items: [t('files1'), t('files2'), t('files3'), t('files4'), t('files5')] },
-      { id: 'filemanager', icon: FolderOpen, title: t('sectionFileManager'), items: [t('fm1'), t('fm2'), t('fm3'), t('fm4')] },
+      { id: 'filemanager', icon: FolderOpen, title: t('sectionFileManager'), items: [t('fm1'), t('fm2'), t('fm3'), t('fm4'), t('fm5')] },
       {
         id: 'clipboard',
         icon: ClipboardList,
@@ -61,7 +61,7 @@ export function HelpScreen() {
         id: 'crossdevice',
         icon: MonitorSmartphone,
         title: t('sectionCrossDevice'),
-        items: [t('cd1'), t('cd2'), t('cd3'), t('cd4'), t('cd5'), t('cd6'), t('cd7'), t('cd8')],
+        items: [t('cd1'), t('cd2'), t('cd3'), t('cd4'), t('cd5'), t('cd6'), t('cd7'), t('cd8'), t('cd9'), t('cd10'), t('cd11')],
       },
       {
         id: 'android',

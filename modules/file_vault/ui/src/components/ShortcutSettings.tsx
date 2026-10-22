@@ -31,7 +31,7 @@ const FILE_MANAGER_ACTIONS: FileManagerShortcutAction[] = [
   'delete_recycle',
   'delete_permanent',
 ]
-const GLOBAL_ACTIONS: GlobalShortcutAction[] = ['toggleWindow', 'clipboardCapture', 'quickNote']
+const GLOBAL_ACTIONS: GlobalShortcutAction[] = ['toggleWindow', 'clipboardCapture', 'quickNote', 'openDevices']
 // 五条文件快捷键都要同步到系统级 C 钩子，确保资源管理器与应用内行为一致。
 const HOOK_RELEVANT_ACTIONS: FileManagerShortcutAction[] = ['copy', 'cut', 'paste', 'delete_recycle', 'delete_permanent']
 // 应用固定占用，跟 ui_settings.py 的 builtin 保留集一致：Ctrl+K 命令面板
@@ -54,7 +54,7 @@ function keyOptionsFor(action: AnyShortcutAction): string[] {
 }
 
 function isGlobalAction(action: AnyShortcutAction): action is GlobalShortcutAction {
-  return action === 'toggleWindow' || action === 'clipboardCapture' || action === 'quickNote'
+  return action === 'toggleWindow' || action === 'clipboardCapture' || action === 'quickNote' || action === 'openDevices'
 }
 
 function signatureOf(binding: ShortcutBinding): string {
@@ -79,6 +79,7 @@ export function ShortcutSettings() {
     toggleWindow: true,
     clipboardCapture: true,
     quickNote: true,
+    openDevices: true,
   })
   const [loaded, setLoaded] = useState(false)
   const [capturing, setCapturing] = useState<AnyShortcutAction | null>(null)
@@ -386,6 +387,7 @@ export function ShortcutSettings() {
     toggleWindow: t('shortcutActionToggleWindow'),
     clipboardCapture: t('shortcutActionClipboardCapture'),
     quickNote: t('shortcutActionQuickNote'),
+    openDevices: t('shortcutActionOpenDevices'),
   }
 
   return (

@@ -150,7 +150,14 @@ contextBridge.exposeInMainWorld('electronAPI', {
   onNavigate: (callback: (pane: string) => void) => {
     const listener = (_event: Electron.IpcRendererEvent, pane: string) => callback(pane)
     ipcRenderer.on('nav:show-pane', listener)
-    return () => ipcRenderer.off('nav:show-pane', listener)
+    let active = true
+    void ipcRenderer.invoke('nav:takePendingDevices').then((pane: unknown) => {
+      if (active && pane === 'crossdevice') {
+        callback(pane)
+        void ipcRenderer.invoke('nav:ackPendingDevices').catch(() => {})
+      }
+    }).catch(() => {})
+    return () => { active = false; ipcRenderer.off('nav:show-pane', listener) }
   },
 
   onQuickCapture: (callback: () => void) => {

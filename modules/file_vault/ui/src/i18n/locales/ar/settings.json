@@ -360,5 +360,6 @@
   "tileNoteTextEncrypted": "نص الملاحظات في القاعدة المشفّرة",
   "tileNoteTextPlain": "نص الملاحظات كملفات عادية",
   "tileContentBadge": "الذكاء الاصطناعي · الحافظة · الملاحظات",
-  "tileOtherBadge": "التشخيص · إعادة ضبط التفضيلات"
+  "tileOtherBadge": "التشخيص · إعادة ضبط التفضيلات",
+  "shortcutActionOpenDevices": "فتح الأجهزة والمزامنة"
 }

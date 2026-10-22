@@ -577,8 +577,9 @@ const DEFAULT_GLOBAL_SHORTCUTS: GlobalShortcuts = {
   toggleWindow: { key: 't', ctrl: true, alt: true, shift: false }, // Ctrl+Alt+T
   clipboardCapture: { key: 'v', ctrl: true, alt: false, shift: true }, // Ctrl+Shift+V
   quickNote: { key: 'n', ctrl: true, alt: false, shift: true }, // Ctrl+Shift+N
+  openDevices: { key: 'd', ctrl: true, alt: true, shift: false }, // Ctrl+Alt+D
 }
-const GLOBAL_SHORTCUT_ACTIONS: GlobalShortcutAction[] = ['toggleWindow', 'clipboardCapture', 'quickNote']
+const GLOBAL_SHORTCUT_ACTIONS: GlobalShortcutAction[] = ['toggleWindow', 'clipboardCapture', 'quickNote', 'openDevices']
 
 // 自动锁定：此前金库一旦解锁就一直解锁到应用退出，离座、合盖、Win+L 后仍全部可见。
 // 锁定是整个换掉后端进程（见 pythonBridge.restartForLock）：主密钥只在该进程内存里，
@@ -599,6 +600,7 @@ let hiddenSince: number | null = null
 // 有没有解锁过。没解锁过就没有"锁定"这件事——那时候重启后端纯属白折腾，
 // 还会让启动阶段的空闲计时把一个本来就在登录页的应用反复重启。
 let vaultUnlocked = false
+let pendingDevicesNavigation = false
 // 哪些 RPC 成功之后算"金库开着了"。setup_complete 也算——首次设置走完就是解锁态。
 const UNLOCK_METHODS: ReadonlySet<string> = new Set([
   'unlock_password',
@@ -694,6 +696,7 @@ function cloneGlobalShortcuts(source: GlobalShortcuts): GlobalShortcuts {
     toggleWindow: { ...source.toggleWindow },
     clipboardCapture: { ...source.clipboardCapture },
     quickNote: { ...source.quickNote },
+    openDevices: { ...source.openDevices },
   }
 }
 
@@ -704,6 +707,7 @@ let globalShortcutsRegistered: Record<GlobalShortcutAction, boolean> = {
   toggleWindow: false,
   clipboardCapture: false,
   quickNote: false,
+  openDevices: false,
 }
 
 function isValidGlobalShortcutBinding(candidate: unknown): candidate is ShortcutBinding {
@@ -753,9 +757,11 @@ function globalShortcutsFilePath(): string {
 
 function loadGlobalShortcuts(): GlobalShortcuts {
   const result = cloneGlobalShortcuts(DEFAULT_GLOBAL_SHORTCUTS)
+  let devicesMissing = true
   try {
     const raw = fs.readFileSync(globalShortcutsFilePath(), 'utf-8')
     const parsed = JSON.parse(raw) as Partial<Record<GlobalShortcutAction, unknown>>
+    devicesMissing = !isValidGlobalShortcutBinding(parsed.openDevices)
     for (const action of GLOBAL_SHORTCUT_ACTIONS) {
       const binding = parsed[action]
       if (isValidGlobalShortcutBinding(binding)) {
@@ -769,6 +775,15 @@ function loadGlobalShortcuts(): GlobalShortcuts {
     }
   } catch {
     // 文件不存在（首次运行）或损坏——退回默认，不是需要上报的错误
+  }
+  if (devicesMissing && GLOBAL_SHORTCUT_ACTIONS.some((action) => action !== 'openDevices' && globalBindingSignature(result[action]) === globalBindingSignature(result.openDevices))) {
+    for (const key of 'dyubabcdefghijklmnopqrstuvwxyz0123456789') {
+      const binding = { key, ctrl: true, alt: true, shift: true }
+      if (!GLOBAL_SHORTCUT_ACTIONS.some((action) => action !== 'openDevices' && globalBindingSignature(result[action]) === globalBindingSignature(binding))) {
+        result.openDevices = binding
+        break
+      }
+    }
   }
   if (hasDuplicateBinding(result)) {
     // 存的里头有两条互撞（正常保存路径拦得住，只可能是手改文件）→ 整体退回默认。
@@ -790,7 +805,7 @@ function registerGlobalShortcuts(): void {
   // 整体重注册最简单也最不易漏。register 失败（如组合键被别的软件占用）不当错误处理，
   // 只是这次没注册上；没有不弹窗打断用户的安全办法去"抢"回来。
   globalShortcut.unregisterAll()
-  const next: Record<GlobalShortcutAction, boolean> = { toggleWindow: false, clipboardCapture: false, quickNote: false }
+  const next: Record<GlobalShortcutAction, boolean> = { toggleWindow: false, clipboardCapture: false, quickNote: false, openDevices: false }
   try {
     // 呼出主窗口；已经在前台就收回托盘。跟托盘图标单击是同一个函数，
     // 所以「点托盘」和「按键」两条路的行为不可能分家。
@@ -819,6 +834,12 @@ function registerGlobalShortcuts(): void {
   } catch {
     next.quickNote = false
   }
+  try {
+    next.openDevices = globalShortcut.register(bindingToAccelerator(currentGlobalShortcuts.openDevices), () => {
+      if (!vaultUnlocked) { pendingDevicesNavigation = true; showWindow() }
+      else sendNav('crossdevice')
+    })
+  } catch { next.openDevices = false }
   globalShortcutsRegistered = next
 }
 
@@ -1520,6 +1541,15 @@ function createWindow() {
   // 全局快捷键自定义：设置页读当前值/保存。保存成功即重新注册并持久化；`registered` 逐条反映 register 结果
   // （false=被其他软件占用，保存仍算成功，与启动时的容忍策略一致）。
   // 与文件管理器 5 条快捷键的互撞检查在渲染端保存前做（那里能拿到两份数据），这里只管全局键自身的合法性与互撞。
+  ipcMain.handle('nav:takePendingDevices', (event) => {
+    assertTrustedRenderer(event)
+    if (!vaultUnlocked || !pendingDevicesNavigation) return null
+    return 'crossdevice'
+  })
+  ipcMain.handle('nav:ackPendingDevices', (event) => {
+    assertTrustedRenderer(event)
+    if (vaultUnlocked) pendingDevicesNavigation = false
+  })
   ipcMain.handle('system:getGlobalShortcuts', (event) => {
     assertTrustedRenderer(event)
     return { shortcuts: currentGlobalShortcuts, registered: globalShortcutsRegistered }
