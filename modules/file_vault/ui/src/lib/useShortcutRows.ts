@@ -23,7 +23,7 @@ export interface ShortcutGroups {
 
 /**
  * 全部快捷键的唯一定义，供 HelpScreen 与按 `?` 弹出的速查卡共用，避免两处各抄一份而分家。
- * 用 hook 而非常量：前七条运行时读取（五条在后端 ui_settings，两条全局键位在主进程），须显示用户改后的值。
+ * 用 hook 而非常量：九条可自定义键位运行时读取（五条在后端 ui_settings，四条全局键位在主进程），须显示用户改后的值。
  *
  * `enabled`：速查卡挂在 App 最外层（锁屏也能看），但 `file_manager_shortcuts_get` 在金库未解锁时
  * 必然 reject（auth.not_unlocked）。须同时做到：未打开卡片就不发请求（后端 serve 循环单线程，
@@ -90,6 +90,7 @@ export function useShortcutRows(enabled: boolean = true): ShortcutGroups {
       { label: t('actionToggleWindow'), keys: gl((s) => s.toggleWindow) },
       { label: t('actionClipboardCapture'), keys: gl((s) => s.clipboardCapture) },
       { label: t('actionQuickNote'), keys: gl((s) => s.quickNote) },
+      { label: t('actionOpenDevices'), keys: gl((s) => s.openDevices) },
     ],
     fixed: [
       { label: t('fixedPalette'), keys: 'Ctrl + K' },

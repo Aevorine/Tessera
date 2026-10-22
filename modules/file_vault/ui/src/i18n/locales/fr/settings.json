@@ -360,5 +360,6 @@
   "tileNoteTextEncrypted": "Texte des notes dans la base chiffrée",
   "tileNoteTextPlain": "Texte des notes en fichiers clairs",
   "tileContentBadge": "IA · presse-papiers · notes",
-  "tileOtherBadge": "Diagnostic · réinitialiser les préférences"
+  "tileOtherBadge": "Diagnostic · réinitialiser les préférences",
+  "shortcutActionOpenDevices": "Ouvrir Appareils et synchronisation"
 }

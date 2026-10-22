@@ -75,12 +75,12 @@ test('五条一条不少', () => {
   ])
 })
 
-test('三条全局键位：渲染层跟 Electron 主进程逐字段一致', () => {
+test('四条全局键位：渲染层跟 Electron 主进程逐字段一致', () => {
   assert.deepEqual(rendererGlobal, mainGlobal)
 })
 
-test('三条一条不少', () => {
-  assert.deepEqual(Object.keys(rendererGlobal).sort(), ['clipboardCapture', 'quickNote', 'toggleWindow'])
+test('四条一条不少', () => {
+  assert.deepEqual(Object.keys(rendererGlobal).sort(), ['clipboardCapture', 'openDevices', 'quickNote', 'toggleWindow'])
 })
 
 test('出厂键位只在 lib/shortcutDefaults.ts 里定义一次，组件不再各抄一份', () => {

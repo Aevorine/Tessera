@@ -360,5 +360,6 @@
   "tileNoteTextEncrypted": "笔记正文存加密数据库",
   "tileNoteTextPlain": "笔记正文存明文文件",
   "tileContentBadge": "AI · 剪贴板 · 笔记存储",
-  "tileOtherBadge": "诊断信息 · 恢复默认偏好"
+  "tileOtherBadge": "诊断信息 · 恢复默认偏好",
+  "shortcutActionOpenDevices": "任何程序里打开设备与同步"
 }

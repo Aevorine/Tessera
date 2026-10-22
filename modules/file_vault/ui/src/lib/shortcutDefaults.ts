@@ -18,4 +18,5 @@ export const DEFAULT_GLOBAL_SHORTCUTS: GlobalShortcuts = {
   toggleWindow: { key: 't', ctrl: true, alt: true, shift: false },
   clipboardCapture: { key: 'v', ctrl: true, alt: false, shift: true },
   quickNote: { key: 'n', ctrl: true, alt: false, shift: true },
+  openDevices: { key: 'd', ctrl: true, alt: true, shift: false },
 }

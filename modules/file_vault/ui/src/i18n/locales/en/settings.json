@@ -360,5 +360,6 @@
   "tileNoteTextEncrypted": "Note text in the encrypted database",
   "tileNoteTextPlain": "Note text as plain files",
   "tileContentBadge": "AI · clipboard · note storage",
-  "tileOtherBadge": "Diagnostics · reset preferences"
+  "tileOtherBadge": "Diagnostics · reset preferences",
+  "shortcutActionOpenDevices": "Open Devices & sync from any application"
 }

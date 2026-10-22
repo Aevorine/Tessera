@@ -360,5 +360,6 @@
   "tileNoteTextEncrypted": "Texto de notas en la base cifrada",
   "tileNoteTextPlain": "Texto de notas como archivos planos",
   "tileContentBadge": "IA · portapapeles · notas",
-  "tileOtherBadge": "Diagnóstico · restablecer preferencias"
+  "tileOtherBadge": "Diagnóstico · restablecer preferencias",
+  "shortcutActionOpenDevices": "Abrir Dispositivos y sincronización"
 }

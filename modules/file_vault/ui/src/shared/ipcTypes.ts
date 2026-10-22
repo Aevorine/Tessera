@@ -131,7 +131,7 @@ export type FileManagerShortcuts = Record<FileManagerShortcutAction, ShortcutBin
 
 // 应用级全局快捷键（主进程注册，键位存 userData/global-shortcuts.json，不经 Python 后端）；
 // 复用 ShortcutBinding 形状，设置页才能对两套快捷键统一做冲突检查。
-export type GlobalShortcutAction = 'toggleWindow' | 'clipboardCapture' | 'quickNote'
+export type GlobalShortcutAction = 'toggleWindow' | 'clipboardCapture' | 'quickNote' | 'openDevices'
 
 export interface ClipboardNearDuplicateGroup {
   keep_id: number

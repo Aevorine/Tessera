@@ -360,5 +360,6 @@
   "tileNoteTextEncrypted": "Текст заметок в зашифрованной базе",
   "tileNoteTextPlain": "Текст заметок в открытых файлах",
   "tileContentBadge": "ИИ · буфер обмена · заметки",
-  "tileOtherBadge": "Диагностика · сброс настроек"
+  "tileOtherBadge": "Диагностика · сброс настроек",
+  "shortcutActionOpenDevices": "Открыть устройства и синхронизацию"
 }
