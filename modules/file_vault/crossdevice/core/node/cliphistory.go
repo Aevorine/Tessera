@@ -339,7 +339,7 @@ func (n *Node) ClipHistoryContent(itemID []byte) (*clipboard.Item, error) {
 // ApplyClipHistory 把时间线上一条内容准备好写入本机剪贴板。
 // broadcast=false：只放本机，先登记回声以免监听器把它当新复制广播出去。
 // broadcast=true：当手动发送推给所有在线设备（Force，接收端不去重）。
-func (n *Node) ApplyClipHistory(itemID []byte, broadcast bool) (*clipboard.Item, []error, error) {
+func (n *Node) ApplyClipHistory(itemID []byte, broadcast bool, targets ...string) (*clipboard.Item, []error, error) {
 	it, err := n.ClipHistoryContent(itemID)
 	if err != nil {
 		return nil, nil, err
@@ -363,7 +363,8 @@ func (n *Node) ApplyClipHistory(itemID []byte, broadcast bool) (*clipboard.Item,
 	for _, r := range fresh.Reps {
 		n.track.MarkWritten(r.Hash)
 	}
-	return fresh, n.BroadcastClip(fresh), nil
+	_, errs := n.BroadcastClipCount(fresh, targets...)
+	return fresh, errs, nil
 }
 
 // ---------- 与对端交换时间线 ----------

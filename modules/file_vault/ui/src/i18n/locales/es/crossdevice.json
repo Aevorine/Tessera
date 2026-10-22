@@ -301,5 +301,8 @@
   "badgeAskAccept": "Preguntar antes de recibir",
   "openDownloadDir": "Abrir carpeta",
   "openDownloadDirFailed": "No se pudo abrir la carpeta de archivos recibidos.",
-  "recvDoneToast": "Recibido: {{name}}"
+  "recvDoneToast": "Recibido: {{name}}",
+  "defaultSendDevice": "Dispositivo de envío predeterminado",
+  "rememberLastTarget": "Recordar selección",
+  "defaultSendDeviceHelp": "Los envíos reutilizan la selección. El portapapeles automático usa solo este dispositivo. Sin conexión no se redirige ni se pone en cola."
 }

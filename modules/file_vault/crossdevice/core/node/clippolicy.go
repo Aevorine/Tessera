@@ -1,6 +1,7 @@
 package node
 
 import (
+	"fmt"
 	"sync"
 
 	"github.com/Aevorine/Tessera/crossdevice/core/clipboard"
@@ -64,8 +65,27 @@ func (n *Node) SetPeerPolicy(deviceID, clipPolicy, filePolicy string) (*store.Pe
 // BroadcastClipCount 同 BroadcastClip，另外返回真正发出去了几台——被策略跳过的
 // 不算。界面据此说「已发到 N 台」，不能把按策略没发的也算进去。
 // 各设备并行发：一台正在传大文件（写锁被数据块占着）或走中转很慢，不拖住其他设备。
-func (n *Node) BroadcastClipCount(it *clipboard.Item) (int, []error) {
+func (n *Node) BroadcastClipCount(it *clipboard.Item, targets ...string) (int, []error) {
 	sessions := n.Sessions()
+	if len(targets) == 0 && n.store.Options().DefaultSendDevice != "" {
+		targets = []string{n.store.Options().DefaultSendDevice}
+	}
+	if len(targets) > 0 {
+		allowed := make(map[string]bool, len(targets))
+		for _, id := range targets {
+			allowed[id] = true
+		}
+		filtered := sessions[:0]
+		for _, s := range sessions {
+			if allowed[s.peer.DeviceID] {
+				filtered = append(filtered, s)
+			}
+		}
+		sessions = filtered
+		if len(sessions) == 0 {
+			return 0, []error{fmt.Errorf("没有在线的目标设备")}
+		}
+	}
 	if len(sessions) == 1 {
 		ok, err := sessions[0].sendClipFiltered(it)
 		if err != nil {

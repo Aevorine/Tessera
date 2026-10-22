@@ -645,7 +645,7 @@ func (d *Agent) dispatch(method string, raw json.RawMessage) (any, error) {
 			return nil, fmt.Errorf("item_id 不合法")
 		}
 		broadcast, _ := p["broadcast"].(bool)
-		it, errs, err := d.n.ApplyClipHistory(id, broadcast)
+		it, errs, err := d.n.ApplyClipHistory(id, broadcast, strSlice(p, "device_ids")...)
 		if err != nil {
 			return nil, err
 		}
@@ -713,6 +713,15 @@ func (d *Agent) dispatch(method string, raw json.RawMessage) (any, error) {
 		opts := d.store.Options()
 		clip, auto := d.clipSync.Load(), d.autoAccept.Load()
 		opts.DownloadDir = d.downloadDir.Load().(string)
+		if id, ok := p["default_send_device"].(string); ok {
+			if id != "" {
+				peer, err := d.store.GetPeer(id)
+				if err != nil || peer.Revoked {
+					return nil, fmt.Errorf("目标设备未配对")
+				}
+			}
+			opts.DefaultSendDevice = id
+		}
 		opts.ClipSync = &clip
 		opts.AutoAccept = &auto
 		plainOnly := d.clipPlainOnly.Load()
@@ -824,10 +833,11 @@ func validateRendezvousAddr(addr string) error {
 func (d *Agent) options() map[string]any {
 	opts := d.store.Options()
 	return map[string]any{
-		"clip_sync":       d.clipSync.Load(),
-		"clip_plain_only": d.clipPlainOnly.Load(),
-		"auto_accept":     d.autoAccept.Load(),
-		"download_dir":    d.downloadDir.Load(),
+		"default_send_device": opts.DefaultSendDevice,
+		"clip_sync":           d.clipSync.Load(),
+		"clip_plain_only":     d.clipPlainOnly.Load(),
+		"auto_accept":         d.autoAccept.Load(),
+		"download_dir":        d.downloadDir.Load(),
 		// 跨网设置。地址为空 = 只走局域网（默认）。
 		"rendezvous_addr":  opts.RendezvousAddr,
 		"relay_on_metered": d.n.RelayOnMetered(),
@@ -956,7 +966,7 @@ func (d *Agent) sendClip(p map[string]any) (any, error) {
 
 	// sent 只数真正发出去的：按设备同步范围跳过的不算，否则界面会说
 	// 「已发到 3 台」而其中一台根本设成了不同步剪贴板。
-	sent, errs := d.n.BroadcastClipCount(it)
+	sent, errs := d.n.BroadcastClipCount(it, strSlice(p, "device_ids")...)
 	msgs := make([]string, 0, len(errs))
 	for _, e := range errs {
 		msgs = append(msgs, e.Error())
@@ -1153,6 +1163,9 @@ func (d *Agent) sendFiles(p map[string]any) (any, error) {
 		return nil, fmt.Errorf("没有选择文件")
 	}
 	targets := strSlice(p, "device_ids")
+	if len(targets) == 0 && d.store.Options().DefaultSendDevice != "" {
+		targets = []string{d.store.Options().DefaultSendDevice}
+	}
 
 	var sessions []*node.Session
 	if len(targets) == 0 {

@@ -301,5 +301,8 @@
   "badgeAskAccept": "السؤال قبل الاستلام",
   "openDownloadDir": "فتح المجلد",
   "openDownloadDirFailed": "تعذر فتح مجلد الملفات المستلمة.",
-  "recvDoneToast": "تم استلام {{name}}"
+  "recvDoneToast": "تم استلام {{name}}",
+  "defaultSendDevice": "جهاز الإرسال الافتراضي",
+  "rememberLastTarget": "تذكر الاختيار الأخير",
+  "defaultSendDeviceHelp": "تستخدم عمليات الإرسال الأجهزة المحددة. تستخدم الحافظة التلقائية الجهاز الافتراضي فقط. لا إعادة توجيه أو انتظار عند انقطاع الاتصال."
 }

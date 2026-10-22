@@ -27,7 +27,7 @@ const norm = (s: string) => s.replace(/\s+/g, ' ').trim()
  * 「发送剪贴板」：当前剪贴板 + 跨设备时间线，单选 / 多选 / 全选后发给所有在线设备。
  * 按时间从旧到新逐条发，最新一条最后到，成为对方的当前剪贴板。
  */
-export function ClipSendDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }) {
+export function ClipSendDialog({ open, onOpenChange, deviceIds }: { open: boolean; onOpenChange: (open: boolean) => void; deviceIds: string[] }) {
   const { t, i18n } = useTranslation('crossdevice')
   const [rows, setRows] = useState<Row[]>([])
   const [picked, setPicked] = useState<Set<string>>(new Set())
@@ -89,12 +89,14 @@ export function ClipSendDialog({ open, onOpenChange }: { open: boolean; onOpenCh
     // rows 是新到旧，当前剪贴板最新；反过来逐条发。
     const order = rows.filter((r) => picked.has(r.id) && r.id !== CURRENT).reverse()
     const withCurrent = picked.has(CURRENT)
+    if (!deviceIds.length) { toast.error(t('pickTargetFirst')); return }
     setSending(true)
     let ok = 0
     let firstError = ''
     for (const r of order) {
       try {
-        await crossDeviceApi.call('clip_timeline_apply', { item_id: r.id, broadcast: true, local: false })
+        const res = await crossDeviceApi.call<{ errors?: string[] }>('clip_timeline_apply', { item_id: r.id, broadcast: true, local: false, device_ids: deviceIds })
+        if (res.errors?.length) throw new Error(res.errors.join('; '))
         ok++
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err)
@@ -103,7 +105,9 @@ export function ClipSendDialog({ open, onOpenChange }: { open: boolean; onOpenCh
     }
     if (withCurrent) {
       try {
-        const res = await crossDeviceApi.call<{ sent?: number; skipped?: string }>('send_clip', {})
+        const res = await crossDeviceApi.call<{ sent?: number; skipped?: string; errors?: string[] }>('send_clip', { device_ids: deviceIds })
+        if (res.errors?.length) throw new Error(res.errors.join('; '))
+        if (!res.sent && res.skipped !== 'echo') throw new Error(t('noOnlineDevices'))
         if (res.skipped !== 'echo') ok++
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err)
@@ -175,7 +179,7 @@ export function ClipSendDialog({ open, onOpenChange }: { open: boolean; onOpenCh
           <Button variant="outline" onClick={() => onOpenChange(false)} disabled={sending}>
             {t('cancel')}
           </Button>
-          <Button onClick={() => void send()} disabled={sending || loading || picked.size === 0}>
+          <Button onClick={() => void send()} disabled={sending || loading || picked.size === 0 || deviceIds.length === 0}>
             {sending ? <Loader2 className="mr-2 size-4 animate-spin" /> : <Send className="mr-2 size-4" />}
             {t('clipSendN', { count: picked.size })}
           </Button>

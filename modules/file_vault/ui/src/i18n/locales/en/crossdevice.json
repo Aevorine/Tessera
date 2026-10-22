@@ -301,5 +301,8 @@
   "badgeAskAccept": "Ask before receiving",
   "openDownloadDir": "Open folder",
   "openDownloadDirFailed": "Could not open the received files folder.",
-  "recvDoneToast": "Received {{name}}"
+  "recvDoneToast": "Received {{name}}",
+  "defaultSendDevice": "Default sending device",
+  "rememberLastTarget": "Remember last selection",
+  "defaultSendDeviceHelp": "Files, folders and manual clipboard sends reuse your selection. Automatic clipboard sync uses the default device when set. Offline targets are kept; nothing is redirected or queued for later."
 }
