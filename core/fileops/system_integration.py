@@ -12,6 +12,9 @@ from pathlib import Path
 # C 钩子代理自己的注册表 Run 键名，独立于 file_vault 本体：后者退出它仍在跑，
 # 自启靠注册表而非 file_vault 进程生命周期。
 AUTOSTART_VALUE_NAME = "Ideal1FileVaultFileHook"
+AUTOSTART_APPROVED_KEY = (
+    r"Software\Microsoft\Windows\CurrentVersion\Explorer\StartupApproved\Run"
+)
 
 # 冻结（PyInstaller）版没有 .py 可指，改传此标记，由 backend_server._hook_cli_argv() 转交
 # hook_cli；源码模式仍传真实路径。两者都要支持：老用户注册表里存的是旧 .py 路径。
@@ -579,8 +582,29 @@ def restart_agent(runtime_paths=None, on_conflict: str = "rename") -> None:
 
 
 def get_autostart() -> bool:
-    """检查系统级文件快捷键的自启动项是否已注册。返回 True/False。"""
-    return bool(get_autostart_value())
+    """只有 Run 命令已注册且 Windows 未禁用该项，才算开启自启动。"""
+    return bool(get_autostart_value()) and _autostart_approved()
+
+
+def _autostart_approved() -> bool:
+    """Read the same startup approval flag used by Task Manager."""
+    try:
+        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, AUTOSTART_APPROVED_KEY) as key:
+            value, kind = winreg.QueryValueEx(key, AUTOSTART_VALUE_NAME)
+    except FileNotFoundError:
+        return True  # No approval entry means the registered Run item is enabled.
+    except OSError:
+        return False
+    return kind == winreg.REG_BINARY and bool(value) and (value[0] & 1) == 0
+
+
+def _set_autostart_approved(enabled: bool) -> None:
+    """Explicit enable/disable must also update Windows startup approval."""
+    value = bytes([2 if enabled else 3]) + bytes(11)
+    with winreg.CreateKeyEx(
+        winreg.HKEY_CURRENT_USER, AUTOSTART_APPROVED_KEY, 0, winreg.KEY_SET_VALUE
+    ) as key:
+        winreg.SetValueEx(key, AUTOSTART_VALUE_NAME, 0, winreg.REG_BINARY, value)
 
 
 def get_autostart_value():
@@ -611,14 +635,16 @@ def set_autostart(enabled: bool, runtime_paths=None) -> None:
     key = winreg.HKEY_CURRENT_USER
     sub_key = r"Software\Microsoft\Windows\CurrentVersion\Run"
     if enabled:
-        with winreg.OpenKey(key, sub_key, 0, winreg.KEY_SET_VALUE) as k:
+        with winreg.CreateKeyEx(key, sub_key, 0, winreg.KEY_SET_VALUE) as k:
             winreg.SetValueEx(k, AUTOSTART_VALUE_NAME, 0, winreg.REG_SZ, value)
+        _set_autostart_approved(True)
     else:
         try:
             with winreg.OpenKey(key, sub_key, 0, winreg.KEY_SET_VALUE) as k:
                 winreg.DeleteValue(k, AUTOSTART_VALUE_NAME)
         except OSError:
             pass  # 本来就没写这条注册表值，不算错误
+        _set_autostart_approved(False)
 
 
 def get_status(runtime_paths=None) -> dict:
