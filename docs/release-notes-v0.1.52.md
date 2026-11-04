@@ -23,6 +23,12 @@
 
 已配对设备换网、休眠唤醒或重启应用后从新路径重连时，立即替换失效的旧连接；此前互拨规则可能保留失效连接、拒绝新连接，直到心跳超时（实测 36.5 秒 → 4.3 毫秒）。每次发送剪贴板后按往返时间自适应（700 毫秒至 3 秒）确认链路，连不通立即换路重连并在新连接上补发最新内容（断线期间复制的内容在链路恢复后 0.7 秒送达，此前 2.2 秒），连不通时不再显示「已连接」。空闲时失效链路检测从 32 秒缩短到 20 秒。连接建立（约 10 毫秒）与剪贴板送达（p95 约 0.6 毫秒）不变。
 
+## Security
+
+DOMPurify 3.4.16 → 3.4.17 (critical advisories GHSA-cg2g-xh64-v4q7, GHSA-mrv2-3pqr-j5jr, GHSA-c6gr-qvv4-5v3f). Tessera's only use, the clipboard rich-text preview, does not enable the affected SAFE_FOR_TEMPLATES, IN_PLACE or xhtml parser modes, so it was not exploitable; the patch is applied anyway. Electron's open advisories are fixed only in a later major version and remain for a separate upgrade.
+
+DOMPurify 升级到 3.4.17（修复三条严重级通告）。Tessera 只在剪贴板富文本预览里使用它，且未启用受影响的 SAFE_FOR_TEMPLATES、IN_PLACE 或 xhtml 解析模式，原本不可利用，仍按补丁升级。Electron 的未决通告只在更高的大版本中修复，留待单独升级。
+
 ## Publication scope
 
 Rebuild and sign Windows and Android packages (Android versionCode 53, Go core rebuilt). The rendezvous server code is unchanged; its archives are carried over under the new version. Published after public-tree and history secret scans and remote asset SHA-256 readback. Signing material, device identities, vaults and clipboard contents remain excluded.
