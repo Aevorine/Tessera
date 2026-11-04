@@ -632,8 +632,100 @@ def owns_registration() -> bool:
         return True
     backend = _registered_backend_arg()
     if not backend:
-        return True
+        # 登记被外部删掉时，源码后端不能抢先写成源码命令；开发者自用需显式开
+        return os.environ.get("TESSERA_DEV_OWNS_HOOK") == "1"
     return not backend.lower().endswith("file_vault_backend.exe")
+
+
+def _approval_first_byte():
+    try:
+        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, AUTOSTART_APPROVED_KEY) as key:
+            value, kind = winreg.QueryValueEx(key, AUTOSTART_VALUE_NAME)
+    except OSError:
+        return None
+    return value[0] if kind == winreg.REG_BINARY and value else None
+
+
+def _migrate_intent():
+    """0.1.53 之前没记意图：Run 在且启用 → 开；Run 没了但审批仍是 0.1.50+ 写的 02 → 开过、被外部删。"""
+    if get_autostart():
+        write_autostart_intent(True)
+        return True
+    if not get_autostart_value() and _approval_first_byte() == 2:
+        write_autostart_intent(True)
+        return True
+    return None
+
+
+def _uninstall_location(prefix: str):
+    roots = (
+        (winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall"),
+        (winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall"),
+        (winreg.HKEY_CURRENT_USER, r"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall"),
+    )
+    for hive, sub in roots:
+        try:
+            with winreg.OpenKey(hive, sub) as root:
+                for i in range(winreg.QueryInfoKey(root)[0]):
+                    try:
+                        with winreg.OpenKey(root, winreg.EnumKey(root, i)) as k:
+                            name = str(winreg.QueryValueEx(k, "DisplayName")[0])
+                            if name.startswith(prefix):
+                                loc = str(winreg.QueryValueEx(k, "InstallLocation")[0])
+                                if loc:
+                                    return Path(loc)
+                    except OSError:
+                        continue
+        except OSError:
+            continue
+    return None
+
+
+def external_remover_hint():
+    """只读找证据：360 启动项管理把本项记为「已禁止」时，它会删 Run 值且不改 StartupApproved。"""
+    loc = _uninstall_location("360安全卫士")
+    if loc is None:
+        return None
+    try:
+        data = (loc / "SoftMgr" / "somextrainfo.ini").read_bytes()
+    except OSError:
+        return None
+    tag = "[" + AUTOSTART_VALUE_NAME
+    if tag.encode("utf-16-le") in data or tag.encode("utf-8") in data:
+        return "360"
+    return None
+
+
+RESTORE_STATE_BASENAME = "autostart_restore.json"
+RESTORE_NOTICE_INTERVAL_S = 24 * 3600
+
+
+def note_restore_and_should_notify(now=None) -> bool:
+    """记一次恢复；同一天内反复被删只提醒一次，免得每次开机都弹。"""
+    import json as _json
+    now = int(now if now is not None else _time.time())
+    path = _default_install_root() / RESTORE_STATE_BASENAME
+    try:
+        state = _json.loads(path.read_text(encoding="utf-8"))
+        if not isinstance(state, dict):
+            state = {}
+    except (OSError, ValueError):
+        state = {}
+    raw_last = state.get("last_notice")
+    last = raw_last if isinstance(raw_last, int) else 0
+    notify = now - last >= RESTORE_NOTICE_INTERVAL_S
+    state["count"] = int(state.get("count") or 0) + 1
+    state["last_restore"] = now
+    if notify:
+        state["last_notice"] = now
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        tmp = path.with_name(path.name + f".{os.getpid()}.tmp")
+        tmp.write_text(_json.dumps(state), encoding="utf-8")
+        os.replace(tmp, path)
+    except OSError:
+        pass
+    return notify
 
 
 def _autostart_approved() -> bool:
@@ -728,15 +820,19 @@ def reconcile_autostart() -> dict:
     """Repair an enabled login hook after app restart or helper update."""
     if not owns_registration():
         return get_status()
+    intent = read_autostart_intent()
+    if intent is None:
+        intent = _migrate_intent()
     if not get_autostart():
         # 用户明确开过、Run 项却没了（清理工具、杀软、注册表还原）：恢复并启动。
         # Run 项还在但被任务管理器禁用：那是用户自己的选择，不碰。
-        if read_autostart_intent() is True and not get_autostart_value():
+        if intent is True and not get_autostart_value():
             runtime = provision_runtime()
             start_agent(runtime, on_conflict="rename")
             set_autostart(True, runtime)
             status = get_status(runtime)
             status["restored"] = True
+            status["removed_by"] = external_remover_hint()
             return status
         return get_status()
     runtime = provision_runtime()

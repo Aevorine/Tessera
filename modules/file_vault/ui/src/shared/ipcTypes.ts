@@ -2565,6 +2565,8 @@ export interface ClipboardNewEntryEvent {
 /** 开机启动项被外部删除、后端按用户的「开」恢复了它：主进程弹系统通知，用户随时可在设置里关掉。 */
 export interface FileHookAutostartRestoredEvent {
   event: 'file_hook_autostart_restored'
+  /** 有证据时给出删除者（目前只识别 '360'），没有则 null */
+  removed_by?: string | null
 }
 
 export type VaultPushEvent = ClipboardNewEntryEvent | FileHookAutostartRestoredEvent

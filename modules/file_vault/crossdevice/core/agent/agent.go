@@ -77,6 +77,11 @@ type Agent struct {
 	// 不记则确认框弹几百次，各占一个等待位，2 分钟超时被当拒绝，文件夹只收到一半。见 confirmTransfer。
 	folderMu  sync.Mutex
 	folderDec map[string]*folderDecision
+
+	pairBusy atomic.Bool // 同时只弹一个配对确认，防局域网刷屏骗点
+	ob       *outbox     // 对方不在线时排队，上线自动补发
+	quit     chan struct{}
+	quitOnce sync.Once
 }
 
 // folderDecision 是对一个文件夹的确认结果。
@@ -130,6 +135,8 @@ func New(cfg Config) (*Agent, error) {
 	d := &Agent{
 		sink:    cfg.Sink,
 		pending: make(map[string]chan map[string]any),
+		ob:      openOutbox(filepath.Join(cfg.DataDir, "outbox.json")),
+		quit:    make(chan struct{}),
 	}
 
 	st, err := store.Open(filepath.Join(cfg.DataDir, "devices.json"))
@@ -218,6 +225,13 @@ func New(cfg Config) (*Agent, error) {
 			n.KeepConnected(p.DeviceID)
 		}
 	}
+	// 发件箱里有东西的设备也盯着重连（临时信任的设备默认不重连）
+	for _, dev := range d.ob.devices() {
+		if p, err := st.GetPeer(dev); err == nil && p.Usable(time.Now()) {
+			n.KeepConnected(dev)
+		}
+	}
+	go d.outboxLoop()
 
 	d.emit("ready", map[string]any{
 		"device_id":   id.DeviceID(),
@@ -245,6 +259,7 @@ func (d *Agent) Handle(line string) {
 
 // Close 停止节点。
 func (d *Agent) Close() error {
+	d.quitOnce.Do(func() { close(d.quit) })
 	if d.n != nil {
 		return d.n.Close()
 	}
@@ -581,6 +596,14 @@ func (d *Agent) dispatch(method string, raw json.RawMessage) (any, error) {
 	case "send_files":
 		return d.sendFiles(p)
 
+	case "outbox_list":
+		return map[string]any{"items": d.outboxJSON()}, nil
+
+	case "outbox_cancel":
+		n := d.ob.cancel(strSlice(p, "ids"), str(p, "device_id"))
+		d.emitOutboxChanged(str(p, "device_id"))
+		return map[string]any{"ok": true, "removed": n}, nil
+
 	// 传输控制：三个动作走同一条路径，收发两方向都能暂停/取消——发现传错东西的往往是接收方，而他只有
 	// offer 弹窗一次机会。
 	case "pause_transfer":
@@ -855,7 +878,11 @@ func (d *Agent) devices() []map[string]any {
 		if p.Revoked {
 			continue
 		}
-		out = append(out, peerJSON(p, d.n))
+		m := peerJSON(p, d.n)
+		if c := d.ob.countFor(p.DeviceID); c > 0 {
+			m["outbox"] = c
+		}
+		out = append(out, m)
 	}
 	return out
 }
@@ -1076,6 +1103,8 @@ type sendItem struct {
 	folder  string // 属于哪个文件夹；空表示这是用户直接选中的单个文件
 	size    int64  // 文件大小；决定走哪条发送车道
 	group   node.FolderInfo
+	// outboxID 非空表示这是从发件箱补发的那条
+	outboxID string
 }
 
 // expandPaths 把用户选中的路径展开成待发文件列表。此前完全不支持文件夹：OpenSender 对目录 Read 会失
@@ -1194,7 +1223,12 @@ func (d *Agent) sendFiles(p map[string]any) (any, error) {
 	// 一对多：每台设备一条独立的传输链路，单台失败不影响其他。
 	// 立刻返回，进度通过 transfer 事件推给 UI，不阻塞调用方。
 	for _, dev := range devices {
-		go d.sendBatch(dev, items)
+		dev := dev
+		go d.sendBatch(dev, items, func(it sendItem, oc sendOutcome) {
+			if oc == outcomeOffline {
+				d.ob.add(dev, it)
+			}
+		})
 	}
 	return map[string]any{
 		"queued":  len(devices) * len(items),
@@ -1216,7 +1250,16 @@ const (
 )
 
 // sendBatch 把一批文件发给一台设备：大文件逐个发、小文件并发发，两条车道同时走。
-func (d *Agent) sendBatch(dev string, items []sendItem) {
+// sendOutcome 是单个文件的结局：发到了、对方不在线（排队）、其它失败。
+type sendOutcome int
+
+const (
+	outcomeSent sendOutcome = iota
+	outcomeOffline
+	outcomeFailed
+)
+
+func (d *Agent) sendBatch(dev string, items []sendItem, onDone func(sendItem, sendOutcome)) {
 	var big, small []sendItem
 	for _, it := range items {
 		if it.size >= bigFileBytes {
@@ -1233,7 +1276,7 @@ func (d *Agent) sendBatch(dev string, items []sendItem) {
 		go func() {
 			defer wg.Done()
 			for _, it := range big {
-				d.sendOne(dev, it, rej)
+				onDone(it, d.sendOne(dev, it, rej))
 			}
 		}()
 	}
@@ -1248,7 +1291,7 @@ func (d *Agent) sendBatch(dev string, items []sendItem) {
 			go func() {
 				defer wg.Done()
 				for it := range jobs {
-					d.sendOne(dev, it, rej)
+					onDone(it, d.sendOne(dev, it, rej))
 				}
 			}()
 		}
@@ -1260,9 +1303,16 @@ func (d *Agent) sendBatch(dev string, items []sendItem) {
 	wg.Wait()
 	if n := rej.skipped.Load(); n > 0 {
 		d.emit("transfer", map[string]any{
-			"kind": "error", "direction": "send", "device_id": dev, "device_name": d.peerName(dev),
-			"name": "", "error": fmt.Sprintf("%v，另有 %d 个文件未发送", node.ErrDeviceOffline, n),
+			"kind": "queued", "direction": "send", "device_id": dev, "device_name": d.peerName(dev),
+			"name": "", "count": n,
 		})
+	}
+	if rej.offline.Load() {
+		d.emitOutboxChanged(dev)
+		// 入队与对方上线同时发生时 CONNECTED 事件已经过去了
+		if s, ok := d.n.SessionFor(dev); ok && s.Alive() {
+			go d.drainOutbox(dev)
+		}
 	}
 }
 
@@ -1307,15 +1357,15 @@ func (d *Agent) peerName(dev string) string {
 	return dev
 }
 
-func (d *Agent) sendOne(dev string, it sendItem, rej *rejectedFolders) {
+func (d *Agent) sendOne(dev string, it sendItem, rej *rejectedFolders) sendOutcome {
 	name := filepath.Base(it.path)
 	// 对端已经回绝了这个文件夹：剩下的文件不用再去问一遍。
 	if it.folder != "" && rej.isRejected(it.folder) {
-		return
+		return outcomeFailed
 	}
 	if rej.offline.Load() {
 		rej.skipped.Add(1)
-		return
+		return outcomeOffline
 	}
 	d.emit("transfer", map[string]any{
 		"kind": "start", "direction": "send",
@@ -1338,12 +1388,18 @@ func (d *Agent) sendOne(dev string, it sendItem, rej *rejectedFolders) {
 	})
 	if err != nil {
 		if errors.Is(err, node.ErrDeviceOffline) {
+			// 不是失败：记进发件箱，对方一上线自动补发
 			rej.offline.Store(true)
+			d.emit("transfer", map[string]any{
+				"kind": "queued", "direction": "send", "device_id": dev, "device_name": d.peerName(dev),
+				"name": name, "folder": it.folder, "count": 1,
+			})
+			return outcomeOffline
 		}
 		// 同一个文件夹被回绝时，只报第一条：后面几百个文件各报一遍
 		// 只会把界面刷成一面红墙，而原因只有一个。
 		if it.folder != "" && errors.Is(err, node.ErrPeerRejected) && !rej.markRejected(it.folder) {
-			return
+			return outcomeFailed
 		}
 		// 用户自己按的取消不是错误。报成红色的失败记录，等于告诉他"你刚才那下
 		// 操作出问题了"——而事情完全按他的意思发生了。
@@ -1358,7 +1414,7 @@ func (d *Agent) sendOne(dev string, it sendItem, rej *rejectedFolders) {
 		payload["name"] = name
 		payload["folder"] = it.folder
 		d.emit("transfer", payload)
-		return
+		return outcomeFailed
 	}
 	d.emit("transfer", map[string]any{
 		"kind": "done", "direction": "send",
@@ -1371,6 +1427,7 @@ func (d *Agent) sendOne(dev string, it sendItem, rej *rejectedFolders) {
 		"skipped":    res.Skipped,
 		"elapsed_ms": res.Elapsed.Milliseconds(),
 	})
+	return outcomeSent
 }
 
 // onProgress 把传输进度转成事件推给 UI。节流只在 node 层做（progressInterval），这里不再限流，否则
@@ -1503,6 +1560,10 @@ func (d *Agent) askTransfer(o node.TransferOffer, tid, dir string) (bool, string
 // ---------- 配对确认 ----------
 
 func (d *Agent) confirmPair(r node.PairRequest) (bool, string, time.Duration) {
+	if !d.pairBusy.CompareAndSwap(false, true) {
+		return false, pairing.TrustLong, 0
+	}
+	defer d.pairBusy.Store(false)
 	reply, ok := d.ask("pair_request", map[string]any{
 		"device_id":   r.DeviceID,
 		"name":        r.Name,
@@ -1553,6 +1614,9 @@ func (d *Agent) ask(name string, data map[string]any, timeout time.Duration) (ma
 func (d *Agent) onNodeEvent(e node.Event) {
 	switch e.Kind {
 	case "state":
+		if e.State == node.StateConnected && d.ob.countFor(e.DeviceID) > 0 {
+			go d.drainOutbox(e.DeviceID)
+		}
 		d.emit("state", map[string]any{
 			"device_id": e.DeviceID,
 			"state":     string(e.State),

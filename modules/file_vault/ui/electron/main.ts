@@ -1334,8 +1334,10 @@ function createWindow() {
   bridge.setSpawnListener((pid) => backendGovernor.adopt(pid))
   bridge.setEventListener((payload) => {
     if (payload.event === 'file_hook_autostart_restored') {
-      logEvent('filehook', 'warn', 'autostart_restored')
-      trayNotice(getCurrentLocale().fileHookAutostartRestored)
+      const by = payload.removed_by ?? null
+      logEvent('filehook', 'warn', 'autostart_restored', undefined, { removed_by: by })
+      const strings = getCurrentLocale()
+      trayNotice(by === '360' ? strings.fileHookAutostartRestored360 : strings.fileHookAutostartRestored)
       return
     }
     sendToRenderer('vault:event', payload)

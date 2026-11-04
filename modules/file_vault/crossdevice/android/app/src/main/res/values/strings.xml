@@ -63,6 +63,10 @@
     <string name="share_stage_failed">读取分享内容失败，换个文件再试一次</string>
     <string name="share_no_devices">还没有已连接的设备。先在应用里配对一台，再用分享。</string>
     <string name="files_queued">%1$d 个文件已开始发送</string>
+    <string name="send_queued">%1$s 暂不在线，%2$s 已排队，对方上线后自动发送</string>
+    <string name="send_queued_more">%1$s 暂不在线，另有 %2$d 个文件已排队，对方上线后自动发送</string>
+    <string name="outbox_drain">%1$s 已上线，正在补发 %2$d 个排队的文件</string>
+    <string name="outbox_badge">%1$d 待发</string>
     <string name="clipboard_empty">剪贴板是空的</string>
     <string name="clip_sent">剪贴板内容已同步到已配对设备</string>
 

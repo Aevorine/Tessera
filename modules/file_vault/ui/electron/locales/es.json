@@ -74,5 +74,6 @@
   "traySendClipboardNone": "Ningún dispositivo conectado puede recibir el portapapeles",
   "traySendClipboardEmpty": "El portapapeles está vacío; no hay nada que enviar",
   "traySendClipboardFailed": "No se pudo enviar el portapapeles: {{detail}}",
-  "fileHookAutostartRestored": "La entrada de inicio de los atajos de archivo del sistema se eliminó fuera de Tessera y se restauró según tu configuración. Desactívala en Ajustes si ya no la quieres."
+  "fileHookAutostartRestored": "La entrada de inicio de los atajos de archivo del sistema se eliminó fuera de Tessera y se restauró según tu configuración. Desactívala en Ajustes si ya no la quieres.",
+  "fileHookAutostartRestored360": "El gestor de inicio de 360 Total Security eliminó la entrada de inicio de los atajos de archivo del sistema; se restauró según tu configuración. Para evitarlo, permite hook_agent (Ideal1FileVaultFileHook) en los elementos de inicio de 360."
 }

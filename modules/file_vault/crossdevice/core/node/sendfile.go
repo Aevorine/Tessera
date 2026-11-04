@@ -624,9 +624,10 @@ func splitChunkFrame(p []byte) (*wire.ChunkHeader, []byte, error) {
 
 // ---------- 按设备发送：会话断开或被替换时等新会话续传 ----------
 
+// SendWaitOnline：点发送时目标不在线（正在重连、手机刚亮屏），最多等这么久；过了就交给发件箱。可调供探针用。
+var SendWaitOnline = 2 * time.Minute
+
 const (
-	// sendWaitOnline：点发送时目标不在线（正在重连、手机刚亮屏），最多等这么久。
-	sendWaitOnline = 2 * time.Minute
 	// sendWaitReconnect：传到一半断开后，等重连的时长（每次断开重新计时）。
 	sendWaitReconnect = time.Minute
 	// sendMaxAttempts：同一文件最多尝试几次（续传不重发已到的块）。
@@ -672,7 +673,7 @@ func (n *Node) LiveSession(ctx context.Context, deviceID string, wait time.Durat
 // 再发，接收端保留的分块让重发只补缺的部分。onState 报告 "waiting" / "retry"，attempt 从 1 起。
 func (n *Node) SendResilient(ctx context.Context, deviceID string, onState func(kind string, attempt int),
 	send func(*Session) (*SendFileResult, error)) (*SendFileResult, error) {
-	wait := sendWaitOnline
+	wait := SendWaitOnline
 	var lastErr error
 	for attempt := 1; attempt <= sendMaxAttempts; attempt++ {
 		if _, ok := n.SessionFor(deviceID); !ok && onState != nil && attempt == 1 {

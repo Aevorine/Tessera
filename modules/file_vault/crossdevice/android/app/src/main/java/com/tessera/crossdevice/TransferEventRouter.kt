@@ -5,6 +5,10 @@ enum class TransferEventAction {
     HIDE_PROGRESS,
     HIDE_PROGRESS_WITH_ERROR,
     DELIVER_RECEIVED_FILE,
+    /** 对方不在线，文件已排队；上线后自动补发 */
+    QUEUED,
+    /** 对方上线，正在补发排队的文件 */
+    OUTBOX_DRAIN,
 }
 
 object TransferEventRouter {
@@ -14,6 +18,8 @@ object TransferEventRouter {
         // 操作出问题了"——而事情完全按他的意思发生了。收进度条，不报错。
         "canceled" -> TransferEventAction.HIDE_PROGRESS
         "error" -> TransferEventAction.HIDE_PROGRESS_WITH_ERROR
+        "queued" -> TransferEventAction.QUEUED
+        "outbox_drain" -> TransferEventAction.OUTBOX_DRAIN
         "recv_done" -> if (path.isNullOrBlank()) {
             TransferEventAction.IGNORE
         } else {

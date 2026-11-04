@@ -6029,13 +6029,16 @@ def main() -> None:
             # 每次启动留一行对账结果：「重启后快捷键自启动又关了」要靠它分清是 Run 项被删、被任务管理器禁用、
             # 还是开发版不碰安装版的登记。
             logger.info(
-                "file hook reconcile: running=%s autostart=%s registered=%s approved=%s intent=%s restored=%s",
+                "file hook reconcile: running=%s autostart=%s registered=%s approved=%s intent=%s restored=%s removed_by=%s",
                 st.get("running"), st.get("autostart"), st.get("autostart_registered"),
                 st.get("autostart_approved"), st.get("autostart_intent"), bool(st.get("restored")),
+                st.get("removed_by"),
             )
             # 恢复启动项必须让用户看得见：被删的原因也可能是杀软或用户自己用 Autoruns 删的，不能悄悄改回去。
             if st.get("restored"):
-                _write({"event": "file_hook_autostart_restored"})
+                from core.fileops import system_integration as _si
+                if _si.note_restore_and_should_notify():
+                    _write({"event": "file_hook_autostart_restored", "removed_by": st.get("removed_by")})
         except Exception as exc:
             logger.exception("failed to reconcile file hook autostart")
             try:
