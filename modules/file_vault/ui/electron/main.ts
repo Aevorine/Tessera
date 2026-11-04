@@ -7,7 +7,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { promisify } from 'node:util'
-import { PythonBridge } from './pythonBridge'
+import { PythonBridge, type BackendExitRecord } from './pythonBridge'
 import {
   DEFAULT_STARTUP_PREFERENCES,
   LOGIN_LAUNCH_ARG,
@@ -648,6 +648,26 @@ function saveAutoLock(settings: AutoLockSettings): void {
   }
 }
 
+// 后端崩溃记录：每次非主动退出一行 JSON（退出码、存活时长、stderr 尾部含 faulthandler 调用栈）。
+// 超过上限整份换成 .1，只留一份历史。
+const BACKEND_EXIT_LOG_MAX_BYTES = 256 * 1024
+
+function appendBackendExitRecord(record: BackendExitRecord): void {
+  try {
+    const dir = path.join(app.getPath('userData'), 'logs')
+    fs.mkdirSync(dir, { recursive: true })
+    const file = path.join(dir, 'backend-exits.jsonl')
+    try {
+      if (fs.statSync(file).size > BACKEND_EXIT_LOG_MAX_BYTES) fs.renameSync(file, `${file}.1`)
+    } catch {
+      // 文件还不存在
+    }
+    fs.appendFileSync(file, JSON.stringify({ ...record, version: app.getVersion() }) + '\n', 'utf-8')
+  } catch {
+    // 记录失败不影响自动重启
+  }
+}
+
 /** 把金库锁上。`reason` 只用于日志和给渲染端显示一句"为什么被锁了"。 */
 function lockVault(reason: string): void {
   if (!vaultUnlocked) return
@@ -1155,8 +1175,15 @@ function createWindow() {
   bridge.setFatalListener((detail) => {
     sendToRenderer('vault:backend-fatal', detail)
   })
+  bridge.setExitListener(appendBackendExitRecord)
   bridge.setRestartListener(() => {
     isPaused = false // 新进程里剪贴板服务是全新起的，不是"暂停"状态
+    // 新进程没有已解锁的密钥：否则自动锁定会对已锁的金库再重启一次后端，托盘也一直显示「锁定金库」
+    if (vaultUnlocked) {
+      vaultUnlocked = false
+      hiddenSince = null
+      rebuildTrayMenu()
+    }
     sendToRenderer('vault:backend-restarted')
   })
 

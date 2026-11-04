@@ -16,6 +16,8 @@ from typing import NoReturn, Optional
 
 from sqlcipher3 import dbapi2 as sqlcipher
 
+from modules.file_vault import db_threadsafe
+
 from modules.file_vault import errors
 from modules.file_vault.notes import category_paths
 
@@ -399,7 +401,7 @@ def _migrate_notes_linked_columns(conn: sqlite3.Connection) -> None:
 
 def connect(db_path: Path, key: bytes) -> sqlite3.Connection:
     db_path.parent.mkdir(parents=True, exist_ok=True)
-    conn = sqlcipher.connect(str(db_path), check_same_thread=False)
+    conn = db_threadsafe.connect(str(db_path))
     conn.execute(f"PRAGMA key = \"{_hex_key(key)}\"")
     conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("PRAGMA synchronous=NORMAL")
@@ -1885,3 +1887,7 @@ def revision_timeline(conn: sqlite3.Connection, note_ids: Optional[list[int]], l
         d["note_deleted"] = bool(d["note_deleted"])
         result.append(d)
     return result
+
+
+# 每个公开函数整段持连接锁（跨线程共用连接，见 db_threadsafe）。
+db_threadsafe.serialize_storage_api(globals())

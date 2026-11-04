@@ -24,6 +24,15 @@ const (
 	heartbeatInterval = 10 * time.Second
 	heartbeatMiss     = 3
 	fetchTimeout      = 30 * time.Second
+
+	// 快速判活：发一次心跳等回声，超时 = 4×RTT + 300ms，夹在 [700ms, 3s]。下限留给手机 Wi-Fi
+	// 省电（DTIM）每个方向可能多压一两百毫秒；上限覆盖中继。
+	probeTimeoutMin = 700 * time.Millisecond
+	probeTimeoutMax = 3 * time.Second
+
+	// 旧会话建立超过这么久、对端又拨进来：是对端那头丢了旧连接（换网、休眠、进程重启），
+	// 不是互拨。两条都比这新才按互拨决胜。
+	glareWindow = 3 * time.Second
 )
 
 // carrier 是承载会话的底层通道：直连时是 QUIC 连接，走中继时是到汇合点的流；
@@ -54,9 +63,12 @@ type Session struct {
 	// 走中继时用户有权知道字节经过服务器，也只能靠它回答"为什么慢"。
 	via string
 
-	done     chan struct{}
-	closeErr error
-	once     sync.Once
+	done      chan struct{}
+	closeErr  error
+	once      sync.Once
+	createdAt time.Time
+	// probing 防止同一会话并发多个判活探测（连续复制、心跳与换网同时触发）。
+	probing atomic.Bool
 
 	seq      atomic.Uint64
 	lastRecv atomic.Uint64
@@ -122,6 +134,18 @@ func (s *Session) preferred() bool {
 }
 func (s *Session) RTT() time.Duration {
 	return time.Duration(s.rttMS.Load()) * time.Millisecond
+}
+
+// probeTimeout 按实测往返时间给判活探测定超时（见 probeTimeoutMin/Max）。
+func (s *Session) probeTimeout() time.Duration {
+	d := 4*s.RTT() + 300*time.Millisecond
+	if d < probeTimeoutMin {
+		return probeTimeoutMin
+	}
+	if d > probeTimeoutMax {
+		return probeTimeoutMax
+	}
+	return d
 }
 
 // Done 在会话结束后关闭。
@@ -293,6 +317,8 @@ func (s *Session) heartbeatLoop() {
 				// 上次心跳整整一个周期无回音：未断但链路明显有问题。DEGRADED 以前只有"恢复"半边，
 				// 从没人设进去，界面「信号弱」永远不出现。
 				s.node.setState(s.peer.DeviceID, StateDegraded)
+				// 不再干等第三个周期（死链要 30–40 秒才判出）：立刻补探一次，无回音就断开重连。
+				go s.probeLiveness(s.probeTimeout())
 			}
 		}
 	}
@@ -409,7 +435,13 @@ func (s *Session) sendAnnounce(it *clipboard.Item) error {
 func (s *Session) announce(it *clipboard.Item) error {
 	a := it.ToAnnounce(s.seq.Add(1), nil)
 	s.node.noteClipSent(s.peer.DeviceID, it.ID)
-	return s.wc.WriteMsg(wire.TypeClipAnnounce, wire.FlagAckReq, a)
+	if err := s.wc.WriteMsg(wire.TypeClipAnnounce, wire.FlagAckReq, a); err != nil {
+		return err
+	}
+	// 发完紧跟一次判活：死链上的写入不会报错，不探的话界面一直显示「已连接」而内容 30 秒以上
+	// 送不到。探测失败即断开，KeepConnected 立刻换路重连，新会话的 replayCurrentClip 补发这一条。
+	go s.probeLiveness(s.probeTimeout())
+	return nil
 }
 
 func (s *Session) onClipAnnounce(f *wire.Frame) error {

@@ -117,9 +117,21 @@ _ACTIVITY_LOG_KEY_INFO = b"activity-log-db-key"
 _stdout_lock = threading.Lock()
 
 
+def _encode_line(msg: dict) -> str:
+    """序列化一条消息；孤立代理字符（剪贴板 / 文件名里常见）或非 JSON 类型不能让进程退出。"""
+    try:
+        line = json.dumps(msg, ensure_ascii=False)
+        line.encode("utf-8")  # 孤立代理字符在这里暴露，而不是在 stdout.write 里炸掉主循环
+        return line
+    except (TypeError, ValueError, UnicodeEncodeError):
+        # ensure_ascii 把代理字符写成 \udXXX 转义，JS 的 JSON.parse 原样还原；default=str 兜底非 JSON 类型
+        return json.dumps(msg, ensure_ascii=True, default=str)
+
+
 def _write(msg: dict) -> None:
+    line = _encode_line(msg)
     with _stdout_lock:
-        sys.stdout.write(json.dumps(msg, ensure_ascii=False) + "\n")
+        sys.stdout.write(line + "\n")
         sys.stdout.flush()
 
 
@@ -5885,9 +5897,23 @@ def serve(data_dir: Path, in_stream=None, out_stream=None) -> None:
                 request = json.loads(line)
             except json.JSONDecodeError:
                 continue
-            response = dispatch(request)
-            if response is not batch_engine.ASYNC_DEFERRED:
-                _write(response)
+            if not isinstance(request, dict):
+                continue
+            # 一条请求出任何异常都只让这一条失败；主循环一退出，进程就没了，界面只能报「后端意外重启」。
+            try:
+                response = dispatch(request)
+                if response is not batch_engine.ASYNC_DEFERRED:
+                    _write(response)
+            except Exception as exc:
+                logger.exception("serve loop: request failed outside dispatch")
+                _record_rpc_failure(
+                    str(request.get("method")), "响应写出失败", "internal.unexpected",
+                    type(exc).__name__, "error",
+                )
+                try:
+                    _write({"id": request.get("id"), "error": {"message": "internal.unexpected"}})
+                except Exception:
+                    pass
     finally:
         _cleanup_folder_preview_temps()
         # 弹窗监视线程是 daemon，进程退出时会被强杀——但显式停一下更干净，
@@ -5932,6 +5958,15 @@ def main() -> None:
     # 无论父进程区域设置如何都强制 UTF-8（项目约定，错误信息是中文）。
     sys.stdin.reconfigure(encoding="utf-8")
     sys.stdout.reconfigure(encoding="utf-8")
+
+    # 原生崩溃（访问违例、堆损坏）时把各线程 Python 调用栈写到 stderr；Electron 把 stderr 尾部记进
+    # backend-exits.jsonl。SetErrorMode 关掉了系统崩溃报告，没有这一条崩溃就无从查起。
+    if sys.stderr is not None:
+        try:
+            import faulthandler
+            faulthandler.enable(file=sys.stderr, all_threads=True)
+        except Exception:
+            pass
 
     parser = argparse.ArgumentParser()
     parser.add_argument("--data-dir", type=Path, default=None)

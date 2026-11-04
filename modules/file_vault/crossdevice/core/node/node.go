@@ -867,6 +867,7 @@ func (n *Node) newSession(peer *store.Peer, car carrier, via string, sc *crypto.
 		initiator:    initiator,
 		peerFeatures: peerFeatures,
 		done:         make(chan struct{}),
+		createdAt:    time.Now(),
 		pending:      make(map[string]*clipFetch),
 		recvXfers:    make(map[string]*recvTransfer),
 	}
@@ -874,15 +875,22 @@ func (n *Node) newSession(peer *store.Peer, car carrier, via string, sc *crypto.
 	if old, ok := n.sessions[peer.DeviceID]; ok && old.Alive() {
 		// 只有活着的旧会话才需要决胜；已关闭但尚未被 run() 的 defer 摘掉的直接顶替，
 		// 否则可能保留一具尸体，设备再也连不上。
+		// 对端拨进来而旧会话已建立超过 glareWindow：对端已丢了旧连接，旧的多半是死链。
+		// 以前这里也按互拨决胜，可能留死链、拒活链，同步卡到心跳超时（30–40 秒）。
+		redial := !initiator && time.Since(old.createdAt) >= glareWindow
 		// 双方自动重连会同时互拨（glare），各有两条连接；若都"留新关旧"会互踢并立刻重连，
 		// 表现为抖动。所以两端用同一规则算赢家：device_id 较小的一方作为拨号方的那条胜出，
 		// 两边结果一致，恰好留一条。
-		if s.preferred() == old.preferred() || !s.preferred() {
+		if !redial && (s.preferred() == old.preferred() || !s.preferred()) {
 			// 新连接不该赢：保留旧的，让调用方把新连接关掉。
 			n.mu.Unlock()
 			return old
 		}
-		old.close(errors.New("被同时互拨中胜出的连接替换"))
+		if redial {
+			old.close(errors.New("对端重新拨入，替换旧连接"))
+		} else {
+			old.close(errors.New("被同时互拨中胜出的连接替换"))
+		}
 	}
 	n.sessions[peer.DeviceID] = s
 	n.mu.Unlock()

@@ -3,6 +3,15 @@ import readline from 'node:readline'
 import type { ProgressEvent, VaultMethodName, VaultMethods, VaultPushEvent } from '../src/shared/ipcTypes'
 import { markStartup } from './startupTiming'
 
+/** 一次非主动退出的记录（写进 userData/logs/backend-exits.jsonl）。 */
+export interface BackendExitRecord {
+  at: string
+  code: number | null
+  signal: NodeJS.Signals | null
+  uptimeMs: number
+  stderrTail: string
+}
+
 interface PendingRequest {
   resolve: (value: unknown) => void
   reject: (reason: unknown) => void
@@ -102,6 +111,7 @@ export class PythonBridge {
   private onRestart: (() => void) | null = null
   private onFatal: ((detail: string) => void) | null = null
   private onSpawn: ((pid: number | undefined) => void) | null = null
+  private onExit: ((record: BackendExitRecord) => void) | null = null
   private disposed = false
   /** 连续崩溃次数。活过 RESTART_HEALTHY_UPTIME_MS 就清零。 */
   private crashCount = 0
@@ -142,7 +152,17 @@ export class PythonBridge {
       this.lastStderr = (this.lastStderr + text).slice(-2000)
     })
 
-    this.proc.on('exit', (code) => {
+    this.proc.on('exit', (code, signal) => {
+      // 非主动退出都交给 main.ts 落盘：崩溃原因只在 exit code 与 stderr 尾部（faulthandler 调用栈）里。
+      if (!this.disposed && !this.lockRestarting) {
+        this.onExit?.({
+          at: new Date().toISOString(),
+          code,
+          signal,
+          uptimeMs: Date.now() - this.spawnedAt,
+          stderrTail: this.lastStderr.slice(-1500),
+        })
+      }
       const err = new Error(`Python backend exited unexpectedly (code ${code})`)
       for (const entry of this.pending.values()) {
         // 进程都没了，超时计时器留着只会在几十秒后再"失败"一次同一个请求
@@ -201,6 +221,11 @@ export class PythonBridge {
    *  对用户是两件事，前者是提示，后者要给出能照着做的下一步。 */
   setFatalListener(listener: (detail: string) => void): void {
     this.onFatal = listener
+  }
+
+  /** 后端非主动退出（崩溃）时触发一次，带退出码与 stderr 尾部。 */
+  setExitListener(listener: (record: BackendExitRecord) => void): void {
+    this.onExit = listener
   }
 
   /** 每次起进程（含崩溃重拉、锁定重起）都报一次 pid；登记时把当前这个也补报。 */

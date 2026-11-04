@@ -14,6 +14,8 @@ from typing import List, Optional
 
 from sqlcipher3 import dbapi2 as sqlcipher
 
+from modules.file_vault import db_threadsafe
+
 SCHEMA_VERSION = "1"
 
 FIRST_QUESTION_PREVIEW_CHARS = 200
@@ -44,7 +46,7 @@ def _hex_key(key: bytes) -> str:
 
 def connect(db_path: Path, key: bytes) -> sqlite3.Connection:
     db_path.parent.mkdir(parents=True, exist_ok=True)
-    conn = sqlcipher.connect(str(db_path), check_same_thread=False)
+    conn = db_threadsafe.connect(str(db_path))
     conn.execute(f"PRAGMA key = \"{_hex_key(key)}\"")
     conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("PRAGMA synchronous=NORMAL")
@@ -125,3 +127,7 @@ def delete_all(conn) -> int:
     cur = conn.execute("DELETE FROM ai_conversations")
     conn.commit()
     return cur.rowcount
+
+
+# 每个公开函数整段持连接锁（跨线程共用连接，见 db_threadsafe）。
+db_threadsafe.serialize_storage_api(globals())

@@ -467,7 +467,7 @@ func (n *Node) NetworkChanged() {
 	// 已有会话多半绑在刚消失的路上（旧 Wi-Fi 地址、休眠前的 NAT 映射），不报错只是收不到东西，
 	// 要心跳丢三次（约 30 秒）才判死。这里立即各探一次，几秒无回音就断开，让重连换路。
 	for _, s := range n.Sessions() {
-		go s.probeLiveness(networkProbeTimeout)
+		go s.probeLiveness(s.probeTimeout())
 	}
 
 	// 换了网之后缓存地址基本全废，必须让发现层立刻重新扫一轮，
