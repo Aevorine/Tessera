@@ -69,5 +69,10 @@
   "trayAutoStart": "Запускать при входе в систему",
   "traySilentStart": "Тихий запуск (только в трее)",
   "trayStatusLocked": "Заблокировано",
-  "trayStatusUnlocked": "Разблокировано"
+  "trayStatusUnlocked": "Разблокировано",
+  "traySendClipboardSent": "Буфер обмена отправлен на устройств: {{count}}",
+  "traySendClipboardNone": "Нет подключённых устройств для приёма буфера обмена",
+  "traySendClipboardEmpty": "Буфер обмена пуст — нечего отправлять",
+  "traySendClipboardFailed": "Не удалось отправить буфер обмена: {{detail}}",
+  "fileHookAutostartRestored": "Элемент автозагрузки системных сочетаний клавиш для файлов был удалён вне Tessera и восстановлен согласно вашей настройке. Отключите его в настройках, если он больше не нужен."
 }

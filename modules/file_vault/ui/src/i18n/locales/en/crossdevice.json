@@ -304,5 +304,15 @@
   "recvDoneToast": "Received {{name}}",
   "defaultSendDevice": "Default sending device",
   "rememberLastTarget": "Remember last selection",
-  "defaultSendDeviceHelp": "Files, folders and manual clipboard sends reuse your selection. Automatic clipboard sync uses the default device when set. Offline targets are kept; nothing is redirected or queued for later."
+  "defaultSendDeviceHelp": "Files, folders and manual clipboard sends reuse your selection. Automatic clipboard sync uses the default device when set. Offline targets are kept; nothing is redirected or queued for later.",
+  "sendWaitingToast": "Waiting for {{device}} to come online to send {{name}}…",
+  "sendRetryToast": "Connection dropped — resuming {{name}} to {{device}} (attempt {{attempt}})…",
+  "linkDownToast": "Connection to {{device}} went dead ({{reason}}) — reconnecting automatically",
+  "linkRestoredToast": "Reconnected to {{device}}",
+  "linkDownReason.heartbeat_timeout": "two heartbeats unanswered",
+  "linkDownReason.probe_failed": "link probe unanswered",
+  "linkDownReason.read_error": "receive failed",
+  "linkDownReason.write_error": "send failed",
+  "linkDownReason.peer_fatal": "the other device reported a fatal error",
+  "linkDownReason.other": "connection interrupted"
 }

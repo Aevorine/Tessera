@@ -148,8 +148,30 @@ const FILTERABLE_TYPES: ClipboardContentType[] = ['text', 'url', 'email', 'phone
 // script，显式列出是防升级后默认值悄悄变化。
 const RICH_TEXT_FORBID_TAGS = ['script', 'style', 'iframe', 'object', 'embed', 'form', 'link', 'meta']
 
+// 页面跑在 file:// 下：`<img src="//host/x">`、CSS `url(//host/x)` 会被解析成 UNC 路径，Windows 随即向那台
+// 主机发起 SMB/WebDAV 认证、送出登录哈希。预览只放内嵌图片（data:image/…）和普通链接，其余外部引用一律剥掉。
+// 用独立实例挂钩子，不污染全局 DOMPurify。
+const richTextPurifier = DOMPurify(window)
+const RICH_TEXT_URL_ATTRS = new Set([
+  'src', 'srcset', 'href', 'xlink:href', 'background', 'poster', 'action', 'formaction', 'data', 'lowsrc', 'dynsrc',
+  'longdesc', 'cite', 'ping', 'usemap', 'manifest',
+])
+richTextPurifier.addHook('uponSanitizeAttribute', (_node, data) => {
+  const name = data.attrName.toLowerCase()
+  if (name === 'style') {
+    data.attrValue = data.attrValue
+      .replace(/[\w-]*image-set\([^)]*\)/gi, 'none')
+      .replace(/url\(\s*(['"]?)(?!\s*data:image\/)[^)]*\)/gi, 'none')
+    return
+  }
+  if (!RICH_TEXT_URL_ATTRS.has(name)) return
+  const value = data.attrValue.trim().toLowerCase()
+  const allowed = name === 'href' ? /^(https?:|mailto:|#)/.test(value) : value.startsWith('data:image/')
+  if (!allowed) data.keepAttr = false
+})
+
 function sanitizeRichText(html: string): string {
-  return DOMPurify.sanitize(html, { FORBID_TAGS: RICH_TEXT_FORBID_TAGS })
+  return richTextPurifier.sanitize(html, { FORBID_TAGS: RICH_TEXT_FORBID_TAGS })
 }
 
 // 单纯按最新在前排序，不因置顶提前，与后端 storage.fetch_recent 一致；

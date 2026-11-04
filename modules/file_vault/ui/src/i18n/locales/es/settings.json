@@ -361,5 +361,9 @@
   "tileNoteTextPlain": "Texto de notas como archivos planos",
   "tileContentBadge": "IA · portapapeles · notas",
   "tileOtherBadge": "Diagnóstico · restablecer preferencias",
-  "shortcutActionOpenDevices": "Abrir Dispositivos y sincronización"
+  "shortcutActionOpenDevices": "Abrir Dispositivos y sincronización",
+  "fileHookStatusUnknown": "No se pudo leer el estado del motor de atajos",
+  "fileHookRetry": "Reintentar",
+  "fileHookApprovalDisabled": "El inicio automático está desactivado en Administrador de tareas de Windows › Aplicaciones de arranque",
+  "fileHookReenable": "Volver a activar"
 }

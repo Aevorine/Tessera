@@ -304,5 +304,15 @@
   "recvDoneToast": "Fichier reçu : {{name}}",
   "defaultSendDevice": "Appareil destinataire par défaut",
   "rememberLastTarget": "Mémoriser la sélection",
-  "defaultSendDeviceHelp": "Les envois réutilisent la sélection. Le presse-papiers automatique utilise uniquement cet appareil. Hors ligne : aucune redirection ni mise en attente."
+  "defaultSendDeviceHelp": "Les envois réutilisent la sélection. Le presse-papiers automatique utilise uniquement cet appareil. Hors ligne : aucune redirection ni mise en attente.",
+  "sendWaitingToast": "En attente de {{device}} pour envoyer {{name}}…",
+  "sendRetryToast": "Connexion interrompue — reprise de {{name}} vers {{device}} (tentative {{attempt}})…",
+  "linkDownToast": "Connexion à {{device}} perdue ({{reason}}) — reconnexion automatique",
+  "linkRestoredToast": "Reconnecté à {{device}}",
+  "linkDownReason.heartbeat_timeout": "deux battements sans réponse",
+  "linkDownReason.probe_failed": "la sonde de liaison n'a pas répondu",
+  "linkDownReason.read_error": "échec de réception",
+  "linkDownReason.write_error": "échec d'envoi",
+  "linkDownReason.peer_fatal": "l'autre appareil a signalé une erreur fatale",
+  "linkDownReason.other": "connexion interrompue"
 }

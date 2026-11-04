@@ -38,6 +38,72 @@ def _invalid_request() -> DesktopControlError:
     return DesktopControlError("ai.desktop_request_invalid")
 
 
+# ---- 服务端硬拦：网页里藏的指令（提示注入）可能让模型去开终端敲命令。系统提示词挡不住这种情况，
+# 所以命令行宿主、脚本宿主、注册表编辑器和 Tessera 自己，一律不让 AI 启动、也不让 AI 在它们的窗口里点击/输入/按键。
+_BLOCKED_APP_WORDS = (
+    "powershell", "pwsh", "cmd", "command prompt", "命令提示符", "terminal", "终端", "wt", "bash", "wsl", "ubuntu",
+    "debian", "kali", "git bash", "mintty", "cygwin", "msys", "regedit", "registry editor", "注册表编辑器",
+    "mshta", "wscript", "cscript", "rundll32", "msiexec", "task scheduler", "任务计划程序", "taskschd", "run",
+    "运行", "tessera", "file-vault", "file vault", "python", "node", "conhost", "openconsole",
+)
+_BLOCKED_PROCESSES = {
+    "powershell.exe", "powershell_ise.exe", "pwsh.exe", "cmd.exe", "windowsterminal.exe", "wt.exe",
+    "openconsole.exe", "conhost.exe", "bash.exe", "wsl.exe", "wslhost.exe", "mintty.exe", "regedit.exe",
+    "mshta.exe", "wscript.exe", "cscript.exe", "rundll32.exe", "msiexec.exe", "mmc.exe", "taskschd.exe",
+    "python.exe", "pythonw.exe", "node.exe", "tessera.exe", "file_vault_backend.exe", "hook_agent.exe",
+    "tessera-crossdevice.exe",
+}
+
+
+def _normalized_app_name(name: str) -> str:
+    n = name.strip().lower()
+    if n.endswith(".exe"):
+        n = n[:-4]
+    return " ".join(n.replace("_", " ").replace("-", " ").split())
+
+
+def _app_name_blocked(name: str) -> bool:
+    n = _normalized_app_name(name)
+    words = {w.replace("-", " ") for w in _BLOCKED_APP_WORDS}
+    if n in words:
+        return True
+    # 「Windows PowerShell」「Ubuntu 24.04」「Git Bash」这类带前后缀的叫法也拦
+    return any(w in n.split() or (len(w) > 4 and w in n) for w in words)
+
+
+def _process_image(pid: int) -> Optional[str]:
+    """pid 对应进程的映像文件名（小写 basename）；拿不到返回 None。"""
+    if os.name != "nt":
+        return None
+    try:
+        import ctypes
+        from ctypes import wintypes
+
+        kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+        PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
+        handle = kernel32.OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, False, int(pid))
+        if not handle:
+            return None
+        try:
+            size = wintypes.DWORD(1024)
+            buf = ctypes.create_unicode_buffer(size.value)
+            if not kernel32.QueryFullProcessImageNameW(handle, 0, buf, ctypes.byref(size)):
+                return None
+            return os.path.basename(buf.value).lower()
+        finally:
+            kernel32.CloseHandle(handle)
+    except Exception:
+        return None
+
+
+def _require_allowed_target(payload: Dict[str, Any]) -> None:
+    """往窗口里点、输、按之前查它属于哪个进程；终端、脚本宿主、Tessera 自己的窗口一律拒绝。
+    查不到进程名（权限不够、进程已退出）时同样拒绝——判断不了就不做。"""
+    image = _process_image(payload["pid"])
+    if image is None or image in _BLOCKED_PROCESSES:
+        raise DesktopControlError("ai.desktop_target_blocked")
+
+
 def _resolve_driver() -> Optional[str]:
     """把驱动解析成绝对路径，找不到返回 None。
 
@@ -192,6 +258,8 @@ def _launch_app(arguments: Dict[str, Any]) -> Dict[str, Any]:
     # 不接受 driver path/launch_path/aumid/arguments：应用名由 cua-driver 已安装应用索引解析，
     # 防止 AI 执行任意本地程序或命令行。
     name = _require_nonempty_string(arguments, "name", max_length=120)
+    if _app_name_blocked(name):
+        raise DesktopControlError("ai.desktop_target_blocked")
     return _call_driver("launch_app", {"name": name, "start_minimized": True})
 
 
@@ -204,6 +272,7 @@ def _click(arguments: Dict[str, Any]) -> Dict[str, Any]:
         raise _invalid_request()
     if "count" in payload and (isinstance(payload["count"], bool) or not isinstance(payload["count"], int) or not 1 <= payload["count"] <= 3):
         raise _invalid_request()
+    _require_allowed_target(payload)
     return _call_driver("click", payload)
 
 
@@ -216,6 +285,7 @@ def _type_text(arguments: Dict[str, Any]) -> Dict[str, Any]:
     payload["text"] = text
     if "delay_ms" in payload and (isinstance(payload["delay_ms"], bool) or not isinstance(payload["delay_ms"], int) or not 0 <= payload["delay_ms"] <= 200):
         raise _invalid_request()
+    _require_allowed_target(payload)
     return _call_driver("type_text", payload)
 
 
@@ -231,6 +301,7 @@ def _set_value(arguments: Dict[str, Any]) -> Dict[str, Any]:
     _require_int(payload, "window_id")
     _require_int(payload, "element_index")
     payload["value"] = _require_nonempty_string(payload, "value", max_length=_MAX_TYPED_CHARS)
+    _require_allowed_target(payload)
     return _call_driver("set_value", payload)
 
 
@@ -257,6 +328,7 @@ def _press_key(arguments: Dict[str, Any]) -> Dict[str, Any]:
     _require_int(payload, "element_index")
     if payload.get("key") not in _SAFE_KEYS:
         raise _invalid_request()
+    _require_allowed_target(payload)
     return _call_driver("press_key", payload)
 
 

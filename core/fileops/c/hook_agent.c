@@ -315,16 +315,25 @@ static BOOL find_hit(LONG x, LONG y, HotRect *out)
 
 static void spawn_ui_scanner(void)
 {
+    /* 绝对路径启动系统自带的 powershell：裸名 powershell.exe 会先在本程序所在的用户可写目录里找，
+       放一个同名程序就会被当成扫描器执行。 */
+    WCHAR sysdir[MAX_PATH];
+    UINT n = GetSystemDirectoryW(sysdir, MAX_PATH);
+    if (n == 0 || n >= MAX_PATH) return;
+    WCHAR exe[MAX_PATH + 64];
+    _snwprintf(exe, MAX_PATH + 64, L"%ls\\WindowsPowerShell\\v1.0\\powershell.exe", sysdir);
+    exe[MAX_PATH + 63] = L'\0';
     WCHAR cmd[2048];
     _snwprintf(cmd, 2048,
-               L"powershell.exe -NoProfile -NonInteractive -WindowStyle Hidden "
+               L"\"%ls\" -NoProfile -NonInteractive -WindowStyle Hidden "
                L"-ExecutionPolicy Bypass -File \"%ls\" -OutFile \"%ls\"",
-               g_ps1path, g_rects_path);
+               exe, g_ps1path, g_rects_path);
+    cmd[2047] = L'\0';
     STARTUPINFOW si;
     PROCESS_INFORMATION pi;
     ZeroMemory(&si, sizeof(si));
     si.cb = sizeof(si);
-    if (CreateProcessW(NULL, cmd, NULL, NULL, FALSE, CREATE_NO_WINDOW,
+    if (CreateProcessW(exe, cmd, NULL, NULL, FALSE, CREATE_NO_WINDOW,
                        NULL, NULL, &si, &pi)) {
         g_scanner_proc = pi.hProcess;
         CloseHandle(pi.hThread);

@@ -304,5 +304,15 @@
   "recvDoneToast": "Получено: {{name}}",
   "defaultSendDevice": "Устройство отправки по умолчанию",
   "rememberLastTarget": "Запоминать выбор",
-  "defaultSendDeviceHelp": "Отправки используют выбранные устройства. Автоматический буфер отправляется только устройству по умолчанию. Нет перенаправления или очереди при отключении."
+  "defaultSendDeviceHelp": "Отправки используют выбранные устройства. Автоматический буфер отправляется только устройству по умолчанию. Нет перенаправления или очереди при отключении.",
+  "sendWaitingToast": "Ожидание подключения {{device}} для отправки {{name}}…",
+  "sendRetryToast": "Связь прервалась — докачка {{name}} на {{device}} (попытка {{attempt}})…",
+  "linkDownToast": "Связь с {{device}} потеряна ({{reason}}) — автоматическое переподключение",
+  "linkRestoredToast": "Связь с {{device}} восстановлена",
+  "linkDownReason.heartbeat_timeout": "нет ответа на два пульса",
+  "linkDownReason.probe_failed": "проверка связи без ответа",
+  "linkDownReason.read_error": "ошибка приёма",
+  "linkDownReason.write_error": "ошибка отправки",
+  "linkDownReason.peer_fatal": "другое устройство сообщило о критической ошибке",
+  "linkDownReason.other": "соединение прервано"
 }

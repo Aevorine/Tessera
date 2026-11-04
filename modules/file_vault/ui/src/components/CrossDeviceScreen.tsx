@@ -580,6 +580,8 @@ export function CrossDeviceScreen() {
   }, [])
 
   const seq = useRef(0)
+  // 哪些设备正挂着"连接已失效"提示：重连成功时把同一条提示原地改成"已恢复"，用户看得到断与复两端。
+  const linkDownShown = useRef(new Set<string>())
 
   const refresh = useCallback(async () => {
     try {
@@ -731,7 +733,31 @@ export function CrossDeviceScreen() {
         case 'state':
           if (data?.devices) setStatus((s) => (s ? { ...s, devices: data.devices as Device[] } : s))
           else refresh()
+          {
+            const id = data?.device_id as string | undefined
+            if (id && data?.state === 'connected' && linkDownShown.current.delete(id)) {
+              const name = devicesRef.current.find((x) => x.device_id === id)?.name ?? t('unknownDevice')
+              toast.success(t('linkRestoredToast', { device: name }), { id: `xdev-down-${id}`, duration: 3000 })
+            }
+          }
           break
+        // 链路失效（空闲时心跳 / 探测发现死链、读写失败）：发现即提示，并说明原因。用户主动的断开
+        // （撤销、到期、本机退出、对端正常关闭）不打扰。
+        case 'link_down': {
+          const id = (data?.device_id as string) ?? ''
+          const code = String(data?.code ?? 'other')
+          if (!id || ['revoked', 'expired', 'node_stopped', 'peer_closed'].includes(code)) break
+          const name = devicesRef.current.find((x) => x.device_id === id)?.name ?? t('unknownDevice')
+          linkDownShown.current.add(id)
+          toast.warning(
+            t('linkDownToast', {
+              device: name,
+              reason: t(`linkDownReason.${code}`, { defaultValue: t('linkDownReason.other') }),
+            }),
+            { id: `xdev-down-${id}` },
+          )
+          break
+        }
         case 'paired':
           if (data?.devices) setStatus((s) => (s ? { ...s, devices: data.devices as Device[] } : s))
           else refresh()
@@ -822,6 +848,20 @@ export function CrossDeviceScreen() {
         case 'transfer': {
           const d = data ?? {}
           const kind = (d.kind as string) ?? 'update'
+          // 断线自愈过程：等对端上线 / 断线后续传。只是过程提示，不进历史；同一文件同一设备一条，结束时收起。
+          const waitId = `xdev-wait-${d.device_id as string}|${d.name as string}`
+          if (kind === 'waiting' || kind === 'retry') {
+            const device = (d.device_name as string) || t('unknownDevice')
+            const name = (d.name as string) ?? ''
+            toast.loading(
+              kind === 'waiting'
+                ? t('sendWaitingToast', { device, name })
+                : t('sendRetryToast', { device, name, attempt: (d.attempt as number) ?? 1 }),
+              { id: waitId },
+            )
+            break
+          }
+          if (kind === 'done' || kind === 'error' || kind === 'canceled') toast.dismiss(waitId)
           // 传输结束就移出"进行中"。recv_done 必须算在内，漏掉会让每收一个文件都留下永不消失的记录。
           if (kind === 'done' || kind === 'error' || kind === 'recv_done' || kind === 'canceled') {
             const key = (d.transfer_id as string) || `${d.device_id as string}|${d.name as string}`

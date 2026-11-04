@@ -361,5 +361,9 @@
   "tileNoteTextPlain": "笔记正文存明文文件",
   "tileContentBadge": "AI · 剪贴板 · 笔记存储",
   "tileOtherBadge": "诊断信息 · 恢复默认偏好",
-  "shortcutActionOpenDevices": "任何程序里打开设备与同步"
+  "shortcutActionOpenDevices": "任何程序里打开设备与同步",
+  "fileHookStatusUnknown": "暂时读不到快捷键引擎状态",
+  "fileHookRetry": "重试",
+  "fileHookApprovalDisabled": "开机自启动已在 Windows「任务管理器 › 启动应用」里被禁用",
+  "fileHookReenable": "重新启用"
 }

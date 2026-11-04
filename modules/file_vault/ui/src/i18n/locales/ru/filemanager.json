@@ -105,5 +105,11 @@
   "historyFilesLabel": "файлов",
   "historyClearButton": "Очистить историю",
   "historyFailedToast": "Не удалось загрузить историю",
-  "historyClearedToast": "История очищена"
+  "historyClearedToast": "История очищена",
+  "dropHint": "Перетащить в {{folder}}",
+  "dropMovedToast": "Перемещено в {{folder}}: {{count}}",
+  "dropCopiedToast": "Скопировано в {{folder}}: {{count}}",
+  "dropFailedToast": "Перетаскивание не выполнено",
+  "dropMoveProgressLabel": "Перемещение...",
+  "dropCopyProgressLabel": "Копирование..."
 }

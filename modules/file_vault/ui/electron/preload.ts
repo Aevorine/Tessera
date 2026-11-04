@@ -285,13 +285,24 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // 见 main.ts 里 'shell:openExternal' 的处理。
   openExternalLink: (url: string): Promise<{ ok: boolean }> => ipcRenderer.invoke('shell:openExternal', url),
   // 第三方组件清单（scripts/gen-third-party-notices.mjs 生成的那份）。
-  getFileHookEnabled: (): Promise<boolean> => ipcRenderer.invoke('filemanager:getHookEnabled'),
+  /** 文件管理器行拖出：系统原生拖放（同步发出，必须在 dragstart 里调），见 main.ts 'filemanager:startDrag'。 */
+  startFileDrag: (paths: string[]): void => {
+    ipcRenderer.send('filemanager:startDrag', paths)
+  },
+  /** 原生文本编辑（复制 / 剪切 / 粘贴到当前焦点输入框），见 main.ts 'edit:native'。 */
+  nativeEdit: (action: 'copy' | 'cut' | 'paste'): void => {
+    ipcRenderer.send('edit:native', action)
+  },
+  /** 界面侧故障写进主进程的统一结构化日志（userData/logs/tessera-日期.jsonl）。只发、不等回执。 */
+  logEvent: (payload: { level?: 'error' | 'warn' | 'info'; event: string; msg?: string; module?: string; code?: string; method?: string }): void => {
+    ipcRenderer.send('app:log', payload)
+  },
   setFileHookEnabled: (enabled: boolean): void => {
     ipcRenderer.send('filemanager:setHookEnabled', enabled)
   },
   onFileHookToggle: (callback: (enabled: boolean) => void) => {
     const listener = (_event: Electron.IpcRendererEvent, enabled: boolean) => callback(enabled)
-    ipcRenderer.on('filemanager:hook-toggle', listener)
-    return () => ipcRenderer.off('filemanager:hook-toggle', listener)
+    ipcRenderer.on('filemanager:hook-state', listener)
+    return () => ipcRenderer.off('filemanager:hook-state', listener)
   },
 })

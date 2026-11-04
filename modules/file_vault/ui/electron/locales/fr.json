@@ -69,5 +69,10 @@
   "trayAutoStart": "Lancer à l’ouverture de session",
   "traySilentStart": "Démarrage silencieux (zone de notification)",
   "trayStatusLocked": "Verrouillé",
-  "trayStatusUnlocked": "Déverrouillé"
+  "trayStatusUnlocked": "Déverrouillé",
+  "traySendClipboardSent": "Presse-papiers envoyé à {{count}} appareil(s)",
+  "traySendClipboardNone": "Aucun appareil connecté ne peut recevoir le presse-papiers",
+  "traySendClipboardEmpty": "Le presse-papiers est vide — rien à envoyer",
+  "traySendClipboardFailed": "Impossible d'envoyer le presse-papiers : {{detail}}",
+  "fileHookAutostartRestored": "L'entrée de démarrage des raccourcis de fichiers système a été supprimée hors de Tessera et rétablie selon votre réglage. Désactivez-la dans les Paramètres si vous n'en voulez plus."
 }

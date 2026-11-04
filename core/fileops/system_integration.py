@@ -586,6 +586,56 @@ def get_autostart() -> bool:
     return bool(get_autostart_value()) and _autostart_approved()
 
 
+# 用户在设置页明确选择的自启动意图。Run 项被外部工具删掉时据此恢复；
+# 用户在任务管理器里禁用（StartupApproved=03）则尊重，不强行改回。
+AUTOSTART_INTENT_BASENAME = "autostart_intent.json"
+
+
+def autostart_intent_path() -> Path:
+    return _default_install_root() / AUTOSTART_INTENT_BASENAME
+
+
+def read_autostart_intent():
+    """True/False = 用户明确选过；None = 从没在本版本以后选过。"""
+    import json as _json
+    try:
+        data = _json.loads(autostart_intent_path().read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    value = data.get("enabled") if isinstance(data, dict) else None
+    return value if isinstance(value, bool) else None
+
+
+def write_autostart_intent(enabled: bool) -> None:
+    import json as _json
+    path = autostart_intent_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_name(path.name + f".{os.getpid()}.tmp")
+    tmp.write_text(_json.dumps({"enabled": bool(enabled), "at": int(_time.time())}), encoding="utf-8")
+    os.replace(tmp, path)
+
+
+def _registered_backend_arg():
+    """Run 命令里的第二个参数（冻结后端 exe 或 python 解释器），解析不了返回 None。"""
+    value = get_autostart_value()
+    if not value:
+        return None
+    parts = value.split('"')
+    # '"a" "b" ...' 切开后奇数下标才是参数
+    args = [parts[i] for i in range(1, len(parts), 2)]
+    return args[1] if len(args) > 1 else None
+
+
+def owns_registration() -> bool:
+    """源码模式（开发、测试）不得接管已安装版写下的注册，否则会停掉用户在跑的代理。"""
+    if _is_frozen():
+        return True
+    backend = _registered_backend_arg()
+    if not backend:
+        return True
+    return not backend.lower().endswith("file_vault_backend.exe")
+
+
 def _autostart_approved() -> bool:
     """Read the same startup approval flag used by Task Manager."""
     try:
@@ -657,10 +707,16 @@ def get_status(runtime_paths=None) -> dict:
     elif diagnostic["state"] == "unknown":
         diagnostic = {"state": "stopped", "last_error": None}
     available_exe = runtime["hook_exe"] if runtime else _any_hook_exe()
+    registered = bool(get_autostart_value())
+    approved = _autostart_approved()
     return {
         "compiled": bool(available_exe),
         "running": running,
-        "autostart": get_autostart(),
+        "autostart": registered and approved,
+        # 细分给界面：已注册但被 Windows「启动应用」禁用，要提示用户而不是显示成「关」
+        "autostart_registered": registered,
+        "autostart_approved": approved,
+        "autostart_intent": read_autostart_intent(),
         "exe_path": available_exe or HOOK_EXE,
         "source_path": HOOK_SRC,
         "cli_script": runtime["cli_script"] if runtime else "",
@@ -670,7 +726,18 @@ def get_status(runtime_paths=None) -> dict:
 
 def reconcile_autostart() -> dict:
     """Repair an enabled login hook after app restart or helper update."""
+    if not owns_registration():
+        return get_status()
     if not get_autostart():
+        # 用户明确开过、Run 项却没了（清理工具、杀软、注册表还原）：恢复并启动。
+        # Run 项还在但被任务管理器禁用：那是用户自己的选择，不碰。
+        if read_autostart_intent() is True and not get_autostart_value():
+            runtime = provision_runtime()
+            start_agent(runtime, on_conflict="rename")
+            set_autostart(True, runtime)
+            status = get_status(runtime)
+            status["restored"] = True
+            return status
         return get_status()
     runtime = provision_runtime()
     expected_value = _autostart_value(runtime)

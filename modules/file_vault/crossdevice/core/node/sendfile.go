@@ -305,6 +305,8 @@ func (s *Session) sendFile(ctx context.Context, path, relPath, offerKind, groupN
 }
 
 func (s *Session) sendFileOnce(ctx context.Context, path, relPath, offerKind, groupName string, fi FolderInfo) (*SendFileResult, error) {
+	s.xferActive.Add(1)
+	defer s.xferActive.Add(-1)
 	start := time.Now()
 	// 块大小固定。不按带宽动态挑——那会换掉 Merkle 的切法，进而废掉断点续传，
 	// 理由写在 transfer/merkle.go 里删掉 TuneChunkSize 的那段注释处。
@@ -618,4 +620,93 @@ func splitChunkFrame(p []byte) (*wire.ChunkHeader, []byte, error) {
 		return nil, nil, fmt.Errorf("分块长度不符：头称 %d，实际 %d", h.ChunkLen, len(data))
 	}
 	return &h, data, nil
+}
+
+// ---------- 按设备发送：会话断开或被替换时等新会话续传 ----------
+
+const (
+	// sendWaitOnline：点发送时目标不在线（正在重连、手机刚亮屏），最多等这么久。
+	sendWaitOnline = 2 * time.Minute
+	// sendWaitReconnect：传到一半断开后，等重连的时长（每次断开重新计时）。
+	sendWaitReconnect = time.Minute
+	// sendMaxAttempts：同一文件最多尝试几次（续传不重发已到的块）。
+	sendMaxAttempts = 6
+)
+
+// ErrDeviceOffline 在等待时限内目标设备都没有可用连接。
+var ErrDeviceOffline = errors.New("对方不在线")
+
+// LiveSession 返回设备当前可用的会话；没有就唤醒重连并等到 wait 为止。
+func (n *Node) LiveSession(ctx context.Context, deviceID string, wait time.Duration) (*Session, error) {
+	deadline := time.Now().Add(wait)
+	kicked := false
+	delay := 20 * time.Millisecond
+	for {
+		if s, ok := n.SessionFor(deviceID); ok && s.Alive() {
+			return s, nil
+		}
+		if p, err := n.store.GetPeer(deviceID); err != nil || !p.Usable(time.Now()) {
+			return nil, ErrDeviceOffline
+		}
+		if !kicked {
+			n.KeepConnected(deviceID) // 已在跑则只是唤醒它立刻重试
+			kicked = true
+		}
+		if !time.Now().Before(deadline) {
+			return nil, ErrDeviceOffline
+		}
+		select {
+		case <-time.After(delay):
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-n.ctx.Done():
+			return nil, ErrDeviceOffline
+		}
+		if delay < 200*time.Millisecond {
+			delay *= 2
+		}
+	}
+}
+
+// SendResilient 按设备发送一个文件：发前等在线，传到一半会话断了（换网、休眠、被新连接替换）就等新会话
+// 再发，接收端保留的分块让重发只补缺的部分。onState 报告 "waiting" / "retry"，attempt 从 1 起。
+func (n *Node) SendResilient(ctx context.Context, deviceID string, onState func(kind string, attempt int),
+	send func(*Session) (*SendFileResult, error)) (*SendFileResult, error) {
+	wait := sendWaitOnline
+	var lastErr error
+	for attempt := 1; attempt <= sendMaxAttempts; attempt++ {
+		if _, ok := n.SessionFor(deviceID); !ok && onState != nil && attempt == 1 {
+			onState("waiting", attempt)
+		}
+		s, err := n.LiveSession(ctx, deviceID, wait)
+		if err != nil {
+			if lastErr != nil {
+				return nil, fmt.Errorf("%w（%v）", lastErr, err)
+			}
+			return nil, err
+		}
+		if attempt > 1 && onState != nil {
+			onState("retry", attempt)
+		}
+		res, err := send(s)
+		if err == nil {
+			return res, nil
+		}
+		lastErr = err
+		if ctx.Err() != nil || errors.Is(err, ErrPeerRejected) || errors.Is(err, ErrTransferCanceled) {
+			return nil, err
+		}
+		// 只有连接本身出问题才重试：会话已死，或很快就会被判死（判活超时内）
+		if s.Alive() {
+			select {
+			case <-s.Done():
+			case <-time.After(s.probeTimeout()):
+				return nil, err
+			case <-ctx.Done():
+				return nil, err
+			}
+		}
+		wait = sendWaitReconnect
+	}
+	return nil, lastErr
 }

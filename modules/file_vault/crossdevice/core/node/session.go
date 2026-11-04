@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"io"
 	"path/filepath"
+	"runtime"
+	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -21,9 +23,15 @@ import (
 )
 
 const (
-	heartbeatInterval = 10 * time.Second
-	heartbeatMiss     = 3
-	fetchTimeout      = 30 * time.Second
+	// 收发大块期间的宽松判据：这么久一个字节都没动才判死（回声排在分块后面，会晚到）。
+	activityWindow = 30 * time.Second
+	fetchTimeout   = 30 * time.Second
+
+	// 空闲心跳间隔：电脑之间 2 秒（死链 ≤ 2 s + 两次探测 ≈ 3.4 s 内发现）；一端是手机 5 秒，省电。
+	heartbeatFast   = 2 * time.Second
+	heartbeatMobile = 5 * time.Second
+	// MobileFeature 由手机端在 HELLO 里公布，老版本不认识就忽略。
+	MobileFeature = "plat-mobile"
 
 	// 快速判活：发一次心跳等回声，超时 = 4×RTT + 300ms，夹在 [700ms, 3s]。下限留给手机 Wi-Fi
 	// 省电（DTIM）每个方向可能多压一两百毫秒；上限覆盖中继。
@@ -69,6 +77,10 @@ type Session struct {
 	createdAt time.Time
 	// probing 防止同一会话并发多个判活探测（连续复制、心跳与换网同时触发）。
 	probing atomic.Bool
+	// echoed 收到心跳回声时非阻塞地敲一下，判活等待据此立刻醒来。
+	echoed chan struct{}
+	// xferActive 是本会话上正在发送的分块传输数（文件、剪贴板大表示）。
+	xferActive atomic.Int32
 
 	seq      atomic.Uint64
 	lastRecv atomic.Uint64
@@ -212,8 +224,12 @@ func (s *Session) run() {
 	for {
 		f, err := s.wc.ReadFrame()
 		if err != nil {
+			// 先用真实原因关会话（once 保证只记第一条），否则 defer 的"连接结束"会盖掉它，link_down 日志就说不出为什么断。
 			if err != io.EOF {
 				s.node.logf("与 %s 的连接中断: %v", s.PeerName(), err)
+				s.close(fmt.Errorf("读取失败: %v", err))
+			} else {
+				s.close(errors.New("对端关闭连接"))
 			}
 			return
 		}
@@ -224,6 +240,21 @@ func (s *Session) run() {
 			// 那种情况 ReadFrame 已经先报错并退出了。
 		}
 	}
+}
+
+// sanitizePeerText 截到 160 个字符并去掉控制字符（含换行），对端文本只当一句提示看待。
+func sanitizePeerText(msg string) string {
+	out := make([]rune, 0, len(msg))
+	for _, r := range msg {
+		if len(out) >= 160 {
+			break
+		}
+		if r < 0x20 || r == 0x7f || (r >= 0x80 && r < 0xa0) || r == 0x2028 || r == 0x2029 {
+			r = ' '
+		}
+		out = append(out, r)
+	}
+	return string(out)
 }
 
 func (s *Session) dispatch(f *wire.Frame) error {
@@ -270,10 +301,12 @@ func (s *Session) dispatch(f *wire.Frame) error {
 		if err := wire.Unmarshal(f.Payload, &e); err != nil {
 			return err
 		}
+		// e.Msg 是对端写的任意文本：截短、去控制字符后才给界面；断开原因只记错误码——原因会进诊断日志，
+		// 而日志会被 Claude Code 读来排障，不能让一台配对设备往里面写指令。
 		s.node.emit(Event{Kind: "error", DeviceID: s.peer.DeviceID,
-			Msg: e.Msg, Err: fmt.Errorf("对端错误 %d", e.Code)})
+			Msg: sanitizePeerText(e.Msg), Err: fmt.Errorf("对端错误 %d", e.Code)})
 		if e.Fatal() {
-			s.close(fmt.Errorf("对端致命错误 %d: %s", e.Code, e.Msg))
+			s.close(fmt.Errorf("对端致命错误 %d", e.Code))
 		}
 		return nil
 	default:
@@ -286,7 +319,7 @@ func (s *Session) dispatch(f *wire.Frame) error {
 // ---------- 心跳 ----------
 
 func (s *Session) heartbeatLoop() {
-	t := time.NewTicker(heartbeatInterval)
+	t := time.NewTicker(s.heartbeatEvery())
 	defer t.Stop()
 	for {
 		select {
@@ -295,31 +328,93 @@ func (s *Session) heartbeatLoop() {
 		case <-s.node.ctx.Done():
 			return
 		case <-t.C:
+		}
+		if s.busy() {
+			// 大块收发中：沿用宽松判据，回声晚到不等于链路断。
 			if err := s.sendHeartbeat(); err != nil {
-				s.close(err)
+				s.close(fmt.Errorf("发送失败: %v", err))
 				return
 			}
-			missed := s.missed.Add(1)
-			if missed >= heartbeatMiss {
-				if s.recentlyActive() {
-					// 回声没回但连接上字节仍在流动（大文件收发中）：是对端读循环忙，不是链路断。
-					// 把计数拉回"差一次"继续观察，真断了 30 秒内不会再有字节，下一轮就会判死。
-					s.missed.Store(heartbeatMiss - 1)
-					continue
-				}
-				// 连续 N 次没等到回声、且这段时间里一个字节都没动过，才判定链路已断。
-				// 这比等 QUIC 空闲超时快，能更早触发重连竞速。
+			if time.Duration(s.missed.Add(1))*s.heartbeatEvery() >= activityWindow && !s.recentlyActive() {
 				s.node.setState(s.peer.DeviceID, StateReconnecting)
 				s.close(errors.New("心跳超时"))
 				return
 			}
-			if missed == 2 {
-				// 上次心跳整整一个周期无回音：未断但链路明显有问题。DEGRADED 以前只有"恢复"半边，
-				// 从没人设进去，界面「信号弱」永远不出现。
-				s.node.setState(s.peer.DeviceID, StateDegraded)
-				// 不再干等第三个周期（死链要 30–40 秒才判出）：立刻补探一次，无回音就断开重连。
-				go s.probeLiveness(s.probeTimeout())
+			continue
+		}
+		// 空闲：每次心跳就是一次探测；没回音立刻补探一次（容忍单次延迟），两次都没回才判死。
+		alive, err := s.pingOnce()
+		if err != nil {
+			s.close(fmt.Errorf("发送失败: %v", err))
+			return
+		}
+		if alive {
+			continue
+		}
+		s.node.setState(s.peer.DeviceID, StateDegraded)
+		if alive, err = s.pingOnce(); err != nil {
+			s.close(fmt.Errorf("发送失败: %v", err))
+			return
+		}
+		if alive {
+			if s.node.State(s.peer.DeviceID) == StateDegraded {
+				s.node.setState(s.peer.DeviceID, StateConnected)
 			}
+			continue
+		}
+		s.node.logf("%s 两次心跳无回音，判定链路已断", s.PeerName())
+		s.node.setState(s.peer.DeviceID, StateReconnecting)
+		s.close(errors.New("心跳超时"))
+		return
+	}
+}
+
+// heartbeatEvery 本会话的空闲心跳间隔（见 heartbeatFast / heartbeatMobile）。
+func (s *Session) heartbeatEvery() time.Duration {
+	if runtime.GOOS == "android" || slices.Contains(s.peerFeatures, MobileFeature) {
+		return heartbeatMobile
+	}
+	return heartbeatFast
+}
+
+// busy 报告本会话是否有分块传输在进行（收或发）。
+func (s *Session) busy() bool {
+	if s.xferActive.Load() > 0 {
+		return true
+	}
+	s.xmu.Lock()
+	n := len(s.recvXfers)
+	s.xmu.Unlock()
+	return n > 0
+}
+
+// pingOnce 发一次心跳并等 probeTimeout：回声或任何入站字节都算活着。
+func (s *Session) pingOnce() (bool, error) {
+	start := time.Now()
+	if err := s.sendHeartbeat(); err != nil {
+		return false, err
+	}
+	return s.waitAlive(start, s.probeTimeout()), nil
+}
+
+// waitAlive 等 start 之后的回声或入站字节；会话已结束也返回 true（由调用方的 done 分支收尾）。
+func (s *Session) waitAlive(start time.Time, timeout time.Duration) bool {
+	since := start.UnixNano()
+	seen := func() bool { return s.lastEcho.Load() >= since || s.lastActive.Load() >= since }
+	timer := time.NewTimer(timeout)
+	defer timer.Stop()
+	for {
+		if seen() {
+			return true
+		}
+		select {
+		case <-s.echoed:
+		case <-timer.C:
+			return seen()
+		case <-s.done:
+			return true
+		case <-s.node.ctx.Done():
+			return true
 		}
 	}
 }
@@ -327,10 +422,10 @@ func (s *Session) heartbeatLoop() {
 // touch 记一笔"这条连接刚刚有字节在动"。
 func (s *Session) touch() { s.lastActive.Store(time.Now().UnixNano()) }
 
-// recentlyActive 报告最近一个判活窗口（interval × miss）内是否有过字节流动。
+// recentlyActive 报告最近 activityWindow 内是否有过字节流动。
 func (s *Session) recentlyActive() bool {
 	last := s.lastActive.Load()
-	return last != 0 && time.Since(time.Unix(0, last)) < heartbeatInterval*heartbeatMiss
+	return last != 0 && time.Since(time.Unix(0, last)) < activityWindow
 }
 
 // sendHeartbeat 发一次心跳（非回声）。
@@ -387,6 +482,10 @@ func (s *Session) onHeartbeat(f *wire.Frame) error {
 	}
 	s.missed.Store(0)
 	s.lastEcho.Store(time.Now().UnixNano())
+	select {
+	case s.echoed <- struct{}{}:
+	default:
+	}
 	if rtt := time.Since(time.Unix(0, int64(hb.Nonce))); rtt > 0 && rtt < time.Minute {
 		s.rttMS.Store(rtt.Milliseconds())
 	}
@@ -440,7 +539,9 @@ func (s *Session) announce(it *clipboard.Item) error {
 	}
 	// 发完紧跟一次判活：死链上的写入不会报错，不探的话界面一直显示「已连接」而内容 30 秒以上
 	// 送不到。探测失败即断开，KeepConnected 立刻换路重连，新会话的 replayCurrentClip 补发这一条。
-	go s.probeLiveness(s.probeTimeout())
+	if !s.busy() {
+		go s.probeLiveness(s.probeTimeout())
+	}
 	return nil
 }
 

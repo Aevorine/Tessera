@@ -5,7 +5,8 @@ import {
   useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
-import { Button } from '@/components/ui/button'
+import { Button } from '@/components/ui/button'
+
 import { InfoHint } from '@/components/ui/info-hint'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -730,16 +731,39 @@ function FileHookAutoStartSetting() {
   const [loaded, setLoaded] = useState(false)
   const [working, setWorking] = useState(false)
   const [agentError, setAgentError] = useState<string | null>(null)
+  // 读不到状态 ≠ 关：开机后后端忙于对账时查询可能失败/超时，以前就直接显示成未勾选
+  const [statusError, setStatusError] = useState<string | null>(null)
+  const [approvalBlocked, setApprovalBlocked] = useState(false)
+  const aliveRef = useRef(true)
+
+  const loadStatus = useCallback(async (attempt = 0) => {
+    try {
+      const res = await vaultApi.call('file_clip_hook_status', {})
+      if (!aliveRef.current) return
+      if (!res.ok || !('running' in res)) throw new Error('error' in res ? res.error : 'unknown')
+      setEnabled(fileHookSettingChecked(res))
+      setAgentError(res.last_error)
+      setApprovalBlocked(res.autostart_registered === true && res.autostart_approved === false)
+      setStatusError(null)
+      setLoaded(true)
+    } catch (err) {
+      if (!aliveRef.current) return
+      if (attempt < 3) {
+        window.setTimeout(() => void loadStatus(attempt + 1), 1500 * (attempt + 1))
+        return
+      }
+      setStatusError(err instanceof Error ? err.message : String(err))
+      setLoaded(true)
+    }
+  }, [])
 
   useEffect(() => {
-    vaultApi.call('file_clip_hook_status', {}).then((res) => {
-      if (res.ok && 'running' in res) {
-        setEnabled(fileHookSettingChecked(res))
-        setAgentError(res.last_error)
-      }
-      setLoaded(true)
-    }).catch(() => setLoaded(true))
-  }, [])
+    aliveRef.current = true
+    void loadStatus()
+    return () => {
+      aliveRef.current = false
+    }
+  }, [loadStatus])
 
   async function handleToggle(checked: boolean) {
     setWorking(true)
@@ -755,6 +779,8 @@ function FileHookAutoStartSetting() {
       }
       const actual = fileHookSettingChecked(res)
       setAgentError(res.last_error)
+      setApprovalBlocked(res.autostart_registered === true && res.autostart_approved === false)
+      setStatusError(null)
       if (actual !== checked || (checked && !res.running)) {
         setEnabled(actual)
         toast.error(t('fileHookUpdateFailedToast'), {
@@ -778,6 +804,20 @@ function FileHookAutoStartSetting() {
 
   if (!loaded) return null
 
+  if (statusError) {
+    return (
+      <div className="rounded border p-3">
+        <div className="flex flex-wrap items-center gap-2">
+          <Label>{t('fileHookAutoStartLabel')}</Label>
+          <span className="text-sm text-destructive">{t('fileHookStatusUnknown')}</span>
+          <Button size="sm" variant="outline" onClick={() => { setStatusError(null); setLoaded(false); void loadStatus() }}>
+            {t('fileHookRetry')}
+          </Button>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="rounded border p-3">
       <div className="flex items-center gap-2">
@@ -785,6 +825,14 @@ function FileHookAutoStartSetting() {
                   onCheckedChange={(v) => handleToggle(v === true)} />
         <Label htmlFor="file-hook-auto-start">{t('fileHookAutoStartLabel')}</Label>
       </div>
+      {approvalBlocked && (
+        <div className="mt-2 flex flex-wrap items-center gap-2 text-sm text-warning">
+          <span>{t('fileHookApprovalDisabled')}</span>
+          <Button size="sm" variant="outline" disabled={working} onClick={() => handleToggle(true)}>
+            {t('fileHookReenable')}
+          </Button>
+        </div>
+      )}
       {agentError && <p className="mt-2 text-sm text-destructive">{t('fileHookAgentError', { detail: agentError })}</p>}
     </div>
   )

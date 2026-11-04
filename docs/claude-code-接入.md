@@ -166,12 +166,27 @@ claude mcp add tessera -- python -X utf8 -m modules.file_vault.agent.mcp_server
 
 ---
 
+## 四点五、让 Claude Code 读日志排障（0.1.53 起）
+
+桌面端把崩溃、断链、传输失败与重试、快捷键引擎对账、更新结果、界面异常写进
+`%APPDATA%\file-vault-ui\logs\tessera-日期.jsonl`（已脱敏：路径只留扩展名，用户名 / 主机名换成占位符，
+不含金库内容）。不需要解锁就能查：
+
+```powershell
+python -X utf8 -m modules.file_vault.agent.cli logs --summary --since 1d
+python -X utf8 -m modules.file_vault.agent.cli logs --component crossdevice --event link_down --since 2h
+```
+
+MCP 工具 `tessera_logs` 同样不需要密码，默认就在工具列表里。字段与事件全表见 [`docs/logging.md`](logging.md)。
+
+---
+
 ## 五、出问题时
 
 | 症状 | 多半是 |
 |---|---|
 | 工具列表里只有两个 | 没设 `TESSERA_MCP_PASSWORD_FILE`（其余的需要解锁才有意义，但仍会列出）——若连只读工具都没有，是服务器没起来，看 Claude Code 的 MCP 日志 |
-| 工具列表里只有 7 个，看不到建笔记 / 加密 | 没设 `TESSERA_MCP_ALLOW_WRITE=1` |
+| 工具列表里只有 8 个，看不到建笔记 / 加密 | 没设 `TESSERA_MCP_ALLOW_WRITE=1` |
 | 回答说"没有配置密码来源" | 同上第一条，密码文件路径没配或写错了 |
 | 回答里带 `auth.wrong_password` | 密码文件里的内容不对（注意别把结尾的换行也算进去，程序会自动去掉首尾空白） |
 | 命令行卡住不动 | 见下 |

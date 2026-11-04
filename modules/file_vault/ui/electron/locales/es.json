@@ -69,5 +69,10 @@
   "trayAutoStart": "Iniciar al iniciar sesión",
   "traySilentStart": "Inicio silencioso (solo en la bandeja)",
   "trayStatusLocked": "Bloqueado",
-  "trayStatusUnlocked": "Desbloqueado"
+  "trayStatusUnlocked": "Desbloqueado",
+  "traySendClipboardSent": "Portapapeles enviado a {{count}} dispositivo(s)",
+  "traySendClipboardNone": "Ningún dispositivo conectado puede recibir el portapapeles",
+  "traySendClipboardEmpty": "El portapapeles está vacío; no hay nada que enviar",
+  "traySendClipboardFailed": "No se pudo enviar el portapapeles: {{detail}}",
+  "fileHookAutostartRestored": "La entrada de inicio de los atajos de archivo del sistema se eliminó fuera de Tessera y se restauró según tu configuración. Desactívala en Ajustes si ya no la quieres."
 }

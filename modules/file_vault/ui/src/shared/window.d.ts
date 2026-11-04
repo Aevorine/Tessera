@@ -117,7 +117,16 @@ declare global {
       onFileManagerMenuAction(
         callback: (action: 'copy' | 'cut' | 'paste' | 'delete-recycle' | 'delete-permanent') => void,
       ): () => void
-      getFileHookEnabled(): Promise<boolean>
+      nativeEdit(action: 'copy' | 'cut' | 'paste'): void
+      startFileDrag(paths: string[]): void
+      logEvent(payload: {
+        level?: 'error' | 'warn' | 'info'
+        event: string
+        msg?: string
+        module?: string
+        code?: string
+        method?: string
+      }): void
       setFileHookEnabled(enabled: boolean): void
       onFileHookToggle(callback: (enabled: boolean) => void): () => void
       /** 「关于」页的版本号。不联网——checkForUpdate 才联网。 */

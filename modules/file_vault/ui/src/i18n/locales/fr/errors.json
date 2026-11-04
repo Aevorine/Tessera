@@ -236,5 +236,10 @@
   "recovery_codes.duplicates_invalid": "Les services à fusionner ont changé (supprimés ou modifiés). Relancez l'analyse.",
   "notes.linked_too_large": "Les fichiers de plus de 8 Mo ne peuvent pas être liés",
   "notes.linked_file_missing": "Le fichier local de cette note est introuvable : {{path}}",
-  "notes.linked_folder_not_found": "Ce dossier lié n'existe plus"
+  "notes.linked_folder_not_found": "Ce dossier lié n'existe plus",
+  "file_clip.hook_status_failed": "Impossible de lire l'état du moteur de raccourcis : {{detail}}",
+  "file_clip.drop_into_self": "Impossible de déposer un dossier dans lui-même",
+  "file_clip.source_missing": "Certains éléments n'existent plus — dépôt annulé",
+  "file_clip.dest_missing": "Le dossier cible n'existe pas",
+  "ai.desktop_target_blocked": "Par sécurité, l'IA ne peut ni lancer ni piloter les fenêtres de ligne de commande, les hôtes de scripts, l'Éditeur du Registre ou Tessera lui-même."
 }

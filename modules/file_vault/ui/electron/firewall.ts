@@ -42,7 +42,7 @@ export interface FirewallStatus {
 export async function firewallStatus(program: string | null): Promise<FirewallStatus> {
   if (process.platform !== 'win32') return { state: 'unknown', program }
   try {
-    await execFileAsync('netsh', [
+    await execFileAsync(NETSH, [
       'advfirewall', 'firewall', 'show', 'rule',
       `name=${FIREWALL_RULE_NAME}`,
       'dir=in',
@@ -70,6 +70,12 @@ function netshArg(value: string): string {
 }
 
 /** 包成 PowerShell 单引号字面量。 */
+// 绝对路径调用系统自带的 netsh / powershell：PATH 可被同用户进程改写，提权那一步若按 PATH 找 netsh，
+// 用户在 UAC 上点「是」运行的就可能是被替换的程序（与 authenticode.ts 同一条规矩）。
+const SYSTEM32 = path.join(process.env.SystemRoot ?? process.env.windir ?? 'C:\\Windows', 'System32')
+const NETSH = path.join(SYSTEM32, 'netsh.exe')
+const POWERSHELL = path.join(SYSTEM32, 'WindowsPowerShell', 'v1.0', 'powershell.exe')
+
 function psLiteral(value: string): string {
   return `'${value.replace(/'/g, "''")}'`
 }
@@ -112,18 +118,18 @@ export async function allowThroughFirewall(program: string): Promise<{ ok: boole
 
   const script =
     `$ErrorActionPreference = 'Stop'; ` +
-    `Start-Process -FilePath netsh -Verb RunAs -Wait -WindowStyle Hidden ` +
+    `Start-Process -FilePath ${psLiteral(NETSH)} -Verb RunAs -Wait -WindowStyle Hidden ` +
       `-ArgumentList ${cmdline('delete', ['dir=in'])} -ErrorAction SilentlyContinue; ` +
-    `Start-Process -FilePath netsh -Verb RunAs -Wait -WindowStyle Hidden ` +
+    `Start-Process -FilePath ${psLiteral(NETSH)} -Verb RunAs -Wait -WindowStyle Hidden ` +
       `-ArgumentList ${legacyCleanup} -ErrorAction SilentlyContinue; ` +
-    `$p = Start-Process -FilePath netsh -Verb RunAs -Wait -PassThru -WindowStyle Hidden ` +
+    `$p = Start-Process -FilePath ${psLiteral(NETSH)} -Verb RunAs -Wait -PassThru -WindowStyle Hidden ` +
       `-ArgumentList ${cmdline('add', ['dir=in', 'action=allow', `program=${program}`, 'enable=yes', 'profile=any'])}; ` +
     `exit $p.ExitCode`
 
   try {
     // Start-Process -Verb RunAs 是弹 UAC 的标准做法。-Wait 让我们能拿到结果；
     // 用户在 UAC 上点"否"会让 Start-Process 抛错，正好被下面 catch 成失败。
-    await execFileAsync('powershell.exe', [
+    await execFileAsync(POWERSHELL, [
       '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass',
       '-Command', script,
     ], { windowsHide: true, timeout: 120_000 })

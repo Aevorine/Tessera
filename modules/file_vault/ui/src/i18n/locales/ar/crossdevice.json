@@ -304,5 +304,15 @@
   "recvDoneToast": "تم استلام {{name}}",
   "defaultSendDevice": "جهاز الإرسال الافتراضي",
   "rememberLastTarget": "تذكر الاختيار الأخير",
-  "defaultSendDeviceHelp": "تستخدم عمليات الإرسال الأجهزة المحددة. تستخدم الحافظة التلقائية الجهاز الافتراضي فقط. لا إعادة توجيه أو انتظار عند انقطاع الاتصال."
+  "defaultSendDeviceHelp": "تستخدم عمليات الإرسال الأجهزة المحددة. تستخدم الحافظة التلقائية الجهاز الافتراضي فقط. لا إعادة توجيه أو انتظار عند انقطاع الاتصال.",
+  "sendWaitingToast": "بانتظار اتصال {{device}} لإرسال {{name}}…",
+  "sendRetryToast": "انقطع الاتصال — جارٍ استئناف إرسال {{name}} إلى {{device}} (المحاولة {{attempt}})…",
+  "linkDownToast": "انقطع الاتصال بـ {{device}} ({{reason}}) — جارٍ إعادة الاتصال تلقائيًا",
+  "linkRestoredToast": "تمت إعادة الاتصال بـ {{device}}",
+  "linkDownReason.heartbeat_timeout": "لم يُرد على نبضتين متتاليتين",
+  "linkDownReason.probe_failed": "لم يستجب فحص الاتصال",
+  "linkDownReason.read_error": "فشل الاستلام",
+  "linkDownReason.write_error": "فشل الإرسال",
+  "linkDownReason.peer_fatal": "أبلغ الجهاز الآخر عن خطأ فادح",
+  "linkDownReason.other": "انقطع الاتصال"
 }

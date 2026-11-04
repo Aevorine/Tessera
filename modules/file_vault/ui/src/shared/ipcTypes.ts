@@ -2289,6 +2289,13 @@ export interface VaultMethods {
       | ({ ok: boolean } & FileClipTransferReport)
       | { ok: false; error: string; error_params?: Record<string, string | number> }
   }
+  // 拖放复制 / 移动：源由界面给出（不经剪贴板）。拖回原文件夹的移动是空操作，回 noop:true。
+  file_clip_transfer: {
+    params: { sources: string[]; dest_dir: string; move: boolean; on_conflict?: 'rename' | 'skip' | 'overwrite' }
+    result:
+      | ({ ok: boolean; noop?: boolean } & FileClipTransferReport)
+      | { ok: false; error: string; error_params?: Record<string, string | number> }
+  }
   file_clip_delete: {
     params: { paths: string[]; recycle: boolean }
     result:
@@ -2297,6 +2304,12 @@ export interface VaultMethods {
   }
   file_clip_hook_set_enabled: {
     params: { enabled: boolean }
+    result:
+      | ({ ok: boolean } & FileClipHookStatus)
+      | { ok: false; error: string; error_params?: Record<string, string | number> }
+  }
+  file_clip_hook_set_running: {
+    params: { running: boolean }
     result:
       | ({ ok: boolean } & FileClipHookStatus)
       | { ok: false; error: string; error_params?: Record<string, string | number> }
@@ -2330,7 +2343,8 @@ export interface VaultMethods {
     result: { ok: true } | { ok: false; error: string; error_params?: Record<string, string | number> }
   }
   file_clip_check_conflicts: {
-    params: { dest_dir: string; mode?: 'existing' | 'all' }
+    // paths 给出时检查这些源（拖放），不给时检查系统剪贴板上的文件（粘贴）。
+    params: { dest_dir: string; mode?: 'existing' | 'all'; paths?: string[] }
     result:
       | { ok: true; conflicts: FileClipConflictItem[]; has_files: boolean; is_cut?: boolean; count?: number }
       | { ok: false; error: string; error_params?: Record<string, string | number> }
@@ -2374,6 +2388,13 @@ export interface FileClipHookStatus {
   compiled: boolean
   running: boolean
   autostart: boolean
+  /** Run 项是否存在（被任务管理器禁用时仍为 true） */
+  autostart_registered?: boolean
+  /** Windows「启动应用」是否允许 */
+  autostart_approved?: boolean
+  /** 用户在设置页最后一次的选择；null = 未选过 */
+  autostart_intent?: boolean | null
+  restored?: boolean
   exe_path: string
   source_path: string
   cli_script: string
@@ -2541,4 +2562,9 @@ export interface ClipboardNewEntryEvent {
   entry: ClipboardEntry
 }
 
-export type VaultPushEvent = ClipboardNewEntryEvent
+/** 开机启动项被外部删除、后端按用户的「开」恢复了它：主进程弹系统通知，用户随时可在设置里关掉。 */
+export interface FileHookAutostartRestoredEvent {
+  event: 'file_hook_autostart_restored'
+}
+
+export type VaultPushEvent = ClipboardNewEntryEvent | FileHookAutostartRestoredEvent

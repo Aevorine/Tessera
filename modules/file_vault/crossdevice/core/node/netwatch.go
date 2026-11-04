@@ -2,6 +2,7 @@ package node
 
 import (
 	"errors"
+	"fmt"
 	"sort"
 	"strings"
 	"sync"
@@ -86,24 +87,17 @@ func (n *Node) netWatchLoop() {
 // probeLiveness 立刻发一次心跳，timeout 内无回音就断开会话。只在刚换网时用：
 // 旧连接绑在已不存在的地址上，不报错，只静默收不到东西。
 func (s *Session) probeLiveness(timeout time.Duration) {
-	if !s.Alive() || !s.probing.CompareAndSwap(false, true) {
+	// 分块收发中回声会排在分块后面晚到，交给心跳的宽松判据，不在这里误断
+	if !s.Alive() || s.busy() || !s.probing.CompareAndSwap(false, true) {
 		return
 	}
 	defer s.probing.Store(false)
-	start := time.Now()
-	if err := s.sendHeartbeat(); err != nil {
-		s.close(err)
+	alive, err := s.pingOnce()
+	if err != nil {
+		s.close(fmt.Errorf("发送失败: %v", err))
 		return
 	}
-	select {
-	case <-s.done:
-		return
-	case <-s.node.ctx.Done():
-		return
-	case <-time.After(timeout):
-	}
-	// 回声或任何入站字节都算活着：对端忙着收发大块时回声会晚到，不等于链路断了。
-	if s.lastEcho.Load() < start.UnixNano() && s.lastActive.Load() < start.UnixNano() {
+	if !alive && s.Alive() {
 		s.node.logf("%s 的连接 %v 内没有回音，断开重连", s.PeerName(), timeout)
 		s.node.setState(s.peer.DeviceID, StateReconnecting)
 		s.close(errors.New("链路无响应"))

@@ -157,6 +157,60 @@ def run_paste(dest_dir: str, on_conflict: str, on_progress: Callable[[int, int],
     return result
 
 
+def _norm(p: str) -> str:
+    return os.path.normcase(os.path.realpath(os.path.abspath(p)))
+
+
+def run_transfer(sources: List[str], dest_dir: str, move: bool, on_conflict: str,
+                 on_progress: Callable[[int, int], None]) -> Dict:
+    """拖放：把明确给出的源（不经剪贴板）复制 / 移动到 dest_dir。
+
+    护栏：源与目标都必须是存在的绝对路径；文件夹不能拖进自己或自己的子目录；拖回原文件夹时移动是空操作
+    （直接剔除），复制则强制改名生成副本（与资源管理器一致），绝不让「覆盖」把文件覆盖到它自己身上。
+    """
+    if not sources:
+        raise FileClipError("file_clip.no_paths")
+    if not dest_dir or not os.path.isabs(dest_dir) or not os.path.isdir(dest_dir):
+        raise FileClipError("file_clip.dest_missing")
+    dest_n = _norm(dest_dir)
+    dest_abs = os.path.normcase(os.path.abspath(dest_dir))
+    kept: List[str] = []
+    same_dir = False
+    for src in sources:
+        if not isinstance(src, str) or not os.path.isabs(src) or not os.path.lexists(src):
+            raise FileClipError("file_clip.source_missing")
+        src_n = _norm(src)
+        if os.path.isdir(src) and (dest_n == src_n or dest_n.startswith(src_n.rstrip(os.sep) + os.sep)):
+            raise FileClipError("file_clip.drop_into_self")
+        # 同目录判断两种都比：解析后的真实路径，以及不解析末段的路径（符号链接拖回自己所在文件夹时，
+        # 只比真实路径会漏掉，随后「覆盖」会让复制落到它自己身上）。
+        parent_abs = os.path.normcase(os.path.dirname(os.path.abspath(src)))
+        if os.path.dirname(src_n) == dest_n or parent_abs == dest_abs:
+            same_dir = True
+            if move:
+                continue
+        kept.append(src)
+    if not kept:
+        return {"ok": True, "operation": "move", "files_total": 0, "bytes_total": 0, "files_done": 0,
+                "bytes_done": 0, "fast_moved_count": 0, "renamed": [], "skipped": [], "errors": [],
+                "elapsed": 0.0, "cancelled": False, "noop": True}
+    if same_dir and not move:
+        on_conflict = "rename"
+    report = _run_with_progress(
+        file_engine.transfer,
+        on_progress,
+        sources=kept,
+        dest_dir=dest_dir,
+        move=move,
+        on_conflict=on_conflict,
+    )
+    result = _report_to_dict(report)
+    op_name = "drop_move" if move else "drop_copy"
+    _record_operation(op_name, result, kept)
+    _record_history(op_name, kept, result)
+    return result
+
+
 def run_delete(paths: List[str], recycle: bool, on_progress: Callable[[int, int], None]) -> Dict:
     if not paths:
         raise FileClipError("file_clip.no_paths")
@@ -317,10 +371,27 @@ def set_hook_enabled(enabled: bool) -> dict:
         runtime = si.provision_runtime()
         si.restart_agent(runtime, on_conflict="rename")
         si.set_autostart(True, runtime)
+        si.write_autostart_intent(True)
         return si.get_status(runtime)
     else:
         si.stop_agent()
         si.set_autostart(False)
+        si.write_autostart_intent(False)
+    return si.get_status()
+
+
+def set_hook_running(running: bool) -> dict:
+    """只启动/停止引擎，不碰开机自启动：文件管理器的「停用」以前顺手删了 Run 项，重启后自启动就没了。"""
+    from core.fileops import system_integration as si
+
+    if running:
+        si.build_hook_agent()
+        runtime = si.provision_runtime()
+        si.restart_agent(runtime, on_conflict="rename")
+        if si.get_autostart():
+            si.set_autostart(True, runtime)  # 注册跟到当前 runtime，命令行不变则无副作用
+        return si.get_status(runtime)
+    si.stop_agent()
     return si.get_status()
 
 

@@ -890,5 +890,18 @@
   "health.toggleCategory": "Déplier ou replier cette catégorie",
   "rules.remove": "Supprimer cette règle",
   "popup.removeRule": "Supprimer cette règle",
-  "software.keepAlways": "Toujours conserver, ne plus proposer"
+  "software.keepAlways": "Toujours conserver, ne plus proposer",
+  "defrag.unknownMode": "Mode d'optimisation non pris en charge",
+  "elevate.failed": "L'action administrateur a échoué",
+  "elevate.jobWriteFailed": "Impossible d'écrire le fichier de tâche administrateur",
+  "helper.actionNotAllowed": "L'assistant administrateur a refusé cette action",
+  "helper.badJob": "Le fichier de tâche administrateur n'est pas valide",
+  "helper.badTarget": "La cible est hors du périmètre autorisé",
+  "helper.failed": "L'assistant administrateur a échoué",
+  "helper.jobExpired": "La tâche administrateur a expiré — réessayez",
+  "memory.noTargets": "Aucun élément sélectionné n'est un processus dont la mémoire peut être libérée",
+  "scan.noCache": "Les résultats de l'analyse ne sont plus disponibles — relancez l'analyse",
+  "software.launchFailed": "Impossible de lancer le programme de désinstallation",
+  "toolbox.invalidGuid": "Identifiant de mode d'alimentation non valide",
+  "toolbox.unavailable": "Cet outil n'est pas disponible sur ce PC pour le moment"
 }

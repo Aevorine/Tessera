@@ -1167,17 +1167,22 @@ func (d *Agent) sendFiles(p map[string]any) (any, error) {
 		targets = []string{d.store.Options().DefaultSendDevice}
 	}
 
-	var sessions []*node.Session
+	// 按设备而不是按会话：指定的目标此刻正在重连也照发（等它上线），会话中途被替换就续传。
+	var devices []string
 	if len(targets) == 0 {
-		sessions = d.n.Sessions()
+		for _, s := range d.n.Sessions() {
+			if s.Alive() {
+				devices = append(devices, s.Peer().DeviceID)
+			}
+		}
 	} else {
 		for _, id := range targets {
-			if s, ok := d.n.SessionFor(id); ok {
-				sessions = append(sessions, s)
+			if p, err := d.store.GetPeer(id); err == nil && p.Usable(time.Now()) {
+				devices = append(devices, id)
 			}
 		}
 	}
-	if len(sessions) == 0 {
+	if len(devices) == 0 {
 		return nil, fmt.Errorf("没有在线的目标设备")
 	}
 
@@ -1188,13 +1193,13 @@ func (d *Agent) sendFiles(p map[string]any) (any, error) {
 
 	// 一对多：每台设备一条独立的传输链路，单台失败不影响其他。
 	// 立刻返回，进度通过 transfer 事件推给 UI，不阻塞调用方。
-	for _, s := range sessions {
-		go d.sendBatch(s, items)
+	for _, dev := range devices {
+		go d.sendBatch(dev, items)
 	}
 	return map[string]any{
-		"queued":  len(sessions) * len(items),
+		"queued":  len(devices) * len(items),
 		"files":   len(items),
-		"devices": len(sessions),
+		"devices": len(devices),
 		"skipped": skipped,
 	}, nil
 }
@@ -1211,7 +1216,7 @@ const (
 )
 
 // sendBatch 把一批文件发给一台设备：大文件逐个发、小文件并发发，两条车道同时走。
-func (d *Agent) sendBatch(s *node.Session, items []sendItem) {
+func (d *Agent) sendBatch(dev string, items []sendItem) {
 	var big, small []sendItem
 	for _, it := range items {
 		if it.size >= bigFileBytes {
@@ -1228,7 +1233,7 @@ func (d *Agent) sendBatch(s *node.Session, items []sendItem) {
 		go func() {
 			defer wg.Done()
 			for _, it := range big {
-				d.sendOne(s, it, rej)
+				d.sendOne(dev, it, rej)
 			}
 		}()
 	}
@@ -1243,7 +1248,7 @@ func (d *Agent) sendBatch(s *node.Session, items []sendItem) {
 			go func() {
 				defer wg.Done()
 				for it := range jobs {
-					d.sendOne(s, it, rej)
+					d.sendOne(dev, it, rej)
 				}
 			}()
 		}
@@ -1253,12 +1258,23 @@ func (d *Agent) sendBatch(s *node.Session, items []sendItem) {
 		close(jobs)
 	}
 	wg.Wait()
+	if n := rej.skipped.Load(); n > 0 {
+		d.emit("transfer", map[string]any{
+			"kind": "error", "direction": "send", "device_id": dev, "device_name": d.peerName(dev),
+			"name": "", "error": fmt.Sprintf("%v，另有 %d 个文件未发送", node.ErrDeviceOffline, n),
+		})
+	}
 }
 
-// rejectedFolders 记下对端已经回绝过的文件夹。
+// rejectedFolders 是一批发送的共享状态：对端已经回绝过的文件夹，以及对端是否已判定不在线。
 type rejectedFolders struct {
 	mu   sync.Mutex
 	seen map[string]bool // folder -> 是否已经报过错
+
+	// offline：这一批里已有文件等满时限对端仍不在线。之后还没开始的文件不再各等一遍（100 个文件 × 2 分钟
+	// 等于让界面挂几个小时的"等待上线"），直接计入 skipped，批末汇总成一条。
+	offline atomic.Bool
+	skipped atomic.Int32
 }
 
 // isRejected 报告这个文件夹是否已被回绝。
@@ -1280,29 +1296,50 @@ func (r *rejectedFolders) markRejected(folder string) bool {
 	return true
 }
 
-func (d *Agent) sendOne(s *node.Session, it sendItem, rej *rejectedFolders) {
+// peerName 取设备显示名：在线时用会话里最新的，离线时用配对存档里的。
+func (d *Agent) peerName(dev string) string {
+	if s, ok := d.n.SessionFor(dev); ok {
+		return s.PeerName()
+	}
+	if p, err := d.store.GetPeer(dev); err == nil {
+		return p.Name
+	}
+	return dev
+}
+
+func (d *Agent) sendOne(dev string, it sendItem, rej *rejectedFolders) {
 	name := filepath.Base(it.path)
-	dev := s.Peer().DeviceID
 	// 对端已经回绝了这个文件夹：剩下的文件不用再去问一遍。
 	if it.folder != "" && rej.isRejected(it.folder) {
 		return
 	}
+	if rej.offline.Load() {
+		rej.skipped.Add(1)
+		return
+	}
 	d.emit("transfer", map[string]any{
 		"kind": "start", "direction": "send",
-		"device_id": dev, "device_name": s.PeerName(), "name": name,
+		"device_id": dev, "device_name": d.peerName(dev), "name": name,
 		"folder": it.folder,
 	})
 
-	var (
-		res *node.SendFileResult
-		err error
-	)
-	if it.folder != "" {
-		res, err = s.SendFileInFolder(context.Background(), it.path, it.relPath, it.folder, it.group)
-	} else {
-		res, err = s.SendFileAs(context.Background(), it.path, it.relPath)
+	onState := func(kind string, attempt int) {
+		d.emit("transfer", map[string]any{
+			"kind": kind, "direction": "send", "attempt": attempt,
+			"device_id": dev, "device_name": d.peerName(dev), "name": name,
+			"folder": it.folder,
+		})
 	}
+	res, err := d.n.SendResilient(context.Background(), dev, onState, func(s *node.Session) (*node.SendFileResult, error) {
+		if it.folder != "" {
+			return s.SendFileInFolder(context.Background(), it.path, it.relPath, it.folder, it.group)
+		}
+		return s.SendFileAs(context.Background(), it.path, it.relPath)
+	})
 	if err != nil {
+		if errors.Is(err, node.ErrDeviceOffline) {
+			rej.offline.Store(true)
+		}
 		// 同一个文件夹被回绝时，只报第一条：后面几百个文件各报一遍
 		// 只会把界面刷成一面红墙，而原因只有一个。
 		if it.folder != "" && errors.Is(err, node.ErrPeerRejected) && !rej.markRejected(it.folder) {
@@ -1317,7 +1354,7 @@ func (d *Agent) sendOne(s *node.Session, it sendItem, rej *rejectedFolders) {
 		payload["kind"] = kind
 		payload["direction"] = "send"
 		payload["device_id"] = dev
-		payload["device_name"] = s.PeerName()
+		payload["device_name"] = d.peerName(dev)
 		payload["name"] = name
 		payload["folder"] = it.folder
 		d.emit("transfer", payload)
@@ -1326,7 +1363,7 @@ func (d *Agent) sendOne(s *node.Session, it sendItem, rej *rejectedFolders) {
 	d.emit("transfer", map[string]any{
 		"kind": "done", "direction": "send",
 		"transfer_id": res.ID, "item_kind": res.Kind,
-		"device_id": dev, "device_name": s.PeerName(), "name": res.Name,
+		"device_id": dev, "device_name": d.peerName(dev), "name": res.Name,
 		"folder": it.folder,
 		"size":   res.Size, "chunks": res.Chunks, "sent_chunks": res.SentChunks,
 		// skipped 让界面能说"对方已经有了"，而不是笼统的"已发送"。
@@ -1594,6 +1631,13 @@ func (d *Agent) onNodeEvent(e node.Event) {
 			msg = e.Msg + ": " + e.Err.Error()
 		}
 		d.emit("notice", map[string]any{"device_id": e.DeviceID, "message": msg})
+	// 断链诊断：宿主只写日志，不弹界面（界面已由紧随其后的 state 事件更新）。
+	case "link_down":
+		m := map[string]any{"device_id": e.DeviceID, "reason": e.Msg, "code": e.Code}
+		for k, v := range e.Detail {
+			m[k] = v
+		}
+		d.emit("link_down", m)
 	}
 }
 

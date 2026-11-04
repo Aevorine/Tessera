@@ -2,6 +2,7 @@ import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process'
 import readline from 'node:readline'
 import type { ProgressEvent, VaultMethodName, VaultMethods, VaultPushEvent } from '../src/shared/ipcTypes'
 import { markStartup } from './startupTiming'
+import { fingerprintLine, logEvent, logStderr, redact } from './appLog'
 
 /** 一次非主动退出的记录（写进 userData/logs/backend-exits.jsonl）。 */
 export interface BackendExitRecord {
@@ -148,6 +149,7 @@ export class PythonBridge {
     this.proc.stderr.on('data', (chunk: Buffer) => {
       const text = chunk.toString()
       console.error('[python]', text)
+      logStderr('backend', text)
       // 只留最后 2000 字符：traceback 的**结尾**才是根因那一行，
       // 而开头是一堆调用栈。截断留尾不留头。
       this.lastStderr = (this.lastStderr + text).slice(-2000)
@@ -161,7 +163,7 @@ export class PythonBridge {
           code,
           signal,
           uptimeMs: Date.now() - this.spawnedAt,
-          stderrTail: this.lastStderr.slice(-1500),
+          stderrTail: redact(this.lastStderr.slice(-1500)),
         })
       }
       const err = new Error(`Python backend exited unexpectedly (code ${code})`)
@@ -196,6 +198,7 @@ export class PythonBridge {
         console.error(
           `[python] backend crashed ${this.crashCount - 1} times in a row; giving up. Last stderr:\n${this.lastStderr}`,
         )
+        logEvent('backend', 'error', 'gave_up', `crashed ${this.crashCount - 1} times in a row`, { code })
         this.onFatal?.(this.lastStderr.trim() || `exit code ${code}`)
         return
       }
@@ -204,6 +207,7 @@ export class PythonBridge {
       console.error(
         `[python] backend crashed (code ${code}), attempt ${this.crashCount}/${RESTART_MAX_ATTEMPTS}, restarting in ${delay}ms`,
       )
+      logEvent('backend', 'warn', 'restart_scheduled', undefined, { code, attempt: this.crashCount, delay_ms: delay })
       setTimeout(() => {
         if (this.disposed) return
         this.spawnProcess()
@@ -292,6 +296,7 @@ export class PythonBridge {
       msg = JSON.parse(trimmed)
     } catch {
       console.error('[python] failed to parse line:', trimmed)
+      logEvent('backend', 'warn', 'bad_line', undefined, fingerprintLine(trimmed))
       return
     }
 

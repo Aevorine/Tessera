@@ -4230,6 +4230,22 @@ def rpc_file_clip_paste(params, request_id):
     return {"ok": True, **result}
 
 
+def rpc_file_clip_transfer(params, request_id):
+    """拖放复制 / 移动：源由界面给出（拖动的条目或从资源管理器拖进来的文件），不经剪贴板。"""
+    sources = params.get("sources") or []
+    dest_dir = str(params.get("dest_dir") or "")
+    move = bool(params.get("move"))
+    on_conflict = params.get("on_conflict") or "rename"
+    if on_conflict not in ("rename", "skip", "overwrite") or not isinstance(sources, list) or len(sources) > 10000:
+        return {"ok": False, "error": "file_clip.invalid_request"}
+    on_progress = _throttled_progress(request_id)
+    try:
+        result = fileops_service.run_transfer([str(s) for s in sources], dest_dir, move, on_conflict, on_progress)
+    except fileops_service.FileClipError as exc:
+        return {"ok": False, "error": exc.code}
+    return {"ok": True, **result}
+
+
 def rpc_file_clip_delete(params, request_id):
     paths = params.get("paths") or []
     recycle = bool(params.get("recycle", True))
@@ -4286,7 +4302,32 @@ def rpc_file_clip_hook_set_enabled(params):
 
 
 def rpc_file_clip_hook_status(params):
-    return {"ok": True, **fileops_service.get_hook_status()}
+    # 查询失败必须报失败（界面显示「无法读取」），不能让调用方把未知当成「关」
+    try:
+        return {"ok": True, **fileops_service.get_hook_status()}
+    except Exception as exc:
+        logger.exception("file_clip_hook_status failed")
+        return {"ok": False, "error": "file_clip.hook_status_failed", "error_params": {"detail": str(exc)}}
+
+
+def rpc_file_clip_hook_set_running(params):
+    running = bool(params.get("running", False))
+    try:
+        if running:
+            try:
+                from core.fileops import system_integration as _si
+                _si.write_shortcut_config(ui_settings.load_file_manager_shortcuts(_data_dir))
+            except OSError:
+                pass
+        status = fileops_service.set_hook_running(running)
+    except Exception as exc:
+        logger.exception("file_clip_hook_set_running failed")
+        diagnostic_log.record(
+            _data_dir, "fileops", "系统级引擎启停失败",
+            detail=f"{type(exc).__name__}: {exc}", code="file_clip.hook_toggle_failed",
+        )
+        return {"ok": False, "error": "file_clip.hook_toggle_failed", "error_params": {"detail": str(exc)}}
+    return {"ok": True, **status}
 
 
 def rpc_file_clip_hook_sync_shortcuts(params):
@@ -4337,6 +4378,11 @@ def rpc_file_clip_check_conflicts(params):
     mode='existing' 只返回目标已存在项，'all' 返回全部源。"""
     dest_dir = params.get("dest_dir", "")
     mode = params.get("mode", "existing")
+    explicit = params.get("paths")
+    if isinstance(explicit, list) and explicit:
+        paths = [str(p) for p in explicit][:10000]
+        conflicts = fileops_service.check_conflicts(paths, dest_dir, mode)
+        return {"ok": True, "conflicts": conflicts, "has_files": True, "is_cut": False, "count": len(paths)}
     try:
         status = fileops_service.read_clipboard_status()
     except fileops_service.FileClipError as exc:
@@ -5670,6 +5716,7 @@ _METHODS: Dict[str, Callable] = {
     "file_clip_clipboard_status": rpc_file_clip_clipboard_status,
     "file_clip_hook_set_enabled": rpc_file_clip_hook_set_enabled,
     "file_clip_hook_status": rpc_file_clip_hook_status,
+    "file_clip_hook_set_running": rpc_file_clip_hook_set_running,
     "file_clip_hook_sync_shortcuts": rpc_file_clip_hook_sync_shortcuts,
     "file_clip_progress_preferences_get": rpc_file_clip_progress_preferences_get,
     "file_clip_progress_preferences_set": rpc_file_clip_progress_preferences_set,
@@ -5763,6 +5810,7 @@ _METHODS_WITH_PROGRESS: Dict[str, Callable] = {
     "ai_chat": rpc_ai_chat,
     "file_clip_paste": rpc_file_clip_paste,
     "file_clip_delete": rpc_file_clip_delete,
+    "file_clip_transfer": rpc_file_clip_transfer,
     "file_clip_secure_erase": rpc_file_clip_secure_erase,
     "folder_container_diff": rpc_folder_container_diff,
     "folder_container_reencrypt": rpc_folder_container_reencrypt,
@@ -5977,7 +6025,17 @@ def main() -> None:
     # 钩子对账要拷文件、算哈希（秒级），放后台线程避免拖慢首个请求；失败进故障日志。
     def _reconcile_hook() -> None:
         try:
-            fileops_service.reconcile_hook_autostart()
+            st = fileops_service.reconcile_hook_autostart() or {}
+            # 每次启动留一行对账结果：「重启后快捷键自启动又关了」要靠它分清是 Run 项被删、被任务管理器禁用、
+            # 还是开发版不碰安装版的登记。
+            logger.info(
+                "file hook reconcile: running=%s autostart=%s registered=%s approved=%s intent=%s restored=%s",
+                st.get("running"), st.get("autostart"), st.get("autostart_registered"),
+                st.get("autostart_approved"), st.get("autostart_intent"), bool(st.get("restored")),
+            )
+            # 恢复启动项必须让用户看得见：被删的原因也可能是杀软或用户自己用 Autoruns 删的，不能悄悄改回去。
+            if st.get("restored"):
+                _write({"event": "file_hook_autostart_restored"})
         except Exception as exc:
             logger.exception("failed to reconcile file hook autostart")
             try:

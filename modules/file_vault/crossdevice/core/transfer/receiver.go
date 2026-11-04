@@ -371,6 +371,8 @@ func (r *FileReceiver) Finish() error {
 	if err := os.Rename(r.partPath, final); err != nil {
 		return fmt.Errorf("落地文件失败: %w", err)
 	}
+	// 来自别的设备的文件标成「来自网络」：对端发来的 .exe / 宏文档打开时，Windows 照常弹 SmartScreen / 受保护视图。
+	markFromOtherDevice(final)
 	r.destPath = final
 	r.removeStateFile()
 	return nil

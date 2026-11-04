@@ -890,5 +890,18 @@
   "health.toggleCategory": "Expandir o contraer esta categoría",
   "rules.remove": "Eliminar esta regla",
   "popup.removeRule": "Eliminar esta regla",
-  "software.keepAlways": "Conservar siempre, no volver a sugerir"
+  "software.keepAlways": "Conservar siempre, no volver a sugerir",
+  "defrag.unknownMode": "Modo de optimización no admitido",
+  "elevate.failed": "La acción de administrador falló",
+  "elevate.jobWriteFailed": "No se pudo escribir el archivo de tarea de administrador",
+  "helper.actionNotAllowed": "El asistente de administrador rechazó esta acción",
+  "helper.badJob": "El archivo de tarea de administrador no es válido",
+  "helper.badTarget": "El destino está fuera del ámbito permitido",
+  "helper.failed": "El asistente de administrador falló",
+  "helper.jobExpired": "La tarea de administrador caducó; inténtalo de nuevo",
+  "memory.noTargets": "Ningún elemento seleccionado es un proceso cuya memoria se pueda liberar",
+  "scan.noCache": "Los resultados del análisis ya no están disponibles; vuelve a analizar",
+  "software.launchFailed": "No se pudo iniciar el desinstalador",
+  "toolbox.invalidGuid": "Identificador de plan de energía no válido",
+  "toolbox.unavailable": "Esta herramienta no está disponible ahora en este equipo"
 }

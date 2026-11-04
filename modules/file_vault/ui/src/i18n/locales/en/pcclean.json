@@ -890,5 +890,18 @@
   "health.toggleCategory": "Expand or collapse this category",
   "rules.remove": "Delete this rule",
   "popup.removeRule": "Delete this rule",
-  "software.keepAlways": "Always keep, stop suggesting"
+  "software.keepAlways": "Always keep, stop suggesting",
+  "defrag.unknownMode": "Unsupported optimization mode",
+  "elevate.failed": "The administrator action failed",
+  "elevate.jobWriteFailed": "Couldn't write the administrator job file",
+  "helper.actionNotAllowed": "The administrator helper refused this action",
+  "helper.badJob": "The administrator job file is invalid",
+  "helper.badTarget": "The target is outside the allowed scope",
+  "helper.failed": "The administrator helper failed",
+  "helper.jobExpired": "The administrator job expired — please try again",
+  "memory.noTargets": "None of the selected items is a process whose memory can be freed",
+  "scan.noCache": "The scan results are no longer available — scan again",
+  "software.launchFailed": "Couldn't start the uninstaller",
+  "toolbox.invalidGuid": "Invalid power plan identifier",
+  "toolbox.unavailable": "This tool isn't available on this PC right now"
 }

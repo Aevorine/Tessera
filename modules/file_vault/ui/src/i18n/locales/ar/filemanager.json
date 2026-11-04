@@ -105,5 +105,11 @@
   "historyFilesLabel": "ملفات",
   "historyClearButton": "مسح السجل",
   "historyFailedToast": "تعذّر تحميل السجل",
-  "historyClearedToast": "تم مسح السجل"
+  "historyClearedToast": "تم مسح السجل",
+  "dropHint": "إفلات في {{folder}}",
+  "dropMovedToast": "تم نقل {{count}} عنصر إلى {{folder}}",
+  "dropCopiedToast": "تم نسخ {{count}} عنصر إلى {{folder}}",
+  "dropFailedToast": "لم يكتمل الإفلات",
+  "dropMoveProgressLabel": "جارٍ النقل...",
+  "dropCopyProgressLabel": "جارٍ النسخ..."
 }

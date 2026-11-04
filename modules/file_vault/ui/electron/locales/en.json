@@ -69,5 +69,10 @@
   "trayAutoStart": "Start at login",
   "traySilentStart": "Start silently (tray only)",
   "trayStatusLocked": "Locked",
-  "trayStatusUnlocked": "Unlocked"
+  "trayStatusUnlocked": "Unlocked",
+  "traySendClipboardSent": "Clipboard sent to {{count}} device(s)",
+  "traySendClipboardNone": "No online device can receive the clipboard",
+  "traySendClipboardEmpty": "The clipboard is empty — nothing to send",
+  "traySendClipboardFailed": "Couldn't send the clipboard: {{detail}}",
+  "fileHookAutostartRestored": "The startup entry for the system-level file shortcuts was removed outside Tessera and has been restored to match your setting. Turn it off in Settings if you no longer want it."
 }

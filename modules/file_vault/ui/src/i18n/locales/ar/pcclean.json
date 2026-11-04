@@ -911,5 +911,18 @@
   "health.toggleCategory": "توسيع هذه الفئة أو طيها",
   "rules.remove": "حذف هذه القاعدة",
   "popup.removeRule": "حذف هذه القاعدة",
-  "software.keepAlways": "الاحتفاظ دائمًا وعدم الاقتراح مجددًا"
+  "software.keepAlways": "الاحتفاظ دائمًا وعدم الاقتراح مجددًا",
+  "defrag.unknownMode": "وضع تحسين غير مدعوم",
+  "elevate.failed": "فشل إجراء المسؤول",
+  "elevate.jobWriteFailed": "تعذّرت كتابة ملف مهمة المسؤول",
+  "helper.actionNotAllowed": "رفض مساعد المسؤول هذا الإجراء",
+  "helper.badJob": "ملف مهمة المسؤول غير صالح",
+  "helper.badTarget": "الهدف خارج النطاق المسموح",
+  "helper.failed": "فشل مساعد المسؤول",
+  "helper.jobExpired": "انتهت صلاحية مهمة المسؤول، حاول مجددًا",
+  "memory.noTargets": "لا يوجد بين العناصر المحددة عملية يمكن تحرير ذاكرتها",
+  "scan.noCache": "لم تعد نتائج الفحص متاحة، أعد الفحص",
+  "software.launchFailed": "تعذّر تشغيل برنامج إلغاء التثبيت",
+  "toolbox.invalidGuid": "معرّف خطة الطاقة غير صالح",
+  "toolbox.unavailable": "هذه الأداة غير متاحة على هذا الجهاز حاليًا"
 }
