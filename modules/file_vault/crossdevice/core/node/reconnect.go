@@ -337,6 +337,11 @@ func (n *Node) dialAndHandshake(ctx context.Context, peer *store.Peer, addr, via
 // 调用方负责决胜判断（sess.carrier 是否为自己传入的）和 sess.run()，因为中继路输了
 // 决胜时的清理与直连不同。
 func (n *Node) handshakeOver(ctx context.Context, peer *store.Peer, rw io.ReadWriteCloser, car carrier, via string) (*Session, error) {
+	// 拨号途中对方已拨进来（或另一路已连上）：不再握手，交还已有会话，调用方关掉这条新连接。
+	// 否则晚到的拨出连接（中继、打洞要几秒）会被对端当成重拨，替换掉刚建好的那条。
+	if s, ok := n.SessionFor(peer.DeviceID); ok && s.Alive() {
+		return s, nil
+	}
 	if _, err := rw.Write([]byte{modeNormal}); err != nil {
 		return nil, err
 	}

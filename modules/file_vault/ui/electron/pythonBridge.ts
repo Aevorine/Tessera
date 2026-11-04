@@ -135,6 +135,7 @@ export class PythonBridge {
 
   private spawnProcess(): void {
     this.spawnedAt = Date.now()
+    this.lastStderr = '' // 崩溃记录只带本进程的 stderr
     this.proc = spawn(this.command, [...this.leadingArgs, ...this.args], {
       stdio: ['pipe', 'pipe', 'pipe'],
       env: { ...process.env, PYTHONIOENCODING: 'utf-8' },
@@ -328,6 +329,8 @@ export class PythonBridge {
    */
   restartForLock(): void {
     if (this.disposed) return
+    // 进程已崩、正等退避重拉：新进程本来就没有密钥；此时立旗会把下一次真崩溃当成锁定而漏记。
+    if (this.proc.exitCode !== null || this.proc.signalCode !== null) return
     this.lockRestarting = true
     this.proc.kill()
   }

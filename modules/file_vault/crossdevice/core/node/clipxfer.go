@@ -198,6 +198,7 @@ func (s *Session) sendClipFile(itemID []byte, mime, path string, size int64) err
 		if err := s.wc.WriteFrame(&wire.Frame{Type: wire.TypeXferChunk, Payload: pc.frame}); err != nil {
 			return err
 		}
+		s.touch() // 同 sendfile.go：写得动说明对端在消费，判活不该在此时断开
 		sentChunks++
 		report(false)
 	}

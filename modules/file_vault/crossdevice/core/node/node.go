@@ -856,6 +856,20 @@ func (n *Node) helloMsg(lastRecv uint64) *wire.Hello {
 
 // ---------- 会话登记 ----------
 
+// activityRW 每读到一段字节（一个加密记录，≤64 KiB）就记一次活动时间。
+type activityRW struct {
+	io.ReadWriter
+	last *atomic.Int64
+}
+
+func (a activityRW) Read(p []byte) (int, error) {
+	n, err := a.ReadWriter.Read(p)
+	if n > 0 {
+		a.last.Store(time.Now().UnixNano())
+	}
+	return n, err
+}
+
 func (n *Node) newSession(peer *store.Peer, car carrier, via string, sc *crypto.SecureConn, initiator bool, peerFeatures []string) *Session {
 	s := &Session{
 		node:         n,
@@ -863,7 +877,6 @@ func (n *Node) newSession(peer *store.Peer, car carrier, via string, sc *crypto.
 		carrier:      car,
 		via:          via,
 		sc:           sc,
-		wc:           wire.NewConn(sc),
 		initiator:    initiator,
 		peerFeatures: peerFeatures,
 		done:         make(chan struct{}),
@@ -871,13 +884,17 @@ func (n *Node) newSession(peer *store.Peer, car carrier, via string, sc *crypto.
 		pending:      make(map[string]*clipFetch),
 		recvXfers:    make(map[string]*recvTransfer),
 	}
+	// 按读到的每段字节记活动，而非整帧读完才记：慢链路上一个 4 MiB 分块要好几秒，判活会误判。
+	s.wc = wire.NewConn(activityRW{ReadWriter: sc, last: &s.lastActive})
 	n.mu.Lock()
 	if old, ok := n.sessions[peer.DeviceID]; ok && old.Alive() {
 		// 只有活着的旧会话才需要决胜；已关闭但尚未被 run() 的 defer 摘掉的直接顶替，
 		// 否则可能保留一具尸体，设备再也连不上。
-		// 对端拨进来而旧会话已建立超过 glareWindow：对端已丢了旧连接，旧的多半是死链。
-		// 以前这里也按互拨决胜，可能留死链、拒活链，同步卡到心跳超时（30–40 秒）。
-		redial := !initiator && time.Since(old.createdAt) >= glareWindow
+		// 旧会话已建立超过 glareWindow：新连接是对端丢了旧连接后的重拨，旧的多半是死链，新的胜出。
+		// 两端同一规则（不分拨入拨出），结果一致；以前这里一律按互拨决胜，可能留死链、拒活链，
+		// 同步卡到心跳超时（30–40 秒）。发起方握手前已查过有无活会话（handshakeOver），晚到的
+		// 拨出连接不会走到这里替换刚建好的那条。
+		redial := time.Since(old.createdAt) >= glareWindow
 		// 双方自动重连会同时互拨（glare），各有两条连接；若都"留新关旧"会互踢并立刻重连，
 		// 表现为抖动。所以两端用同一规则算赢家：device_id 较小的一方作为拨号方的那条胜出，
 		// 两边结果一致，恰好留一条。
@@ -887,7 +904,7 @@ func (n *Node) newSession(peer *store.Peer, car carrier, via string, sc *crypto.
 			return old
 		}
 		if redial {
-			old.close(errors.New("对端重新拨入，替换旧连接"))
+			old.close(errors.New("重新连接，替换旧连接"))
 		} else {
 			old.close(errors.New("被同时互拨中胜出的连接替换"))
 		}
