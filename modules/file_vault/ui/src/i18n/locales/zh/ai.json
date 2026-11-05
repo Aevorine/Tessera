@@ -60,5 +60,19 @@
   "starter.toTable": "把下面这些内容整理成一张表格：",
   "starter.summarize": "总结这篇长文的要点，控制在五条以内：",
   "starter.draftEmail": "帮我起草一封正式邮件，内容是：",
-  "starter.debug": "这个报错是什么原因，怎么修："
+  "starter.debug": "这个报错是什么原因，怎么修：",
+  "desktopConfirmTitle.launch": "AI 要打开应用",
+  "desktopConfirmTitle.click": "AI 要点击",
+  "desktopConfirmTitle.type": "AI 要输入文字",
+  "desktopConfirmTitle.setValue": "AI 要填写内容",
+  "desktopConfirmTitle.key": "AI 要按键",
+  "desktopConfirmApp": "应用",
+  "desktopConfirmTarget": "目标程序",
+  "desktopConfirmKey": "按键",
+  "desktopConfirmButton": "鼠标",
+  "desktopConfirmDeny": "拒绝",
+  "desktopConfirmAllowAll": "本轮全部允许",
+  "desktopConfirmAllow": "允许",
+  "desktopConfirmCountdown": "{{seconds}} 秒后自动拒绝",
+  "desktopConfirmTimedOut": "确认已超时，AI 没有执行这一步"
 }

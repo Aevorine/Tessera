@@ -241,5 +241,8 @@
   "file_clip.drop_into_self": "不能把文件夹放进它自己里面",
   "file_clip.source_missing": "有文件已不存在，拖放已取消",
   "file_clip.dest_missing": "目标文件夹不存在",
-  "ai.desktop_target_blocked": "出于安全考虑，AI 不能启动或操作命令行、脚本宿主、注册表编辑器和 Tessera 自身的窗口。"
+  "ai.desktop_target_blocked": "出于安全考虑，AI 不能启动或操作命令行、脚本宿主、注册表编辑器和 Tessera 自身的窗口。",
+  "ai.desktop_denied_by_user": "你拒绝了这一步桌面操作，AI 没有执行。",
+  "ai.desktop_confirm_timeout": "确认超时，AI 没有执行这一步桌面操作。",
+  "ai.desktop_confirm_expired": "这条确认已经失效。"
 }

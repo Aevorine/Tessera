@@ -60,5 +60,19 @@
   "starter.toTable": "Transforme ce qui suit en tableau :",
   "starter.summarize": "Résume ce long texte en cinq points maximum :",
   "starter.draftEmail": "Rédige un e-mail formel à propos de :",
-  "starter.debug": "Quelle est la cause de cette erreur et comment la corriger :"
+  "starter.debug": "Quelle est la cause de cette erreur et comment la corriger :",
+  "desktopConfirmTitle.launch": "L’IA veut ouvrir une application",
+  "desktopConfirmTitle.click": "L’IA veut cliquer",
+  "desktopConfirmTitle.type": "L’IA veut saisir du texte",
+  "desktopConfirmTitle.setValue": "L’IA veut remplir un champ",
+  "desktopConfirmTitle.key": "L’IA veut appuyer sur une touche",
+  "desktopConfirmApp": "Application",
+  "desktopConfirmTarget": "Cible",
+  "desktopConfirmKey": "Touche",
+  "desktopConfirmButton": "Souris",
+  "desktopConfirmDeny": "Refuser",
+  "desktopConfirmAllowAll": "Tout autoriser pour ce tour",
+  "desktopConfirmAllow": "Autoriser",
+  "desktopConfirmCountdown": "Refus automatique dans {{seconds}} s",
+  "desktopConfirmTimedOut": "Confirmation expirée ; l’IA n’a pas exécuté cette étape"
 }

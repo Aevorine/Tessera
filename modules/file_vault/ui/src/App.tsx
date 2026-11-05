@@ -8,6 +8,7 @@ import { LanguageSwitcher } from '@/components/LanguageSwitcher'
 import { ErrorBoundary } from '@/components/ErrorBoundary'
 import { ShortcutCheatSheet } from '@/components/ShortcutCheatSheet'
 import { GlobalIconTooltip } from '@/components/GlobalIconTooltip'
+import { DesktopActionConfirm } from '@/components/ai/DesktopActionConfirm'
 import { extractBackendReason } from '@/lib/backendError'
 import { vaultApi } from '@/lib/vaultApi'
 import { electronApi } from '@/lib/electronApi'
@@ -183,6 +184,7 @@ function App() {
           挂在 AppShell 里的话锁屏状态下按 ? 没反应，而那时用户往往最需要看一眼。 */}
       <ShortcutCheatSheet />
       <GlobalIconTooltip />
+      {view === 'app' && <DesktopActionConfirm />}
       <Toaster />
     </ErrorBoundary>
   )

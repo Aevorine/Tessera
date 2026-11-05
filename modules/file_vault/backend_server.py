@@ -37,6 +37,7 @@ from modules.file_vault import totp as totp_mod  # noqa: E402
 from modules.file_vault import errors  # noqa: E402
 from modules.file_vault import data_dir as data_dir_module  # noqa: E402
 from modules.file_vault import batch_engine  # noqa: E402
+from modules.file_vault import desktop_approval  # noqa: E402
 from modules.file_vault import search_index  # noqa: E402
 from modules.file_vault import security_health  # noqa: E402
 from modules.file_vault import runtime_resources  # noqa: E402
@@ -1172,10 +1173,23 @@ def _tool_call_name_and_arguments(call: dict):
     return (name, arguments) if isinstance(name, str) and isinstance(arguments, dict) else ("", {})
 
 
-def _desktop_tool_result(call: dict) -> tuple[str, str]:
+# 桌面动作执行前要用户在界面上点「允许」：网页里藏的指令不能直接操作电脑
+_desktop_approvals = desktop_approval.ApprovalBroker(lambda payload: _write(payload))
+
+
+def _desktop_tool_result(call: dict, turn: Optional[dict] = None) -> tuple[str, str]:
     name, arguments = _tool_call_name_and_arguments(call)
     if not name.startswith("desktop_"):
         return name, ""
+    if _desktop_approvals.needs_approval(name):
+        summary = desktop_approval.summarize(name, arguments, desktop_control.process_image)
+        verdict = _desktop_approvals.request(name, summary, turn if turn is not None else {})
+        if verdict != "allow":
+            code = "ai.desktop_denied_by_user" if verdict == "deny" else "ai.desktop_confirm_timeout"
+            return name, json.dumps({
+                "ok": False, "error": code,
+                "note": "The user did not approve this action. Do not retry it; tell the user what you wanted to do.",
+            }, ensure_ascii=False)
     try:
         result = desktop_control.execute(name, arguments)
         return name, json.dumps(result, ensure_ascii=False)
@@ -1200,6 +1214,12 @@ def _web_fetch_tool_result(call: dict) -> tuple[str, str]:
         return display_url, json.dumps({"ok": False, "error": "ai.web_fetch_unavailable"}, ensure_ascii=False)
 
 
+def rpc_ai_desktop_confirm_respond(params):
+    if not _desktop_approvals.respond(params.get("id"), params.get("decision")):
+        return {"ok": False, "error": "ai.desktop_confirm_expired"}
+    return {"ok": True}
+
+
 def rpc_ai_chat(params, request_id):
     if not isinstance(params.get("messages"), list) or not params["messages"]:
         return _error_result(ai_client.AiError("ai.invalid_request"))
@@ -1208,11 +1228,11 @@ def rpc_ai_chat(params, request_id):
     except Exception as exc:
         return _error_result(exc)
     return batch_engine.submit_batch_task(
-        request_id, lambda: _run_ai_chat(params), _write, batch_engine.PRIORITY_INTERACTIVE
+        request_id, lambda: _run_ai_chat(params, request_id), _write, batch_engine.PRIORITY_INTERACTIVE
     )
 
 
-def _run_ai_chat(params):
+def _run_ai_chat(params, request_id=None):
     messages = params.get("messages")
 
     # A manually-picked skill still overrides auto *skill selection*, but
@@ -1232,6 +1252,8 @@ def _run_ai_chat(params):
     skills_used = []
     tools_used = []
     web_fetches_used = []
+    # 本次回复内共享：「本轮全部允许」；等确认时每几秒报一次进度，界面的静默超时（20 s）才不会先判失败
+    turn: dict = {"heartbeat": lambda: _write({"id": request_id, "progress": {"kind": "desktop_confirm"}})}
     try:
         config = _resolve_ai_config({})
         for _ in range(_MAX_SKILL_TOOL_ROUNDS):
@@ -1253,7 +1275,7 @@ def _run_ai_chat(params):
             for call in tool_calls:
                 tool_name, _ = _tool_call_name_and_arguments(call)
                 if tool_name.startswith("desktop_"):
-                    used_name, result_text = _desktop_tool_result(call)
+                    used_name, result_text = _desktop_tool_result(call, turn)
                     tools_used.append(used_name)
                 elif tool_name == "web_fetch":
                     used_url, result_text = _web_fetch_tool_result(call)
@@ -5525,6 +5547,8 @@ def rpc_note_duplicates_merge(params):
 
 
 _METHODS: Dict[str, Callable] = {
+    # 必须是同步方法：ai_chat 的后台线程正等着它；放进 _METHODS_WITH_PROGRESS 会按 (params, request_id) 调用
+    "ai_desktop_confirm_respond": rpc_ai_desktop_confirm_respond,
     "identity_exists": rpc_identity_exists,
     "data_dir_info": rpc_data_dir_info,
     "data_dir_move": rpc_data_dir_move,

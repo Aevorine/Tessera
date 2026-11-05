@@ -1,8 +1,7 @@
-import { app, BrowserWindow, clipboard, dialog, globalShortcut, ipcMain, Menu, nativeImage, nativeTheme, Notification, powerMonitor, session, shell, Tray } from 'electron'
+import { app, BrowserWindow, dialog, globalShortcut, ipcMain, Menu, nativeImage, nativeTheme, Notification, powerMonitor, session, shell, Tray } from 'electron'
 import { createRequire } from 'node:module'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { execFile, execFileSync } from 'node:child_process'
-import { createHash } from 'node:crypto'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
@@ -27,7 +26,16 @@ import { createProcessGovernor } from './processGovernor'
 import { allowThroughFirewall, firewallStatus } from './firewall'
 import { verifySigner } from './authenticode'
 import { requiredFreeBytes } from './updateVersion'
-import { stripMarkupTags } from '../src/shared/plainText'
+import {
+  ClipFingerprinter,
+  isClipboardSensitive,
+  readLocalClipboard,
+  readText as readClipboardText,
+  writeIncomingClip,
+  writeText as writeClipboardText,
+  type IncomingClip,
+  type LocalClip,
+} from './clipboardIO'
 import { formatStartupReport, markStartup } from './startupTiming'
 import { addIdentityTokens, flushAppLogSync, initAppLog, logEvent, setIdentityTokens, type LogLevel } from './appLog'
 import {
@@ -244,10 +252,7 @@ function startCrossDeviceBridge(): void {
     // 收到别的设备发来的剪贴板内容 → 写进本机系统剪贴板。
     // 这一步必须在主进程做：渲染进程拿不到系统剪贴板的多格式写入能力。
     if (e.event === 'clip' && e.data) {
-      writeIncomingClip(e.data as IncomingClip)
-      // 写完立刻把指纹记下来，否则下一轮轮询会把刚收到的内容当成
-      // "用户又复制了一次"再广播回去（见 noteClipboardWritten）。
-      noteClipboardWritten()
+      void applyIncomingClip(e.data as IncomingClip)
     }
     // 守护进程就绪后才开始盯剪贴板：没有连接时发出去的每一条都只会白跑一趟。
     if (e.event === 'ready') {
@@ -336,275 +341,125 @@ function logCrossDeviceEvent(event: string, data: Record<string, unknown> | unde
   }
 }
 
-interface IncomingClip {
-  reps?: Array<{ mime: string; data?: string }>
-  preferred?: string
-}
-
-/**
- * 把收到的跨设备剪贴板内容写进系统剪贴板，一次写入所有可用表示，让目标应用自选；
- * 只写纯文本会让富文本粘到 Word 里丢格式、公式退化成源码。
- */
-function writeIncomingClip(clip: IncomingClip): void {
-  const reps = clip.reps ?? []
-  const decode = (mime: string): Buffer | null => {
-    const rep = reps.find((r) => r.mime === mime || r.mime.startsWith(mime))
-    if (!rep?.data) return null
-    try {
-      return Buffer.from(rep.data, 'base64')
-    } catch {
-      return null
-    }
-  }
-
-  const png = decode('image/png')
-  if (png) {
-    const img = nativeImage.createFromBuffer(png)
-    if (!img.isEmpty()) {
-      clipboard.writeImage(img)
-      return
-    }
-  }
-
-  const payload: { text?: string; html?: string; rtf?: string } = {}
-  const text = decode('text/plain')
-  const html = decode('text/html')
-  const rtf = decode('application/rtf')
-  if (text) payload.text = text.toString('utf-8')
-  if (html) payload.html = html.toString('utf-8')
-  if (rtf) payload.rtf = rtf.toString('utf-8')
-  // 纯文本兜底永远要有：没有它的话，只认 CF_UNICODETEXT 的老程序什么都粘不到。
-  if (!payload.text && payload.html) payload.text = stripMarkupTags(payload.html)
-  if (Object.keys(payload).length === 0) return
-  try {
-    clipboard.write(payload)
-  } catch {
-    // 富格式写入失败（剪贴板被别的程序占着、RTF 不合法）时至少把纯文本放进去——
-    // 什么都不写等于这次同步白做，而用户根本不知道失败了。
-    if (payload.text) {
-      try {
-        clipboard.writeText(payload.text)
-      } catch {
-        /* 剪贴板被占用，放弃这一条 */
-      }
-    }
-  }
-}
-
-/**
- * 读当前系统剪贴板，转成守护进程要的多表示结构。图片与文本互斥：
- * Windows 截图时剪贴板常同时有 CF_BITMAP 和无用的文件名文本，都发会让对端粘出文件名。
- */
-function readLocalClipboard(): { preferred: string; reps: Array<{ mime: string; data: string }> } | null {
-  const reps: Array<{ mime: string; data: string }> = []
-  const push = (mime: string, buf: Buffer) => reps.push({ mime, data: buf.toString('base64') })
-
-  const img = clipboard.readImage()
-  if (!img.isEmpty()) {
-    push('image/png', img.toPNG())
-    const alt = clipboard.readText()
-    if (alt) push('text/plain;charset=utf-8', Buffer.from(alt, 'utf-8'))
-    return { preferred: 'image/png', reps }
-  }
-
-  const text = clipboard.readText()
-  if (!text) return null
-  push('text/plain;charset=utf-8', Buffer.from(text, 'utf-8'))
-
-  const html = clipboard.readHTML()
-  if (html && html !== text) push('text/html', Buffer.from(html, 'utf-8'))
-  const rtf = clipboard.readRTF()
-  if (rtf) push('application/rtf', Buffer.from(rtf, 'utf-8'))
-
-  return { preferred: 'text/plain;charset=utf-8', reps }
-}
-
 // 剪贴板跨设备自动同步：复制动作本身触发同步，不该让用户去面板按"发送剪贴板"。
-//
-// 事件驱动：守护进程用 AddClipboardFormatListener 监听，变了发 clip_changed，这里立即读，检测延迟接近 0，
-// 也不再高频 OpenClipboard 抢别的程序的锁。守护进程报 clip_watch 之前（或它重启期间）退回 50 ms 轮询；
-// 有事件源后轮询降到 CLIP_SAFETY_POLL_MS 只作兜底。
-//
-// 只比较指纹：文本直接用内容（小，长度相同内容不同也不漏发），超过 SAMPLE_SPAN 的长文本改存哈希。
-// 图片曾每轮 `toBitmap()` 复制整张位图再做 SHA-256（1920×1080 每次 8.3 MB），剪贴板里躺一张截图就一直烧 CPU。
-// 现在：1. 先问 `availableFormats()`，没有图片格式就不碰 `readImage()`；
-// 2. 有图时 `readImage()` 解码和 `toBitmap()` 整张复制无便宜替代，所以图片路径用更慢的探测节奏
-// IMAGE_PROBE_MS，哈希只取首/中/尾各 32 KB。代价：尺寸相同且这三段字节全同的两张图会被当成同一张，
-// 实际遇不到。
-//
-// 间隔 50 ms：平均检测延迟 25 ms，加局域网 RTT 一次复制到对端可用约 30–60 ms；再密没有意义且有害，
-// Windows 剪贴板全局互斥（读前要 OpenClipboard），轮询太密会抢到别的程序，表现为偶尔 Ctrl+C 没反应。
-//
-// 只发最新一次复制：无历史队列，每轮只看当前内容，与上轮不同就发，中间被跳过的不补发。
+// 读写走 clipboardIO（Electron 44+ 异步剪贴板）。守护进程用 AddClipboardFormatListener 推 clip_changed，
+// 这里立即读；它报 clip_watch 之前退回 50 ms 轮询，有事件源后轮询降到 1 s 只作兜底。
+// 只比较指纹，只发最新一次复制。
 const CLIP_POLL_MS = 50
 
 /** 有事件源时的兜底轮询间隔。 */
 const CLIP_SAFETY_POLL_MS = 1000
 
+/** 图片指纹要 PNG 编码：事件触发必读；没有事件源时每 1 s 探一次，有事件源时兜底轮询每 5 s 探一次。 */
+const IMAGE_PROBE_FALLBACK_MS = 1000
+const IMAGE_PROBE_SAFETY_MS = 5000
+
 /** 守护进程的剪贴板事件源是否在工作。 */
 let clipEventDriven = false
 
-/** 采样哈希每段取多少字节，以及文本超过多长就改存哈希。 */
-const SAMPLE_SPAN = 32 * 1024
-
-/** 图片路径的探测间隔。解码 + 整张复制没有便宜替代品，所以单独放慢。 */
-const IMAGE_PROBE_MS = 200
-
-/** 上一轮看到的剪贴板指纹。null 表示还没开始看。 */
+const clipFingerprinter = new ClipFingerprinter()
+/** 上一轮看到的剪贴板指纹。null 表示读失败后要重新确认。 */
 let lastClipFingerprint: string | null = null
+/** 刚开始盯时第一次读到的只作基线，不发：那是很久以前复制的内容。 */
+let clipBaselinePending = true
 let clipTimer: ReturnType<typeof setInterval> | null = null
 let clipAutoSync = true
 let clipSyncInFlight = false
-
-/**
- * 对大块字节取采样摘要：首、中、尾各 SAMPLE_SPAN 字节加总长度。
- * 只用于判断"与上轮是否同一份内容"，不是密码学标识，读完整块正是要避开的；
- * 总长度一起进摘要，使仅被截短/追加的内容也能区分。
- */
-function sampledDigest(buf: Buffer): string {
-  const h = createHash('sha256')
-  h.update(String(buf.length))
-  if (buf.length <= SAMPLE_SPAN * 3) {
-    h.update(buf)
-  } else {
-    const mid = (buf.length >> 1) - (SAMPLE_SPAN >> 1)
-    h.update(buf.subarray(0, SAMPLE_SPAN))
-    h.update(buf.subarray(mid, mid + SAMPLE_SPAN))
-    h.update(buf.subarray(buf.length - SAMPLE_SPAN))
-  }
-  return h.digest('hex')
-}
-
-/** 上一次真正解码过的图片指纹，以及那次发生的时间（见 IMAGE_PROBE_MS）。 */
-let lastImageFingerprint = ''
-let lastImageProbeAt = 0
-
-/**
- * 取廉价的剪贴板指纹：先问格式列表再决定读什么，没有图片时调 `readImage()`（会解码）纯属浪费；
- * 绝大多数轮询是文本或未变化，只需一次格式枚举加一次小文本读取。
- */
-function clipboardFingerprint(now: number): string {
-  const formats = clipboard.availableFormats()
-  if (formats.some((f) => f.startsWith('image/'))) {
-    // 距上次解码不足 IMAGE_PROBE_MS 就沿用上次结果；返回同一值即"这轮没变化"，
-    // 图片最多晚 IMAGE_PROBE_MS 被发现，而不是每 50 ms 复制整张位图。
-    if (lastImageFingerprint && now - lastImageProbeAt < IMAGE_PROBE_MS) {
-      return lastImageFingerprint
-    }
-    const img = clipboard.readImage()
-    lastImageProbeAt = now
-    if (!img.isEmpty()) {
-      const s = img.getSize()
-      lastImageFingerprint = `img:${s.width}x${s.height}:${sampledDigest(img.toBitmap())}`
-      return lastImageFingerprint
-    }
-  }
-  // 走到这里说明当前不是图片：清掉缓存，否则下次真的换成图片时会先命中一个
-  // 过期的指纹，把那一次复制整个漏掉。
-  lastImageFingerprint = ''
-  const text = clipboard.readText()
-  if (text) {
-    // 短文本直接进指纹（最准）；长文本改采样摘要，避免每轮拼一个巨大的字符串。
-    return text.length <= SAMPLE_SPAN
-      ? `txt:${text.length}:${text}`
-      : `txh:${text.length}:${sampledDigest(Buffer.from(text, 'utf8'))}`
-  }
-  return 'empty'
-}
-
-/**
- * 这份剪贴板内容是否「不该被别的程序记录」。
- * Windows 密码管理器（KeePass / 1Password / Bitwarden 等）复制密码时会额外放两个空标记格式，
- * 约定表示"别存历史、别同步、别上传"，系统剪贴板历史靠它跳过密码。
- * 自动同步必须认这个标记：每 200 ms 扫一次的监听器会在复制主密码的瞬间把它推给所有已配对设备，
- * 包括不在手边的。读不到这些格式（非 Windows 或不存在）返回 false，按普通内容处理。
- */
-function isClipboardSensitive(): boolean {
-  try {
-    // 标记格式的内容是空的，**存在与否本身就是信号**，所以只看格式列表，
-    // 不去读它的内容（readBuffer 对不存在的格式会抛，而且读了也没意义）。
-    const formats = clipboard.availableFormats()
-    // ExcludeClipboardContentFromMonitorProcessing 是 Windows/密码管理器约定的明确排除标记；
-    // CanIncludeInClipboardHistory 是"允许历史记录"的正向标记，不能当敏感内容，否则普通复制会被无声吞掉。
-    return formats.includes('ExcludeClipboardContentFromMonitorProcessing')
-  } catch {
-    // 读不到格式列表就按普通内容处理。这里保守到"一律不发"反而更糟：
-    // 某个平台上枚举失败就等于整个同步功能静默失效。
-    return false
-  }
-}
+/** 正在把对端内容写进本机剪贴板：期间不检测，否则会把它当新复制广播回去。 */
+let clipWriting = 0
+/** 本机剪贴板被我们写过几次：检查读到一半时有写入，读到的就是旧内容，整轮作废。 */
+let clipWriteGen = 0
+let clipCheckInFlight: Promise<boolean> | null = null
+let clipCheckAgain = false
 
 /**
  * 上一条还在发的时候用户又复制了新内容：记下来，等上一条回来立刻补发最新的。
- * 以前这种情况直接 return，而指纹已经更新成新内容——那次复制就永远不会再被发出去。
  */
 let clipSyncQueued = false
 
 /** 把当前剪贴板发给所有已连接设备。失败静默——同步是锦上添花，不该弹错误框。 */
-function pushClipboardNow(): void {
+async function pushClipboardNow(): Promise<void> {
   if (!crossDevice?.isAvailable()) return
   if (clipSyncInFlight) {
     clipSyncQueued = true
     return
   }
-  if (isClipboardSensitive()) return
-  let local: ReturnType<typeof readLocalClipboard>
-  try {
-    local = readLocalClipboard()
-  } catch {
-    // 别的程序正锁着剪贴板。清掉指纹让下一轮轮询重读一次，否则这次复制就丢了。
-    lastClipFingerprint = null
-    return
-  }
-  if (!local) return
   clipSyncInFlight = true
-  crossDevice
-    .call('send_clip', local)
-    .catch(() => {
-      /* 没有在线设备、或守护进程正在重启：守护进程重连后会自己补发最新一条 */
-    })
-    .finally(() => {
-      clipSyncInFlight = false
-      if (clipSyncQueued) {
-        clipSyncQueued = false
-        pushClipboardNow()
-      }
-    })
-}
-
-/** 看一次剪贴板，变了就发。返回 false 表示这次没读到（被锁或暂时为空），值得稍后重试。 */
-function checkClipboardOnce(): boolean {
-  if (!clipAutoSync || isPaused) return true
-  let fp: string
   try {
-    fp = clipboardFingerprint(Date.now())
-  } catch {
-    return false // 别的程序正锁着剪贴板
+    if (await isClipboardSensitive()) return
+    let local: LocalClip | null
+    try {
+      local = await readLocalClipboard()
+    } catch {
+      // 别的程序正锁着剪贴板：清掉指纹让下一轮重读，否则这次复制就丢了
+      lastClipFingerprint = null
+      return
+    }
+    if (!local) return
+    await crossDevice?.call('send_clip', local).catch(() => {
+      /* 没有在线设备、或守护进程正在重启：重连后会自己补发最新一条 */
+    })
+  } finally {
+    clipSyncInFlight = false
+    if (clipSyncQueued) {
+      clipSyncQueued = false
+      void pushClipboardNow()
+    }
   }
-  if (fp === 'empty') return false
-  if (fp === lastClipFingerprint) return true
-  lastClipFingerprint = fp
-  pushClipboardNow()
-  return true
 }
 
-/** clip_changed 到达：立即读；写入方刚放手时偶尔读不到，短间隔补读两次。 */
-function onClipChanged(): void {
-  if (checkClipboardOnce()) return
-  let tries = 0
-  const retry = () => {
-    if (checkClipboardOnce() || ++tries >= 3) return
-    setTimeout(retry, 15)
+/** 看一次剪贴板，变了就发。false 表示这次没读到（被锁或暂时为空），值得稍后重试。重叠调用合并。 */
+function checkClipboardOnce(fromEvent = false): Promise<boolean> {
+  if (!clipAutoSync || isPaused || clipWriting > 0) return Promise.resolve(true)
+  if (clipCheckInFlight) {
+    if (fromEvent) clipCheckAgain = true
+    return clipCheckInFlight
   }
-  setTimeout(retry, 15)
+  const probeMs = fromEvent ? 0 : clipEventDriven ? IMAGE_PROBE_SAFETY_MS : IMAGE_PROBE_FALLBACK_MS
+  const gen = clipWriteGen
+  clipCheckInFlight = (async () => {
+    let fp: string
+    try {
+      fp = await clipFingerprinter.fingerprint(Date.now(), probeMs)
+    } catch {
+      return false // 别的程序正锁着剪贴板
+    }
+    if (clipWriting > 0 || gen !== clipWriteGen) return true
+    if (clipBaselinePending) {
+      clipBaselinePending = false
+      lastClipFingerprint = fp
+      return true
+    }
+    if (fp === 'empty') return false
+    if (fp === lastClipFingerprint) return true
+    lastClipFingerprint = fp
+    void pushClipboardNow()
+    return true
+  })().finally(() => {
+    clipCheckInFlight = null
+    if (clipCheckAgain) {
+      clipCheckAgain = false
+      void checkClipboardOnce(true)
+    }
+  })
+  return clipCheckInFlight
+}
+
+/** clip_changed 到达：立即读；写入方刚放手时偶尔读不到，短间隔补读三次。 */
+function onClipChanged(): void {
+  void (async () => {
+    for (let tries = 0; tries < 4; tries++) {
+      if (await checkClipboardOnce(true)) return
+      await new Promise((r) => setTimeout(r, 15))
+    }
+  })()
 }
 
 function startClipboardWatcher(): void {
   if (clipTimer) return
-  // 启动时只记指纹不发送：刚启动时剪贴板里是很久以前复制的内容，
-  // 当作"刚发生的复制"广播会覆盖所有设备上各自的剪贴板。
-  lastClipFingerprint = clipboardFingerprint(Date.now())
-  clipTimer = setInterval(checkClipboardOnce, clipEventDriven ? CLIP_SAFETY_POLL_MS : CLIP_POLL_MS)
+  clipBaselinePending = true
+  void checkClipboardOnce(true)
+  clipTimer = setInterval(() => void checkClipboardOnce(), clipEventDriven ? CLIP_SAFETY_POLL_MS : CLIP_POLL_MS)
 }
 
 function stopClipboardWatcher(): void {
@@ -619,23 +474,34 @@ function setClipEventDriven(on: boolean): void {
   clipEventDriven = on
   if (!clipTimer) return
   clearInterval(clipTimer)
-  clipTimer = setInterval(checkClipboardOnce, on ? CLIP_SAFETY_POLL_MS : CLIP_POLL_MS)
+  clipTimer = setInterval(() => void checkClipboardOnce(), on ? CLIP_SAFETY_POLL_MS : CLIP_POLL_MS)
 }
 
-/**
- * 收到对端内容写进本机剪贴板后，同步更新指纹。
- * 否则下一轮轮询会发现"变了"又广播回去；Go 侧回环抑制（Tracker.MarkWritten）只是 5 秒时间窗，
- * 且本机仍会白跑一次完整读取和编码，从源头不触发更可靠。
- */
-function noteClipboardWritten(): void {
+/** 本机剪贴板刚被我们改过（收到对端内容 / 手动发送）：同步指纹，免得下一轮当成新复制再广播。 */
+async function noteClipboardWritten(): Promise<void> {
+  clipWriteGen++
   try {
-    // 必须绕过图片路径的节流缓存重新解码：沿用缓存拿到的是写入之前那张图的指纹，
-    // 下一轮会把刚收到的图当成用户新复制的再广播回去。清掉时间戳即可强制重新探测。
-    lastImageProbeAt = 0
-    lastImageFingerprint = ''
-    lastClipFingerprint = clipboardFingerprint(Date.now())
+    clipFingerprinter.resetImageCache()
+    lastClipFingerprint = await clipFingerprinter.fingerprint(Date.now(), 0)
+    clipBaselinePending = false
   } catch {
-    /* 读不到就算了，最坏情况是多发一次，Go 侧会按内容哈希丢掉 */
+    /* 读不到就算了，最坏多发一次，Go 侧会按内容哈希丢掉 */
+  } finally {
+    clipWriteGen++
+  }
+}
+
+/** 写入对端内容并对齐指纹；写入期间暂停检测。 */
+async function applyIncomingClip(clip: IncomingClip): Promise<void> {
+  clipWriting++
+  clipWriteGen++
+  try {
+    await writeIncomingClip(clip)
+    await noteClipboardWritten()
+  } catch {
+    /* 剪贴板被占用，放弃这一条 */
+  } finally {
+    clipWriting--
   }
 }
 
@@ -1340,6 +1206,8 @@ function createWindow() {
       trayNotice(by === '360' ? strings.fileHookAutostartRestored360 : strings.fileHookAutostartRestored)
       return
     }
+    // AI 等用户确认桌面动作：窗口不在前台时闪任务栏按钮，不抢焦点
+    if (payload.event === 'ai_desktop_confirm' && win && !win.isFocused()) win.flashFrame(true)
     sendToRenderer('vault:event', payload)
   })
   bridge.setFatalListener((detail) => {
@@ -1407,13 +1275,13 @@ function createWindow() {
     if (!crossDevice) throw new Error('跨设备服务未启动')
 
     if (method === 'send_clip' && !params.reps) {
-      const local = readLocalClipboard()
+      const local = await readLocalClipboard()
       if (!local) throw new Error('clipboard.empty')
       // force：用户亲手按的发送，接收端不做回环去重，同一内容也照发不误。
       params = { ...params, ...local, force: true }
       // 手动按了"发送剪贴板"就把指纹对齐：否则轮询紧接着会发现"变了"
       // （其实是刚才那一份），再自动发一遍同样的内容。
-      noteClipboardWritten()
+      await noteClipboardWritten()
     }
     // 时间线「再次粘贴」：正文由守护进程直接交给主进程写进系统剪贴板，
     // 不回传给渲染进程——列表页用不着正文，多走一趟只是多一份副本。
@@ -1421,9 +1289,7 @@ function createWindow() {
       const res = await crossDevice.call<IncomingClip & { item_id?: string; errors?: string[] }>(method, params)
       // local:false：「发送剪贴板」多选发送，只推给其他设备，不改本机剪贴板。
       if (params.local !== false) {
-        writeIncomingClip(res)
-        // 写完立刻对齐指纹：否则下一轮轮询把它当成新复制又自动发一遍。
-        noteClipboardWritten()
+        await applyIncomingClip(res)
       }
       return { item_id: res.item_id, errors: res.errors ?? [] }
     }
@@ -1643,6 +1509,22 @@ function createWindow() {
   // 双击文件用系统默认关联程序打开，跟资源管理器双击行为一致。
   ipcMain.handle('fs:openPath', async (event, targetPath: string) => {
     assertTrustedRenderer(event)
+    if (typeof targetPath !== 'string' || !targetPath) return { ok: false, error: 'bad_path' }
+    // 会直接运行的类型先在主进程确认：渲染进程被 XSS 拿下也绕不过
+    if (EXECUTABLE_EXTENSIONS.has(path.extname(targetPath).toLowerCase())) {
+      const t = getCurrentLocale()
+      const { response } = await showMessageBoxOnWindow({
+        type: 'warning',
+        title: t.openExecutableTitle,
+        message: t.openExecutableMessage.replace('{{name}}', path.basename(targetPath)),
+        detail: targetPath,
+        buttons: [t.openExecutableRun, t.openExecutableCancel],
+        defaultId: 1,
+        cancelId: 1,
+        noLink: true,
+      })
+      if (response !== 0) return { ok: false, error: 'canceled' }
+    }
     const err = await shell.openPath(targetPath)
     return err ? { ok: false, error: err } : { ok: true }
   })
@@ -1932,10 +1814,10 @@ function createWindow() {
     return snapshot
   })
 
-  ipcMain.handle('system:copyDiagnostics', (event) => {
+  ipcMain.handle('system:copyDiagnostics', async (event) => {
     assertTrustedRenderer(event)
     try {
-      clipboard.writeText(collectDiagnostics())
+      await writeClipboardText(collectDiagnostics())
       return { ok: true }
     } catch (error) {
       return { ok: false, error: error instanceof Error ? error.message : String(error) }
@@ -1955,7 +1837,7 @@ function createWindow() {
    * 这不是放松安全：网页那套仍全程拒绝，渲染进程被 XSS 拿下也读不到剪贴板，只能调这条 IPC，
    * 而它由 `assertTrustedRenderer` 把着，只认本应用页面，能力从"任何渲染进程脚本"收窄到"本应用页面"。
    */
-  ipcMain.handle('system:clipboardWriteText', (event, text: unknown) => {
+  ipcMain.handle('system:clipboardWriteText', async (event, text: unknown) => {
     assertTrustedRenderer(event)
     // 只接受字符串：传入 undefined/对象时 Electron 会 String() 成 "undefined"/"[object Object]" 静默写进剪贴板，
     // 用户粘出垃圾而日志里没有任何记录，宁可在此明确失败。
@@ -1963,17 +1845,17 @@ function createWindow() {
       return { ok: false, error: 'clipboard text must be a string' }
     }
     try {
-      clipboard.writeText(text)
+      await writeClipboardText(text)
       return { ok: true }
     } catch (error) {
       return { ok: false, error: error instanceof Error ? error.message : String(error) }
     }
   })
 
-  ipcMain.handle('system:clipboardReadText', (event) => {
+  ipcMain.handle('system:clipboardReadText', async (event) => {
     assertTrustedRenderer(event)
     try {
-      return { ok: true, text: clipboard.readText() }
+      return { ok: true, text: await readClipboardText() }
     } catch (error) {
       return { ok: false, error: error instanceof Error ? error.message : String(error) }
     }
@@ -2326,9 +2208,9 @@ async function checkForUpdatesFromMenu(): Promise<void> {
 }
 
 /** 帮助菜单「复制诊断信息」：内容同 system:copyDiagnostics，有意不含金库数据、路径或设备标识。 */
-function copyDiagnosticsFromMenu(): void {
+async function copyDiagnosticsFromMenu(): Promise<void> {
   const t = getCurrentLocale()
-  clipboard.writeText(collectDiagnostics())
+  await writeClipboardText(collectDiagnostics()).catch(() => {})
   void showMessageBoxOnWindow({
     type: 'info',
     title: t.copyDiagnostics,
@@ -2336,6 +2218,15 @@ function copyDiagnosticsFromMenu(): void {
     buttons: [t.aboutOkButton],
   })
 }
+
+/** 双击即运行的扩展名（含快捷方式、脚本宿主、安装包、控制面板项）。 */
+const EXECUTABLE_EXTENSIONS: ReadonlySet<string> = new Set([
+  '.exe', '.com', '.scr', '.pif', '.cpl', '.msi', '.msp', '.msc', '.bat', '.cmd', '.ps1', '.psm1',
+  '.vbs', '.vbe', '.js', '.jse', '.wsf', '.wsh', '.hta', '.jar', '.lnk', '.url', '.appref-ms',
+  '.application', '.reg', '.inf', '.sct', '.chm', '.gadget',
+  '.py', '.pyw', '.pyz', '.pyzw', '.vb', '.ws', '.wsc', '.xll', '.appinstaller', '.msix', '.msixbundle',
+  '.appx', '.appxbundle', '.diagcab', '.settingcontent-ms', '.scf', '.msh', '.mshxml',
+])
 
 /** 有主窗口就把对话框挂在它上面（模态、跟着窗口走），没有就退回无主对话框。
  *  菜单里几个动作都要这么做，抽出来免得每处重写一遍这个二选一。 */
@@ -2616,7 +2507,7 @@ function buildTemplate(t: MenuLocale): MenuTemplateItem[] {
         { label: t.helpGuide, accelerator: 'F1', click: () => sendNav('help') },
         { type: 'separator' },
         { label: t.checkForUpdates, click: () => void checkForUpdatesFromMenu() },
-        { label: t.copyDiagnostics, click: copyDiagnosticsFromMenu },
+        { label: t.copyDiagnostics, click: () => void copyDiagnosticsFromMenu() },
         { type: 'separator' },
         // 两个外链走的是和渲染端同一套白名单校验（openExternalChecked），
         // 不因为"这是我们自己写死的常量"就跳过——写死的常量也会被改错。
@@ -2689,12 +2580,12 @@ async function sendClipboardFromTray(): Promise<void> {
     trayNotice(t.traySendClipboardNone)
     return
   }
-  const local = readLocalClipboard()
+  const local = await readLocalClipboard().catch(() => null)
   if (!local) {
     trayNotice(t.traySendClipboardEmpty)
     return
   }
-  noteClipboardWritten()
+  await noteClipboardWritten()
   try {
     const res = (await crossDevice.call('send_clip', { ...local, force: true })) as {
       sent?: number

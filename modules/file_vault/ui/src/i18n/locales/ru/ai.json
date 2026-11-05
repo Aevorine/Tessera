@@ -60,5 +60,19 @@
   "starter.toTable": "Преврати следующее в таблицу:",
   "starter.summarize": "Кратко изложи этот длинный текст не более чем в пяти пунктах:",
   "starter.draftEmail": "Составь официальное письмо на тему:",
-  "starter.debug": "В чём причина этой ошибки и как её исправить:"
+  "starter.debug": "В чём причина этой ошибки и как её исправить:",
+  "desktopConfirmTitle.launch": "ИИ хочет открыть приложение",
+  "desktopConfirmTitle.click": "ИИ хочет нажать",
+  "desktopConfirmTitle.type": "ИИ хочет ввести текст",
+  "desktopConfirmTitle.setValue": "ИИ хочет заполнить поле",
+  "desktopConfirmTitle.key": "ИИ хочет нажать клавишу",
+  "desktopConfirmApp": "Приложение",
+  "desktopConfirmTarget": "Цель",
+  "desktopConfirmKey": "Клавиша",
+  "desktopConfirmButton": "Мышь",
+  "desktopConfirmDeny": "Запретить",
+  "desktopConfirmAllowAll": "Разрешить всё в этом ответе",
+  "desktopConfirmAllow": "Разрешить",
+  "desktopConfirmCountdown": "Автоотказ через {{seconds}} с",
+  "desktopConfirmTimedOut": "Время подтверждения истекло; ИИ не выполнил этот шаг"
 }

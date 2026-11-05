@@ -75,5 +75,9 @@
   "traySendClipboardEmpty": "Le presse-papiers est vide — rien à envoyer",
   "traySendClipboardFailed": "Impossible d'envoyer le presse-papiers : {{detail}}",
   "fileHookAutostartRestored": "L'entrée de démarrage des raccourcis de fichiers système a été supprimée hors de Tessera et rétablie selon votre réglage. Désactivez-la dans les Paramètres si vous n'en voulez plus.",
-  "fileHookAutostartRestored360": "Le gestionnaire de démarrage de 360 Total Security a supprimé l'entrée de démarrage des raccourcis de fichiers système ; elle a été rétablie selon votre réglage. Pour l'éviter, autorisez hook_agent (Ideal1FileVaultFileHook) dans les éléments de démarrage de 360."
+  "fileHookAutostartRestored360": "Le gestionnaire de démarrage de 360 Total Security a supprimé l'entrée de démarrage des raccourcis de fichiers système ; elle a été rétablie selon votre réglage. Pour l'éviter, autorisez hook_agent (Ideal1FileVaultFileHook) dans les éléments de démarrage de 360.",
+  "openExecutableTitle": "Exécuter ce programme ?",
+  "openExecutableMessage": "« {{name}} » va s’exécuter immédiatement.",
+  "openExecutableRun": "Exécuter",
+  "openExecutableCancel": "Annuler"
 }

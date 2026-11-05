@@ -36,6 +36,22 @@ if (keystoreProps != null) {
     }
 }
 
+// 口令优先读环境变量：scripts/build-release.ps1 从 Windows 凭据管理器取出、只给本次 gradle 进程；
+// properties 里的明文口令只为旧配置兼容（scripts/move-signing-passwords.ps1 一次迁走）。
+val signingStorePassword: String? =
+    System.getenv("TESSERA_ANDROID_STORE_PASSWORD")?.takeIf { it.isNotEmpty() }
+        ?: keystoreProps?.getProperty("storePassword")?.takeIf { it.isNotEmpty() }
+val signingKeyPassword: String? =
+    System.getenv("TESSERA_ANDROID_KEY_PASSWORD")?.takeIf { it.isNotEmpty() }
+        ?: keystoreProps?.getProperty("keyPassword")?.takeIf { it.isNotEmpty() }
+        ?: signingStorePassword
+if (keystoreProps != null && signingStorePassword == null) {
+    throw GradleException(
+        "没有签名口令：用 scripts/build-release.ps1 构建（从 Windows 凭据管理器读），" +
+        "或先运行 scripts/move-signing-passwords.ps1 存口令。"
+    )
+}
+
 android {
     namespace = "com.tessera.crossdevice"
     compileSdk = 35
@@ -45,8 +61,8 @@ android {
         minSdk = 26          // 跟 gomobile bind 的 -androidapi 26 对齐
         targetSdk = 35
         // versionCode 每次发版必须递增（与 versionName 一起改）：忘了递增时安装包正常却被系统拒装。
-        versionCode = 54
-        versionName = "0.1.53"
+        versionCode = 55
+        versionName = "0.1.54"
         // .aar 里只有 arm64 和 x86_64（真机基本都是 arm64，x86_64 给模拟器）。
         ndk { abiFilters += listOf("arm64-v8a", "x86_64") }
     }
@@ -55,9 +71,9 @@ android {
         if (keystoreProps != null) {
             create("release") {
                 storeFile = file(keystoreProps.getProperty("storeFile"))
-                storePassword = keystoreProps.getProperty("storePassword")
+                storePassword = signingStorePassword
                 keyAlias = keystoreProps.getProperty("keyAlias")
-                keyPassword = keystoreProps.getProperty("keyPassword")
+                keyPassword = signingKeyPassword
             }
         }
     }

@@ -241,5 +241,8 @@
   "file_clip.drop_into_self": "A folder can't be dropped into itself",
   "file_clip.source_missing": "Some items no longer exist — the drop was canceled",
   "file_clip.dest_missing": "The target folder doesn't exist",
-  "ai.desktop_target_blocked": "For safety, the AI can't launch or control command-line windows, script hosts, the Registry Editor or Tessera itself."
+  "ai.desktop_target_blocked": "For safety, the AI can't launch or control command-line windows, script hosts, the Registry Editor or Tessera itself.",
+  "ai.desktop_denied_by_user": "You denied this desktop action; the AI did not run it.",
+  "ai.desktop_confirm_timeout": "Confirmation timed out; the AI did not run this desktop action.",
+  "ai.desktop_confirm_expired": "This confirmation has expired."
 }
