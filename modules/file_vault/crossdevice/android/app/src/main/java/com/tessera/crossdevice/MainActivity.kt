@@ -1797,7 +1797,7 @@ class MainActivity : AppCompatActivity() {
                 // 按 transfer_id 摘掉结束的那条：用"设备+文件名"会因接收端重名改成 `报告 (1).pdf` 而对不上，进度挂
                 // 着删不掉。
                 val ending = TransferEventRouter.route(data.optString("kind"), data.optString("path"))
-                if (ending != TransferEventAction.IGNORE) {
+                if (ending != TransferEventAction.IGNORE && ending != TransferEventAction.OUTBOX_DRAIN) {
                     val id = data.optString("transfer_id")
                     if (id.isNotEmpty()) transfers.remove(id)
                     else transfers.keys.removeAll { it.endsWith("|" + data.optString("name")) }
@@ -1807,6 +1807,16 @@ class MainActivity : AppCompatActivity() {
                     TransferEventAction.HIDE_PROGRESS -> Unit
                     TransferEventAction.HIDE_PROGRESS_WITH_ERROR -> snack(data.optString("error"))
                     TransferEventAction.DELIVER_RECEIVED_FILE -> onTransfer(data)
+                    TransferEventAction.QUEUED -> {
+                        val dev = data.optString("device_name")
+                        val name = data.optString("name")
+                        snack(
+                            if (name.isNotEmpty()) getString(R.string.send_queued, dev, name)
+                            else getString(R.string.send_queued_more, dev, data.optInt("count", 1))
+                        )
+                    }
+                    TransferEventAction.OUTBOX_DRAIN ->
+                        snack(getString(R.string.outbox_drain, data.optString("device_name"), data.optInt("count", 1)))
                     TransferEventAction.IGNORE -> Unit
                 }
                 return
@@ -2086,6 +2096,7 @@ class MainActivity : AppCompatActivity() {
                 filePolicy = dev.optString("file_policy").ifEmpty { "inherit" },
                 offlineCode = if (state in ONLINE_STATES) "" else
                     dev.optJSONObject("offline_reason")?.optString("code").orEmpty(),
+                outbox = dev.optInt("outbox", 0),
             )
             items += item
             if (state in ONLINE_STATES) {

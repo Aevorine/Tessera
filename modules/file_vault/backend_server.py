@@ -117,9 +117,21 @@ _ACTIVITY_LOG_KEY_INFO = b"activity-log-db-key"
 _stdout_lock = threading.Lock()
 
 
+def _encode_line(msg: dict) -> str:
+    """序列化一条消息；孤立代理字符（剪贴板 / 文件名里常见）或非 JSON 类型不能让进程退出。"""
+    try:
+        line = json.dumps(msg, ensure_ascii=False)
+        line.encode("utf-8")  # 孤立代理字符在这里暴露，而不是在 stdout.write 里炸掉主循环
+        return line
+    except (TypeError, ValueError, UnicodeEncodeError):
+        # ensure_ascii 把代理字符写成 \udXXX 转义，JS 的 JSON.parse 原样还原；default=str 兜底非 JSON 类型
+        return json.dumps(msg, ensure_ascii=True, default=str)
+
+
 def _write(msg: dict) -> None:
+    line = _encode_line(msg)
     with _stdout_lock:
-        sys.stdout.write(json.dumps(msg, ensure_ascii=False) + "\n")
+        sys.stdout.write(line + "\n")
         sys.stdout.flush()
 
 
@@ -4218,6 +4230,22 @@ def rpc_file_clip_paste(params, request_id):
     return {"ok": True, **result}
 
 
+def rpc_file_clip_transfer(params, request_id):
+    """拖放复制 / 移动：源由界面给出（拖动的条目或从资源管理器拖进来的文件），不经剪贴板。"""
+    sources = params.get("sources") or []
+    dest_dir = str(params.get("dest_dir") or "")
+    move = bool(params.get("move"))
+    on_conflict = params.get("on_conflict") or "rename"
+    if on_conflict not in ("rename", "skip", "overwrite") or not isinstance(sources, list) or len(sources) > 10000:
+        return {"ok": False, "error": "file_clip.invalid_request"}
+    on_progress = _throttled_progress(request_id)
+    try:
+        result = fileops_service.run_transfer([str(s) for s in sources], dest_dir, move, on_conflict, on_progress)
+    except fileops_service.FileClipError as exc:
+        return {"ok": False, "error": exc.code}
+    return {"ok": True, **result}
+
+
 def rpc_file_clip_delete(params, request_id):
     paths = params.get("paths") or []
     recycle = bool(params.get("recycle", True))
@@ -4274,7 +4302,32 @@ def rpc_file_clip_hook_set_enabled(params):
 
 
 def rpc_file_clip_hook_status(params):
-    return {"ok": True, **fileops_service.get_hook_status()}
+    # 查询失败必须报失败（界面显示「无法读取」），不能让调用方把未知当成「关」
+    try:
+        return {"ok": True, **fileops_service.get_hook_status()}
+    except Exception as exc:
+        logger.exception("file_clip_hook_status failed")
+        return {"ok": False, "error": "file_clip.hook_status_failed", "error_params": {"detail": str(exc)}}
+
+
+def rpc_file_clip_hook_set_running(params):
+    running = bool(params.get("running", False))
+    try:
+        if running:
+            try:
+                from core.fileops import system_integration as _si
+                _si.write_shortcut_config(ui_settings.load_file_manager_shortcuts(_data_dir))
+            except OSError:
+                pass
+        status = fileops_service.set_hook_running(running)
+    except Exception as exc:
+        logger.exception("file_clip_hook_set_running failed")
+        diagnostic_log.record(
+            _data_dir, "fileops", "系统级引擎启停失败",
+            detail=f"{type(exc).__name__}: {exc}", code="file_clip.hook_toggle_failed",
+        )
+        return {"ok": False, "error": "file_clip.hook_toggle_failed", "error_params": {"detail": str(exc)}}
+    return {"ok": True, **status}
 
 
 def rpc_file_clip_hook_sync_shortcuts(params):
@@ -4325,6 +4378,11 @@ def rpc_file_clip_check_conflicts(params):
     mode='existing' 只返回目标已存在项，'all' 返回全部源。"""
     dest_dir = params.get("dest_dir", "")
     mode = params.get("mode", "existing")
+    explicit = params.get("paths")
+    if isinstance(explicit, list) and explicit:
+        paths = [str(p) for p in explicit][:10000]
+        conflicts = fileops_service.check_conflicts(paths, dest_dir, mode)
+        return {"ok": True, "conflicts": conflicts, "has_files": True, "is_cut": False, "count": len(paths)}
     try:
         status = fileops_service.read_clipboard_status()
     except fileops_service.FileClipError as exc:
@@ -5658,6 +5716,7 @@ _METHODS: Dict[str, Callable] = {
     "file_clip_clipboard_status": rpc_file_clip_clipboard_status,
     "file_clip_hook_set_enabled": rpc_file_clip_hook_set_enabled,
     "file_clip_hook_status": rpc_file_clip_hook_status,
+    "file_clip_hook_set_running": rpc_file_clip_hook_set_running,
     "file_clip_hook_sync_shortcuts": rpc_file_clip_hook_sync_shortcuts,
     "file_clip_progress_preferences_get": rpc_file_clip_progress_preferences_get,
     "file_clip_progress_preferences_set": rpc_file_clip_progress_preferences_set,
@@ -5751,6 +5810,7 @@ _METHODS_WITH_PROGRESS: Dict[str, Callable] = {
     "ai_chat": rpc_ai_chat,
     "file_clip_paste": rpc_file_clip_paste,
     "file_clip_delete": rpc_file_clip_delete,
+    "file_clip_transfer": rpc_file_clip_transfer,
     "file_clip_secure_erase": rpc_file_clip_secure_erase,
     "folder_container_diff": rpc_folder_container_diff,
     "folder_container_reencrypt": rpc_folder_container_reencrypt,
@@ -5885,9 +5945,23 @@ def serve(data_dir: Path, in_stream=None, out_stream=None) -> None:
                 request = json.loads(line)
             except json.JSONDecodeError:
                 continue
-            response = dispatch(request)
-            if response is not batch_engine.ASYNC_DEFERRED:
-                _write(response)
+            if not isinstance(request, dict):
+                continue
+            # 一条请求出任何异常都只让这一条失败；主循环一退出，进程就没了，界面只能报「后端意外重启」。
+            try:
+                response = dispatch(request)
+                if response is not batch_engine.ASYNC_DEFERRED:
+                    _write(response)
+            except Exception as exc:
+                logger.exception("serve loop: request failed outside dispatch")
+                _record_rpc_failure(
+                    str(request.get("method")), "响应写出失败", "internal.unexpected",
+                    type(exc).__name__, "error",
+                )
+                try:
+                    _write({"id": request.get("id"), "error": {"message": "internal.unexpected"}})
+                except Exception:
+                    pass
     finally:
         _cleanup_folder_preview_temps()
         # 弹窗监视线程是 daemon，进程退出时会被强杀——但显式停一下更干净，
@@ -5933,6 +6007,15 @@ def main() -> None:
     sys.stdin.reconfigure(encoding="utf-8")
     sys.stdout.reconfigure(encoding="utf-8")
 
+    # 原生崩溃（访问违例、堆损坏）时把各线程 Python 调用栈写到 stderr；Electron 把 stderr 尾部记进
+    # backend-exits.jsonl。SetErrorMode 关掉了系统崩溃报告，没有这一条崩溃就无从查起。
+    if sys.stderr is not None:
+        try:
+            import faulthandler
+            faulthandler.enable(file=sys.stderr, all_threads=True)
+        except Exception:
+            pass
+
     parser = argparse.ArgumentParser()
     parser.add_argument("--data-dir", type=Path, default=None)
     args = parser.parse_args()
@@ -5942,7 +6025,20 @@ def main() -> None:
     # 钩子对账要拷文件、算哈希（秒级），放后台线程避免拖慢首个请求；失败进故障日志。
     def _reconcile_hook() -> None:
         try:
-            fileops_service.reconcile_hook_autostart()
+            st = fileops_service.reconcile_hook_autostart() or {}
+            # 每次启动留一行对账结果：「重启后快捷键自启动又关了」要靠它分清是 Run 项被删、被任务管理器禁用、
+            # 还是开发版不碰安装版的登记。
+            logger.info(
+                "file hook reconcile: running=%s autostart=%s registered=%s approved=%s intent=%s restored=%s removed_by=%s",
+                st.get("running"), st.get("autostart"), st.get("autostart_registered"),
+                st.get("autostart_approved"), st.get("autostart_intent"), bool(st.get("restored")),
+                st.get("removed_by"),
+            )
+            # 恢复启动项必须让用户看得见：被删的原因也可能是杀软或用户自己用 Autoruns 删的，不能悄悄改回去。
+            if st.get("restored"):
+                from core.fileops import system_integration as _si
+                if _si.note_restore_and_should_notify():
+                    _write({"event": "file_hook_autostart_restored", "removed_by": st.get("removed_by")})
         except Exception as exc:
             logger.exception("failed to reconcile file hook autostart")
             try:

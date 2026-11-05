@@ -2,6 +2,7 @@ package node
 
 import (
 	"errors"
+	"fmt"
 	"sort"
 	"strings"
 	"sync"
@@ -20,9 +21,7 @@ const (
 	// 两次检查之间墙上时间走了这么久，就当系统睡过一觉。单调时钟在 Windows 上
 	// 不计休眠时间，所以这里必须比墙上时间。
 	sleepGap = 15 * time.Second
-	// 网络变化后现有会话多久没有回音就判死。局域网往返是毫秒级，中继也在几百
-	// 毫秒以内；4 秒足够宽，又比心跳连丢三次（约 30 秒）快得多。
-	networkProbeTimeout = 4 * time.Second
+	// 网络变化后现有会话的判活超时按 RTT 自适应，见 Session.probeTimeout。
 )
 
 type netWatchState struct {
@@ -88,24 +87,20 @@ func (n *Node) netWatchLoop() {
 // probeLiveness 立刻发一次心跳，timeout 内无回音就断开会话。只在刚换网时用：
 // 旧连接绑在已不存在的地址上，不报错，只静默收不到东西。
 func (s *Session) probeLiveness(timeout time.Duration) {
-	if !s.Alive() {
+	// 分块收发中回声会排在分块后面晚到，交给心跳的宽松判据，不在这里误断
+	if !s.Alive() || s.busy() || !s.probing.CompareAndSwap(false, true) {
 		return
 	}
-	start := time.Now()
-	if err := s.sendHeartbeat(); err != nil {
-		s.close(err)
+	defer s.probing.Store(false)
+	alive, err := s.pingOnce()
+	if err != nil {
+		s.close(fmt.Errorf("发送失败: %v", err))
 		return
 	}
-	select {
-	case <-s.done:
-		return
-	case <-s.node.ctx.Done():
-		return
-	case <-time.After(timeout):
-	}
-	if s.lastEcho.Load() < start.UnixNano() {
-		s.node.logf("网络变化后 %s 的连接没有回音，断开重连", s.PeerName())
-		s.close(errors.New("网络变化后链路无响应"))
+	if !alive && s.Alive() {
+		s.node.logf("%s 的连接 %v 内没有回音，断开重连", s.PeerName(), timeout)
+		s.node.setState(s.peer.DeviceID, StateReconnecting)
+		s.close(errors.New("链路无响应"))
 	}
 }
 

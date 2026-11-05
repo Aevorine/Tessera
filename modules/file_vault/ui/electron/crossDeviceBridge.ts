@@ -1,5 +1,6 @@
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process'
 import readline from 'node:readline'
+import { fingerprintLine, logEvent, logStderr } from './appLog'
 
 const RESTART_DELAY_MS = 800
 /** stdout 单行可能带着一张 base64 的截图，默认的 readline 行长度足够，
@@ -56,6 +57,7 @@ export class CrossDeviceBridge {
       // 记下原因，UI 查 status 时会看到 available:false 和这条原因。
       this.lastError = err instanceof Error ? err.message : String(err)
       console.error('[crossdevice] 启动失败:', this.lastError)
+      logEvent('crossdevice', 'error', 'spawn_failed', this.lastError)
       return
     }
 
@@ -64,7 +66,10 @@ export class CrossDeviceBridge {
 
     this.proc.stderr.on('data', (chunk: Buffer) => {
       const text = chunk.toString().trim()
-      if (text) console.error('[crossdevice]', text)
+      if (text) {
+        console.error('[crossdevice]', text)
+        logStderr('crossdevice', text)
+      }
     })
 
     this.proc.on('exit', (code) => {
@@ -76,6 +81,7 @@ export class CrossDeviceBridge {
 
       if (this.disposed) return
       this.lastError = `服务意外退出（code ${code}），正在重启`
+      logEvent('crossdevice', 'error', 'daemon_exit', undefined, { code, restart_in_ms: RESTART_DELAY_MS })
       this.onEvent?.({ event: 'daemon_restarting', data: { code } })
       setTimeout(() => {
         if (this.disposed) return
@@ -93,6 +99,7 @@ export class CrossDeviceBridge {
       msg = JSON.parse(trimmed)
     } catch {
       console.error('[crossdevice] 无法解析的输出:', trimmed.slice(0, 200))
+      logEvent('crossdevice', 'warn', 'bad_line', undefined, fingerprintLine(trimmed))
       return
     }
 

@@ -47,6 +47,8 @@ export function reportUiFailure(
   try {
     const { code, detail } = error === undefined ? { code: '', detail: '' } : describe(error)
     if (seenRecently(`${module}|${problem}|${code}`)) return
+    // 统一日志常开（主进程脱敏后落盘），诊断日志按用户开关；两路互不依赖：后端崩了这条照样能记下。
+    window.electronAPI?.logEvent?.({ level, event: 'ui_failure', module, code, msg: `${problem} ${detail}`.trim() })
     void vaultApi.call('diagnostic_log_record', { module, problem, detail, code, level }).catch(() => {})
   } catch {
     /* 见文件顶部第 2 条 */

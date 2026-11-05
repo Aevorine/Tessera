@@ -64,6 +64,8 @@ export interface IconToolbarProps {
   defaultOpenGroupIds?: string[]
   align?: 'start' | 'end'
   className?: string
+  /** 与组开关同一行、靠右的页面级控件（如文件管理器的引擎状态） */
+  extraControls?: React.ReactNode
 }
 
 /**
@@ -84,6 +86,7 @@ export function useIconToolbar(props: IconToolbarProps): {
     defaultOpenGroupIds = [],
     align = 'start',
     className,
+    extraControls,
   } = props
   const { t } = useTranslation('common')
   const [openGroups, setOpenGroups] = useState<Record<string, boolean>>(() =>
@@ -154,6 +157,7 @@ export function useIconToolbar(props: IconToolbarProps): {
             </TooltipTrigger>
             <TooltipContent>{showLabels ? t('toolbarIconsOnly') : t('toolbarShowLabels')}</TooltipContent>
           </Tooltip>
+          {extraControls && <div className="ms-auto flex flex-wrap items-center gap-2">{extraControls}</div>}
         </div>
     </TooltipProvider>
   )

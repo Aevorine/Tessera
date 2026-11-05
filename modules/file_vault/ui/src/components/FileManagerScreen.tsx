@@ -36,7 +36,7 @@ import { electronApi } from '@/lib/electronApi'
 import { normalizePastePreflight } from '@/lib/fileOpsUiState'
 import { createNameCollator, sortDirEntriesChunked, truncateDirEntries, DIR_ENTRY_HARD_LIMIT } from '@/lib/dirEntrySort'
 import { translateError } from '@/i18n/errors'
-import type { FileClipConflictItem, FileClipHistoryEntry, FileClipProgress, FileManagerShortcutAction, FileManagerShortcuts } from '@/shared/ipcTypes'
+import type { FileClipConflictItem, FileClipHistoryEntry, FileClipHookStatus, FileClipProgress, FileManagerShortcutAction, FileManagerShortcuts } from '@/shared/ipcTypes'
 
 interface DirEntry {
   name: string
@@ -170,10 +170,14 @@ const FileRow = memo(function FileRow({
   isSelected,
   isActive,
   dimmed,
+  isDropTarget,
   offset,
   measureRef,
   onRowClick,
   onRowDoubleClick,
+  onRowDragStart,
+  onRowDragOver,
+  onRowDrop,
   onEncryptToVault,
   onSecureErase,
   onDecryptHere,
@@ -183,10 +187,14 @@ const FileRow = memo(function FileRow({
   isSelected: boolean
   isActive: boolean
   dimmed: boolean
+  isDropTarget: boolean
   offset: number
   measureRef: (node: Element | null) => void
   onRowClick: (entry: DirEntry, index: number, event: React.MouseEvent) => void
   onRowDoubleClick: (entry: DirEntry) => void
+  onRowDragStart: (entry: DirEntry, event: React.DragEvent) => void
+  onRowDragOver: (entry: DirEntry, event: React.DragEvent) => void
+  onRowDrop: (entry: DirEntry, event: React.DragEvent) => void
   onEncryptToVault: (entry: DirEntry) => void
   onSecureErase: (entry: DirEntry) => void
   onDecryptHere: (entry: DirEntry) => void
@@ -196,12 +204,18 @@ const FileRow = memo(function FileRow({
     <div
       onClick={(e) => onRowClick(entry, index, e)}
       onDoubleClick={() => onRowDoubleClick(entry)}
+      draggable
+      onDragStart={(e) => onRowDragStart(entry, e)}
+      // 只有文件夹行是放置目标；文件行不拦，事件冒泡到列表，等于放进当前文件夹。
+      onDragOver={entry.isDirectory ? (e) => onRowDragOver(entry, e) : undefined}
+      onDrop={entry.isDirectory ? (e) => onRowDrop(entry, e) : undefined}
       className={cn(
         'grid cursor-default select-none items-center gap-2 border-t px-3 py-2.5 text-sm',
         GRID_COLUMNS,
         isSelected ? 'bg-accent' : 'hover:bg-muted/40',
         isActive && 'ring-1 ring-inset ring-ring',
         dimmed && 'opacity-50',
+        isDropTarget && 'bg-primary/15 ring-2 ring-inset ring-primary',
       )}
     >
       <span className="flex min-w-0 items-center gap-2">
@@ -254,6 +268,49 @@ const FileRow = memo(function FileRow({
   )
 })
 
+/** 拖放：卷标识（`c:` 或 UNC 的 `\\server\share`），同卷默认移动、跨卷默认复制，与资源管理器一致。 */
+function volumeOf(p: string): string {
+  const unc = /^\\\\[^\\/]+[\\/][^\\/]+/.exec(p)
+  return (unc ? unc[0] : p.slice(0, 2)).toLowerCase()
+}
+
+function normDir(p: string): string {
+  return p.replace(/\//g, '\\').replace(/\\+$/, '').toLowerCase()
+}
+
+function parentDir(p: string): string {
+  const n = normDir(p)
+  const i = n.lastIndexOf('\\')
+  return i < 0 ? n : n.slice(0, i)
+}
+
+function baseName(p: string): string {
+  return p.replace(/[\\/]+$/, '').split(/[\\/]/).pop() || p
+}
+
+function dragHasFiles(e: React.DragEvent): boolean {
+  return Array.from(e.dataTransfer.types).includes('Files')
+}
+
+/** 列表空白处作为放置目标时的 dropTarget 值（行名不可能为空串）。 */
+const DROP_ON_LIST = ''
+
+interface PendingDrop {
+  sources: string[]
+  destDir: string
+  move: boolean
+}
+
+/** 焦点是否在可编辑的文本上（输入框、文本域、contenteditable）；勾选框、按钮不算。 */
+function isTextEditing(el: Element | null): boolean {
+  if (!el) return false
+  if (el instanceof HTMLTextAreaElement) return !el.readOnly
+  if (el instanceof HTMLInputElement) {
+    return !el.readOnly && !['checkbox', 'radio', 'button', 'submit', 'reset', 'range', 'color', 'file'].includes(el.type)
+  }
+  return (el as HTMLElement).isContentEditable === true
+}
+
 export function FileManagerScreen({ isProfessional = false }: { isProfessional?: boolean } = {}) {
   const { t, i18n } = useTranslation('filemanager')
   const containerRef = useRef<HTMLDivElement>(null)
@@ -291,6 +348,9 @@ export function FileManagerScreen({ isProfessional = false }: { isProfessional?:
   const [conflictDialogOpen, setConflictDialogOpen] = useState(false)
   const [conflictItems, setConflictItems] = useState<FileClipConflictItem[]>([])
   const [conflictResolveMode, setConflictResolveMode] = useState<'rename' | 'skip' | 'overwrite'>('rename')
+  // 拖放：当前高亮的放置目标（文件夹行名，或 DROP_ON_LIST 表示列表空白处）；冲突对话框确认后要执行的那次拖放。
+  const [dropTarget, setDropTarget] = useState<string | null>(null)
+  const [pendingDrop, setPendingDrop] = useState<PendingDrop | null>(null)
 
   // ---- History panel (E7 - Ctrl+Shift+H) ----
   const [historyDialogOpen, setHistoryDialogOpen] = useState(false)
@@ -314,7 +374,7 @@ export function FileManagerScreen({ isProfessional = false }: { isProfessional?:
   const [hookWorking, setHookWorking] = useState(false)
 
   // ---- Undo info (E6) ----
-  const [undoInfo, setUndoInfo] = useState<{ hasUndo: boolean; description?: string }>({ hasUndo: false })
+  const [undoInfo, setUndoInfo] = useState<{ hasUndo: boolean }>({ hasUndo: false })
 
   // ---- Derived helpers ----
   const transferring = operationProgress !== null
@@ -348,20 +408,24 @@ export function FileManagerScreen({ isProfessional = false }: { isProfessional?:
     // eslint-disable-next-line react-hooks/exhaustive-deps -- only start/stop the interval on the true/false transition, not on every progress tick (setOperationProgress above uses the updater form, so it never reads operationProgress from this closure)
   }, [transferring])
 
+  const applyHookStatus = useCallback((res: FileClipHookStatus) => {
+    setHookStatus({ compiled: res.compiled, running: res.running, autostart: res.autostart, lastError: res.last_error })
+    electronApi.setFileHookEnabled(res.running) // 「文件」菜单勾选跟真实状态走
+  }, [])
+
   const refreshHookStatus = useCallback(async () => {
     const res = await vaultApi.call('file_clip_hook_status', {})
-    if (res.ok && 'running' in res) {
-      setHookStatus({ compiled: res.compiled, running: res.running, autostart: res.autostart, lastError: res.last_error })
-    }
-  }, [])
+    if (res.ok && 'running' in res) applyHookStatus(res)
+  }, [applyHookStatus])
 
   const toggleHook = useCallback(async () => {
     setHookWorking(true)
     const next = !hookStatus.running
     try {
-      const res = await vaultApi.call('file_clip_hook_set_enabled', { enabled: next })
+      // 只启停引擎，不改开机自启动
+      const res = await vaultApi.call('file_clip_hook_set_running', { running: next })
       if (res.ok && 'running' in res) {
-        setHookStatus({ compiled: res.compiled, running: res.running, autostart: res.autostart, lastError: res.last_error })
+        applyHookStatus(res)
         toast.success(next ? t('hookEnabledToast') : t('hookDisabledToast'))
       } else {
         toast.error(t('hookToggleFailedToast'), { description: 'error' in res ? res.error : undefined })
@@ -370,7 +434,7 @@ export function FileManagerScreen({ isProfessional = false }: { isProfessional?:
       toast.error(t('hookToggleFailedToast'), { description: err instanceof Error ? err.message : String(err) })
     }
     finally { setHookWorking(false) }
-  }, [hookStatus.running, t])
+  }, [hookStatus.running, t, applyHookStatus])
 
   const refreshClipboardStatus = useCallback(async () => {
     const res = await vaultApi.call('file_clip_clipboard_status', {})
@@ -379,7 +443,9 @@ export function FileManagerScreen({ isProfessional = false }: { isProfessional?:
 
   const refreshUndoInfo = useCallback(async () => {
     const res = await vaultApi.call('file_clip_undo_info', {})
-    if (res.ok) setUndoInfo({ hasUndo: res.has_undo, description: 'description' in res ? res.description : undefined })
+    // 只有真能撤销才亮按钮：后端会记下最近一次操作但标 reversible:false（文件级撤销尚未接入），按它亮按钮等于
+    // 让用户点一个必然失败的按钮；description 是后端拼的中文，不进界面。
+    if (res.ok) setUndoInfo({ hasUndo: res.has_undo && res.reversible === true })
   }, [])
 
   // 排序器复用同一实例，语言变了才重建。别退回 `a.name.localeCompare`：每次比较都重建排序器，十万条目
@@ -444,12 +510,8 @@ export function FileManagerScreen({ isProfessional = false }: { isProfessional?:
     window.addEventListener('file-manager-shortcuts-changed', onShortcutsChanged)
     window.addEventListener('focus', onWindowFocus)
     document.addEventListener('visibilitychange', onVisibilityChange)
-    const unsubHookToggle = electronApi.onFileHookToggle(async (enabled) => {
-      const res = await vaultApi.call('file_clip_hook_set_enabled', { enabled })
-      if (res.ok && 'running' in res) {
-        setHookStatus({ compiled: res.compiled, running: res.running, autostart: res.autostart, lastError: res.last_error })
-      }
-    })
+    // 菜单已由主进程直接启停引擎，这里只刷新显示
+    const unsubHookToggle = electronApi.onFileHookToggle(() => void refreshHookStatus())
     return () => {
       electronApi.setFileManagerActive(false)
       window.removeEventListener('file-manager-shortcuts-changed', onShortcutsChanged)
@@ -462,7 +524,12 @@ export function FileManagerScreen({ isProfessional = false }: { isProfessional?:
 
   useEffect(() => {
     return vaultApi.onProgress((payload) => {
-      if (payload.method === 'file_clip_paste' || payload.method === 'file_clip_delete' || payload.method === 'file_clip_secure_erase') {
+      if (
+        payload.method === 'file_clip_paste' ||
+        payload.method === 'file_clip_transfer' ||
+        payload.method === 'file_clip_delete' ||
+        payload.method === 'file_clip_secure_erase'
+      ) {
         const data = payload as unknown as FileClipProgress
         setOperationProgress((prev) => {
           if (!prev) return prev
@@ -597,6 +664,86 @@ export function FileManagerScreen({ isProfessional = false }: { isProfessional?:
     }
   }
 
+  /** 行被拖起：拖选中的全部（被拖的行不在选中里就只拖它），交给系统原生拖放——能拖到资源管理器、桌面，也能放回本窗口。 */
+  function handleRowDragStart(entry: DirEntry, e: React.DragEvent) {
+    e.preventDefault()
+    if (transferring) return
+    const paths = selected.has(entry.name) ? selectedPathsOnly() : [joinPath(currentPath, entry.name)]
+    if (!selected.has(entry.name)) setSelected(new Set([entry.name]))
+    electronApi.startFileDrag(paths)
+  }
+
+  function handleRowDragOver(entry: DirEntry, e: React.DragEvent) {
+    if (!dragHasFiles(e)) return
+    e.preventDefault()
+    e.stopPropagation()
+    // 光标效果只显示「复制」：原生拖起的源只允许复制 / 链接，标「移动」会被系统判成不可放置；真正做移动还是复制由松手时决定。
+    e.dataTransfer.dropEffect = 'copy'
+    setDropTarget(entry.name)
+  }
+
+  function handleRowDrop(entry: DirEntry, e: React.DragEvent) {
+    void handleDropOn(joinPath(currentPath, entry.name), e)
+  }
+
+  async function handleDropOn(destDir: string, e: React.DragEvent) {
+    e.preventDefault()
+    e.stopPropagation()
+    setDropTarget(null)
+    if (transferring) return
+    const sources = Array.from(e.dataTransfer.files)
+      .map((f) => electronApi.getPathForFile(f))
+      .filter((p): p is string => !!p)
+    if (sources.length === 0) return
+    const dest = normDir(destDir)
+    // 文件夹拖到自己或自己里面：资源管理器是静默不做，这里同样。
+    if (sources.some((s) => dest === normDir(s) || dest.startsWith(normDir(s) + '\\'))) return
+    const move = e.ctrlKey ? false : e.shiftKey ? true : sources.every((s) => volumeOf(s) === volumeOf(destDir))
+    const fromHere = sources.filter((s) => parentDir(s) === dest)
+    if (move && fromHere.length === sources.length) return // 拖回原处的移动 = 什么都不用做
+    const drop: PendingDrop = { sources, destDir, move }
+    // 复制回同一文件夹 = 生成副本，一律改名，不问也不允许「覆盖」（会覆盖到它自己身上）。
+    if (fromHere.length === 0) {
+      const check = await vaultApi.call('file_clip_check_conflicts', { dest_dir: destDir, mode: 'existing', paths: sources })
+      if (check.ok && check.conflicts.length > 0) {
+        setPendingDrop(drop)
+        setConflictItems(check.conflicts)
+        setConflictResolveMode('rename')
+        setConflictDialogOpen(true)
+        return
+      }
+    }
+    await executeTransfer(drop, 'rename')
+  }
+
+  async function executeTransfer(drop: PendingDrop, onConflict: 'rename' | 'skip' | 'overwrite') {
+    if (transferring) return
+    setOperationProgress(newOperationProgress(drop.move ? t('dropMoveProgressLabel') : t('dropCopyProgressLabel'), 1, 'bytes'))
+    setOperationFiles(drop.sources.map(baseName))
+    try {
+      const res = await vaultApi.call('file_clip_transfer', {
+        sources: drop.sources,
+        dest_dir: drop.destDir,
+        move: drop.move,
+        on_conflict: onConflict,
+      })
+      if ('files_total' in res) {
+        const folder = baseName(drop.destDir)
+        if (res.ok) {
+          if (!res.noop) toast.success(t(drop.move ? 'dropMovedToast' : 'dropCopiedToast', { count: drop.sources.length, folder }))
+        } else if (res.errors.length > 0) toast.error(t('partialErrorsToast', { count: res.errors.length }))
+        else toast.error(t('dropFailedToast'))
+      } else {
+        toast.error(translateError(res.error, res.error_params))
+      }
+      await loadDirectory(currentPath)
+      await refreshUndoInfo()
+    } finally {
+      setOperationProgress(null)
+      setOperationFiles([])
+    }
+  }
+
   async function runDelete(paths: string[], recycle: boolean) {
     if (paths.length === 0 || transferring) return
     const opLabel = recycle ? t('deleteProgressLabel') : t('permanentDeleteProgressLabel')
@@ -670,12 +817,12 @@ export function FileManagerScreen({ isProfessional = false }: { isProfessional?:
     if (transferring) return
     const res = await vaultApi.call('file_clip_undo', {})
     if (res.ok) {
-      toast.success(res.description || t('undoSuccessToast'))
+      toast.success(t('undoSuccessToast'))
       await loadDirectory(currentPath)
       await refreshClipboardStatus()
       await refreshUndoInfo()
     } else {
-      toast.error(res.description || t('undoNothingToast'))
+      toast.error(t('undoNothingToast'))
     }
   }
 
@@ -821,6 +968,11 @@ export function FileManagerScreen({ isProfessional = false }: { isProfessional?:
 
   useEffect(() => {
     return electronApi.onFileManagerMenuAction((action) => {
+      // 菜单加速键全窗口生效：焦点在搜索框 / 改名框时 Ctrl+C/X/V 是文本编辑，不能变成复制选中的文件。
+      if ((action === 'copy' || action === 'cut' || action === 'paste') && isTextEditing(document.activeElement)) {
+        electronApi.nativeEdit(action)
+        return
+      }
       if (action === 'copy') void doCopy()
       else if (action === 'cut') void doCut()
       else if (action === 'paste') void doPaste()
@@ -847,15 +999,36 @@ export function FileManagerScreen({ isProfessional = false }: { isProfessional?:
   // 行回调必须稳定引用，FileRow 的 memo 才有效；但 handler 闭包带着当次渲染的 state，不能冻住。做法：
   // 提交后把最新 handler 放进 ref（用 useEffect 而非渲染期赋值，避免被丢弃的并发渲染污染），包装函数
   // 只建一次，调用时读 ref。
-  const liveHandlersRef = useRef({ handleRowClick, handleRowDoubleClick, handleEncryptToVault, handleSecureErase, handleDecryptHere })
+  const liveHandlersRef = useRef({
+    handleRowClick,
+    handleRowDoubleClick,
+    handleRowDragStart,
+    handleRowDragOver,
+    handleRowDrop,
+    handleEncryptToVault,
+    handleSecureErase,
+    handleDecryptHere,
+  })
   useEffect(() => {
-    liveHandlersRef.current = { handleRowClick, handleRowDoubleClick, handleEncryptToVault, handleSecureErase, handleDecryptHere }
+    liveHandlersRef.current = {
+      handleRowClick,
+      handleRowDoubleClick,
+      handleRowDragStart,
+      handleRowDragOver,
+      handleRowDrop,
+      handleEncryptToVault,
+      handleSecureErase,
+      handleDecryptHere,
+    }
   })
   const rowCallbacks = useMemo(
     () => ({
       onRowClick: (entry: DirEntry, index: number, event: React.MouseEvent) =>
         liveHandlersRef.current.handleRowClick(entry.name, index, event),
       onRowDoubleClick: (entry: DirEntry) => liveHandlersRef.current.handleRowDoubleClick(entry),
+      onRowDragStart: (entry: DirEntry, event: React.DragEvent) => liveHandlersRef.current.handleRowDragStart(entry, event),
+      onRowDragOver: (entry: DirEntry, event: React.DragEvent) => liveHandlersRef.current.handleRowDragOver(entry, event),
+      onRowDrop: (entry: DirEntry, event: React.DragEvent) => liveHandlersRef.current.handleRowDrop(entry, event),
       onEncryptToVault: (entry: DirEntry) => void liveHandlersRef.current.handleEncryptToVault(entry),
       onSecureErase: (entry: DirEntry) => void liveHandlersRef.current.handleSecureErase(entry),
       onDecryptHere: (entry: DirEntry) => void liveHandlersRef.current.handleDecryptHere(entry),
@@ -955,26 +1128,7 @@ export function FileManagerScreen({ isProfessional = false }: { isProfessional?:
           于是从别的面板切到文件管理器时，标题会上下跳一下、图标和标题的间距也
           变一档。四个界面各抄一份、每份还都抄得不一样，正是「界面不统一」最典型
           的来源——看起来都对，放在一起才看得出来。 */}
-      <PageHeader
-        className="mb-4"
-        
-        title={t('title')}
-        actions={
-          isProfessional ? (
-            <>
-              <Badge
-                tone={hookStatus.running ? 'success' : 'neutral'}
-                
-              >
-                {hookStatus.running ? t('hookStatusRunning') : hookStatus.compiled ? t('hookStatusStopped') : t('hookStatusNotBuilt')}
-              </Badge>
-              <Button variant="outline" size="sm" disabled={hookWorking || !hookStatus.compiled} onClick={toggleHook}>
-                {hookStatus.running ? t('hookDisableButton') : t('hookEnableButton')}
-              </Button>
-            </>
-          ) : undefined
-        }
-      />
+      <PageHeader title={t('title')} />
       {isProfessional && (
         <>
           {hookStatus.lastError && !hookStatus.running && (
@@ -986,6 +1140,18 @@ export function FileManagerScreen({ isProfessional = false }: { isProfessional?:
       <div className="mb-3 space-y-1.5">
         <IconToolbar
           storageKey="filemanager-actions"
+          extraControls={
+            isProfessional ? (
+              <>
+                <Badge tone={hookStatus.running ? 'success' : 'neutral'}>
+                  {hookStatus.running ? t('hookStatusRunning') : hookStatus.compiled ? t('hookStatusStopped') : t('hookStatusNotBuilt')}
+                </Badge>
+                <Button variant="outline" size="sm" disabled={hookWorking || !hookStatus.compiled} onClick={toggleHook}>
+                  {hookStatus.running ? t('hookDisableButton') : t('hookEnableButton')}
+                </Button>
+              </>
+            ) : undefined
+          }
           labelRegion={LABEL_REGIONS.fileManagerToolbar}
           defaultOpenGroupIds={['nav', 'fileops']}
           groups={[
@@ -1086,7 +1252,7 @@ export function FileManagerScreen({ isProfessional = false }: { isProfessional?:
         )}
         {undoInfo.hasUndo && (
           <Button variant="ghost" size="sm" className="h-auto px-1 py-0 text-sm" onClick={() => void doUndo()}>
-            {undoInfo.description || t('undoButton')}
+            {t('undoButton')}
           </Button>
         )}
       </div>
@@ -1097,7 +1263,20 @@ export function FileManagerScreen({ isProfessional = false }: { isProfessional?:
         </p>
       )}
 
-      <div ref={scrollParentRef} className="flex-1 overflow-auto rounded border">
+      <div
+        ref={scrollParentRef}
+        className={cn('relative flex-1 overflow-auto rounded border', dropTarget === DROP_ON_LIST && 'ring-2 ring-primary')}
+        onDragOver={(e) => {
+          if (!dragHasFiles(e)) return
+          e.preventDefault()
+          e.dataTransfer.dropEffect = 'copy'
+          setDropTarget(DROP_ON_LIST)
+        }}
+        onDragLeave={(e) => {
+          if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setDropTarget(null)
+        }}
+        onDrop={(e) => void handleDropOn(currentPath, e)}
+      >
         <div className={cn('sticky top-0 z-10 grid gap-2 border-b bg-muted/50 px-3 py-2.5 text-start text-sm font-medium', GRID_COLUMNS)}>
           <span>{t('columnName')}</span>
           <span>{t('columnSize')}</span>
@@ -1123,6 +1302,7 @@ export function FileManagerScreen({ isProfessional = false }: { isProfessional?:
                 isSelected={isSelected}
                 isActive={activeIndex === index}
                 dimmed={clipboardStatus.isCut && clipboardStatus.count > 0 && isSelected}
+                isDropTarget={entry.isDirectory && dropTarget === entry.name}
                 offset={virtualRow.start}
                 measureRef={rowVirtualizer.measureElement}
                 {...rowCallbacks}
@@ -1131,6 +1311,11 @@ export function FileManagerScreen({ isProfessional = false }: { isProfessional?:
           })}
         </div>
         {!loading && !loadError && entries.length === 0 && <p className="p-4 text-sm text-muted-foreground">{t('emptyFolderHint')}</p>}
+        {dropTarget !== null && (
+          <div className="pointer-events-none sticky bottom-3 z-20 mx-auto w-fit rounded-md bg-primary px-3 py-1.5 text-sm text-primary-foreground shadow">
+            {t('dropHint', { folder: dropTarget === DROP_ON_LIST ? baseName(currentPath) : dropTarget })}
+          </div>
+        )}
         {loading && (
           <p className="p-4 text-sm text-muted-foreground">
             {sortProgress !== null ? t('sortingLabel', { percent: sortProgress }) : t('loadingLabel')}
@@ -1239,7 +1424,14 @@ export function FileManagerScreen({ isProfessional = false }: { isProfessional?:
       </Dialog>
 
       {/******** Conflict Dialog (E8) ********/}
-      <Dialog open={conflictDialogOpen} onOpenChange={(o) => !o && setConflictDialogOpen(false)}>
+      <Dialog
+        open={conflictDialogOpen}
+        onOpenChange={(o) => {
+          if (o) return
+          setConflictDialogOpen(false)
+          setPendingDrop(null)
+        }}
+      >
         <DialogContent className="sm:max-w-lg">
           <DialogHeader>
             <DialogTitle>{t('conflictDialogTitle')}</DialogTitle>
@@ -1272,10 +1464,25 @@ export function FileManagerScreen({ isProfessional = false }: { isProfessional?:
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setConflictDialogOpen(false)}>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setConflictDialogOpen(false)
+                setPendingDrop(null)
+              }}
+            >
               {t('cancelButton')}
             </Button>
-            <Button onClick={() => { setConflictDialogOpen(false); void executePaste(conflictResolveMode) }}>
+            <Button
+              onClick={() => {
+                setConflictDialogOpen(false)
+                if (pendingDrop) {
+                  const drop = pendingDrop
+                  setPendingDrop(null)
+                  void executeTransfer(drop, conflictResolveMode)
+                } else void executePaste(conflictResolveMode)
+              }}
+            >
               {t('conflictConfirmButton')}
             </Button>
           </DialogFooter>

@@ -69,5 +69,11 @@
   "trayAutoStart": "التشغيل عند تسجيل الدخول",
   "traySilentStart": "تشغيل صامت (في علبة النظام فقط)",
   "trayStatusLocked": "مقفل",
-  "trayStatusUnlocked": "غير مقفل"
+  "trayStatusUnlocked": "غير مقفل",
+  "traySendClipboardSent": "أُرسلت الحافظة إلى {{count}} جهاز",
+  "traySendClipboardNone": "لا يوجد جهاز متصل لاستلام الحافظة",
+  "traySendClipboardEmpty": "الحافظة فارغة، لا يوجد ما يُرسل",
+  "traySendClipboardFailed": "تعذّر إرسال الحافظة: {{detail}}",
+  "fileHookAutostartRestored": "أُزيل إدخال بدء التشغيل لاختصارات الملفات على مستوى النظام من خارج Tessera وأُعيد وفق إعدادك. أوقفه من الإعدادات إن لم تعد تريده.",
+  "fileHookAutostartRestored360": "أزال مدير بدء التشغيل في 360 Total Security إدخال بدء التشغيل لاختصارات الملفات على مستوى النظام، وأُعيد وفق إعدادك. لمنع ذلك، اسمح بـ hook_agent (Ideal1FileVaultFileHook) في عناصر بدء التشغيل ضمن 360."
 }

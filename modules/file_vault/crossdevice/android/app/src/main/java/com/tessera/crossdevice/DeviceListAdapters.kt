@@ -46,6 +46,8 @@ internal data class PairedDeviceItem(
     val filePolicy: String = "inherit",
     /** 最近一次自动重连失败的原因码（not_found / refused / timeout ……），连上即清。 */
     val offlineCode: String = "",
+    /** 等对方上线后自动补发的文件数 */
+    val outbox: Int = 0,
 )
 
 internal object PairedDeviceDiff {
@@ -156,6 +158,7 @@ internal class PairedDeviceAdapter(
                 "off" -> append(" · ").append(holder.itemView.context.getString(R.string.policy_clip_off))
                 "text" -> append(" · ").append(holder.itemView.context.getString(R.string.policy_clip_text))
             }
+            if (item.outbox > 0) append(" · ").append(holder.itemView.context.getString(R.string.outbox_badge, item.outbox))
             when {
                 item.rttMs >= 0 -> {
                     append(" · ").append(item.rttMs).append("ms")

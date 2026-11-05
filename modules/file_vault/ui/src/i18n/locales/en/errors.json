@@ -236,5 +236,10 @@
   "recovery_codes.duplicates_invalid": "The services to merge have changed (deleted or edited). Scan again.",
   "notes.linked_too_large": "Files over 8 MB can't be linked as the original file",
   "notes.linked_file_missing": "The local file for this note is missing: {{path}}",
-  "notes.linked_folder_not_found": "This linked folder no longer exists"
+  "notes.linked_folder_not_found": "This linked folder no longer exists",
+  "file_clip.hook_status_failed": "Couldn't read the shortcut engine status: {{detail}}",
+  "file_clip.drop_into_self": "A folder can't be dropped into itself",
+  "file_clip.source_missing": "Some items no longer exist — the drop was canceled",
+  "file_clip.dest_missing": "The target folder doesn't exist",
+  "ai.desktop_target_blocked": "For safety, the AI can't launch or control command-line windows, script hosts, the Registry Editor or Tessera itself."
 }

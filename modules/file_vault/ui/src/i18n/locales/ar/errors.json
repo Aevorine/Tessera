@@ -236,5 +236,10 @@
   "recovery_codes.duplicates_invalid": "تغيّرت الخدمات المراد دمجها (حُذفت أو عُدّلت). أعد الفحص.",
   "notes.linked_too_large": "لا يمكن ربط الملفات الأكبر من 8 ميغابايت",
   "notes.linked_file_missing": "ملف هذه الملاحظة المحلي مفقود: {{path}}",
-  "notes.linked_folder_not_found": "لم يعد هذا المجلد المرتبط موجودًا"
+  "notes.linked_folder_not_found": "لم يعد هذا المجلد المرتبط موجودًا",
+  "file_clip.hook_status_failed": "تعذّرت قراءة حالة محرك الاختصارات: {{detail}}",
+  "file_clip.drop_into_self": "لا يمكن إفلات مجلد داخل نفسه",
+  "file_clip.source_missing": "بعض العناصر لم تعد موجودة — أُلغي الإفلات",
+  "file_clip.dest_missing": "المجلد الهدف غير موجود",
+  "ai.desktop_target_blocked": "لأسباب أمنية، لا يمكن للذكاء الاصطناعي تشغيل نوافذ سطر الأوامر أو مضيفات البرامج النصية أو محرر السجل أو Tessera نفسه أو التحكم بها."
 }

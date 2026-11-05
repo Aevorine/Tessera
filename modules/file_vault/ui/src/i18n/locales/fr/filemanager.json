@@ -105,5 +105,11 @@
   "historyFilesLabel": "fichiers",
   "historyClearButton": "Effacer l'historique",
   "historyFailedToast": "Impossible de charger l'historique",
-  "historyClearedToast": "Historique effacé"
+  "historyClearedToast": "Historique effacé",
+  "dropHint": "Déposer dans {{folder}}",
+  "dropMovedToast": "{{count}} élément(s) déplacé(s) vers {{folder}}",
+  "dropCopiedToast": "{{count}} élément(s) copié(s) vers {{folder}}",
+  "dropFailedToast": "Le glisser-déposer n'a pas abouti",
+  "dropMoveProgressLabel": "Déplacement...",
+  "dropCopyProgressLabel": "Copie..."
 }

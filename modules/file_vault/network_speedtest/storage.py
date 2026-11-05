@@ -8,6 +8,8 @@ from pathlib import Path
 
 from sqlcipher3 import dbapi2 as sqlcipher
 
+from modules.file_vault import db_threadsafe
+
 HISTORY_LIST_DEFAULT_LIMIT = 200
 # 异常/变差提醒对比的是"最近这么多条同类历史"的平均值，不是全部历史——
 # 网络环境是会变的（换路由器、换运营商...），拿太久以前的记录来比没有意义。
@@ -57,7 +59,7 @@ def _hex_key(key: bytes) -> str:
 
 def connect(db_path: Path, key: bytes) -> sqlite3.Connection:
     db_path.parent.mkdir(parents=True, exist_ok=True)
-    conn = sqlcipher.connect(str(db_path), check_same_thread=False)
+    conn = db_threadsafe.connect(str(db_path))
     conn.execute(f"PRAGMA key = \"{_hex_key(key)}\"")
     conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("PRAGMA synchronous=NORMAL")
@@ -200,3 +202,7 @@ class NetworkSpeedtestHistoryService:
 
     def baseline_for(self, *, network_type: str, environment_tag: Optional[str]) -> Optional[dict]:
         return fetch_baseline(self.conn, network_type=network_type, environment_tag=environment_tag)
+
+
+# 每个公开函数整段持连接锁（跨线程共用连接，见 db_threadsafe）。
+db_threadsafe.serialize_storage_api(globals())

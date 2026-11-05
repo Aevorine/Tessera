@@ -361,5 +361,9 @@
   "tileNoteTextPlain": "Texte des notes en fichiers clairs",
   "tileContentBadge": "IA · presse-papiers · notes",
   "tileOtherBadge": "Diagnostic · réinitialiser les préférences",
-  "shortcutActionOpenDevices": "Ouvrir Appareils et synchronisation"
+  "shortcutActionOpenDevices": "Ouvrir Appareils et synchronisation",
+  "fileHookStatusUnknown": "Impossible de lire l'état du moteur de raccourcis",
+  "fileHookRetry": "Réessayer",
+  "fileHookApprovalDisabled": "Le démarrage automatique est désactivé dans le Gestionnaire des tâches de Windows › Applications de démarrage",
+  "fileHookReenable": "Réactiver"
 }

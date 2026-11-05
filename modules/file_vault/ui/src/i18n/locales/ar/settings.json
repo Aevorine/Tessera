@@ -361,5 +361,9 @@
   "tileNoteTextPlain": "نص الملاحظات كملفات عادية",
   "tileContentBadge": "الذكاء الاصطناعي · الحافظة · الملاحظات",
   "tileOtherBadge": "التشخيص · إعادة ضبط التفضيلات",
-  "shortcutActionOpenDevices": "فتح الأجهزة والمزامنة"
+  "shortcutActionOpenDevices": "فتح الأجهزة والمزامنة",
+  "fileHookStatusUnknown": "تعذّرت قراءة حالة محرك الاختصارات",
+  "fileHookRetry": "إعادة المحاولة",
+  "fileHookApprovalDisabled": "التشغيل عند بدء التشغيل معطّل في مدير مهام Windows › تطبيقات بدء التشغيل",
+  "fileHookReenable": "إعادة التفعيل"
 }

@@ -40,6 +40,7 @@ import {
   Send,
   ShieldCheck,
   SlidersHorizontal,
+  Clock,
   Smartphone,
   Stethoscope,
   Tablet,
@@ -94,6 +95,8 @@ interface Device {
   last_seen?: number
   rtt_ms?: number
   method?: string
+  /** 等对方上线后自动补发的文件数（守护进程发件箱） */
+  outbox?: number
   /** 这条连接实际走的哪条路（守护进程算的，见 agent.go 的 m["via"]）。
    *  后端一直在发，前端类型里原先没有这两个字段，于是数据到了就被丢掉。 */
   via?: string
@@ -580,6 +583,8 @@ export function CrossDeviceScreen() {
   }, [])
 
   const seq = useRef(0)
+  // 哪些设备正挂着"连接已失效"提示：重连成功时把同一条提示原地改成"已恢复"，用户看得到断与复两端。
+  const linkDownShown = useRef(new Set<string>())
 
   const refresh = useCallback(async () => {
     try {
@@ -731,7 +736,31 @@ export function CrossDeviceScreen() {
         case 'state':
           if (data?.devices) setStatus((s) => (s ? { ...s, devices: data.devices as Device[] } : s))
           else refresh()
+          {
+            const id = data?.device_id as string | undefined
+            if (id && data?.state === 'connected' && linkDownShown.current.delete(id)) {
+              const name = devicesRef.current.find((x) => x.device_id === id)?.name ?? t('unknownDevice')
+              toast.success(t('linkRestoredToast', { device: name }), { id: `xdev-down-${id}`, duration: 3000 })
+            }
+          }
           break
+        // 链路失效（空闲时心跳 / 探测发现死链、读写失败）：发现即提示，并说明原因。用户主动的断开
+        // （撤销、到期、本机退出、对端正常关闭）不打扰。
+        case 'link_down': {
+          const id = (data?.device_id as string) ?? ''
+          const code = String(data?.code ?? 'other')
+          if (!id || ['revoked', 'expired', 'node_stopped', 'peer_closed'].includes(code)) break
+          const name = devicesRef.current.find((x) => x.device_id === id)?.name ?? t('unknownDevice')
+          linkDownShown.current.add(id)
+          toast.warning(
+            t('linkDownToast', {
+              device: name,
+              reason: t(`linkDownReason.${code}`, { defaultValue: t('linkDownReason.other') }),
+            }),
+            { id: `xdev-down-${id}` },
+          )
+          break
+        }
         case 'paired':
           if (data?.devices) setStatus((s) => (s ? { ...s, devices: data.devices as Device[] } : s))
           else refresh()
@@ -822,6 +851,61 @@ export function CrossDeviceScreen() {
         case 'transfer': {
           const d = data ?? {}
           const kind = (d.kind as string) ?? 'update'
+          // 断线自愈过程：等对端上线 / 断线后续传。只是过程提示，不进历史；同一文件同一设备一条，结束时收起。
+          const waitId = `xdev-wait-${d.device_id as string}|${d.name as string}`
+          if (kind === 'waiting' || kind === 'retry') {
+            const device = (d.device_name as string) || t('unknownDevice')
+            const name = (d.name as string) ?? ''
+            toast.loading(
+              kind === 'waiting'
+                ? t('sendWaitingToast', { device, name })
+                : t('sendRetryToast', { device, name, attempt: (d.attempt as number) ?? 1 }),
+              { id: waitId },
+            )
+            break
+          }
+          // 对方超时仍不在线：已进发件箱，上线自动补发——不是失败
+          if (kind === 'queued' || kind === 'outbox_drain') {
+            const device = (d.device_name as string) || t('unknownDevice')
+            const name = (d.name as string) ?? ''
+            const count = (d.count as number) ?? 1
+            if (kind === 'queued') {
+              toast.dismiss(waitId)
+              const key = `${d.device_id as string}|${name}`
+              setActive((prev) => {
+                if (!prev.has(key)) return prev
+                const next = new Map(prev)
+                next.delete(key)
+                return next
+              })
+            }
+            toast.message(
+              kind === 'outbox_drain'
+                ? t('outboxDrainToast', { device, count })
+                : name
+                  ? t('sendQueuedToast', { device, name })
+                  : t('sendQueuedMoreToast', { device, count }),
+              { id: `xdev-queued-${d.device_id as string}` },
+            )
+            if (kind === 'queued' && name) {
+              setTransfers((rows) =>
+                [
+                  {
+                    key: `t${++seq.current}`,
+                    direction: 'send' as const,
+                    deviceName: device,
+                    name,
+                    itemKind: 'file' as ItemKind,
+                    kind: 'queued',
+                    at: Date.now(),
+                  },
+                  ...rows,
+                ].slice(0, 50),
+              )
+            }
+            break
+          }
+          if (kind === 'done' || kind === 'error' || kind === 'canceled') toast.dismiss(waitId)
           // 传输结束就移出"进行中"。recv_done 必须算在内，漏掉会让每收一个文件都留下永不消失的记录。
           if (kind === 'done' || kind === 'error' || kind === 'recv_done' || kind === 'canceled') {
             const key = (d.transfer_id as string) || `${d.device_id as string}|${d.name as string}`
@@ -1392,6 +1476,26 @@ export function CrossDeviceScreen() {
     }
   }
 
+  /** 取消发给某台设备的排队文件：先给一次确认机会，误点不丢队列。 */
+  function promptCancelOutbox(d: Device) {
+    const count = d.outbox ?? 0
+    toast.message(t('outboxCancelPrompt', { device: d.name, count }), {
+      id: `xdev-outbox-cancel-${d.device_id}`,
+      action: {
+        label: t('outboxCancelAction'),
+        onClick: async () => {
+          try {
+            const res = await api.call<{ removed: number }>('outbox_cancel', { device_id: d.device_id })
+            toast.success(t('outboxCanceledToast', { count: res.removed }))
+            void refresh()
+          } catch (err) {
+            toast.error(err instanceof Error ? err.message : String(err))
+          }
+        },
+      },
+    })
+  }
+
   /**
    * 把拖入的文件直接发出。路径必须用 electronApi.getPathForFile：Electron 32 起 File.path 被移除，读
    * 到 undefined 就是"拖进去没反应"。目标读 sendTargets，与「发送文件」按钮同源，避免按钮发给 A、拖放
@@ -1864,6 +1968,21 @@ export function CrossDeviceScreen() {
                             {isOnline ? <Wifi className="h-3 w-3" /> : <WifiOff className="h-3 w-3" />}
                             <span>{t(`state.${d.state}`, { defaultValue: d.state })}</span>
                             {d.rtt_ms !== undefined && <span>· {d.rtt_ms} ms</span>}
+                            {!!d.outbox && (
+                              <button
+                                type="button"
+                                className="inline-flex items-center gap-1 rounded px-1 text-amber-600 hover:bg-amber-500/10"
+                                data-hint={t('outboxBadgeHint', { count: d.outbox })}
+                                aria-label={t('outboxBadgeHint', { count: d.outbox })}
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  promptCancelOutbox(d)
+                                }}
+                              >
+                                <Clock className="h-3 w-3" />
+                                {t('outboxBadge', { count: d.outbox })}
+                              </button>
+                            )}
                             {d.clip_latency_ms !== undefined && (
                               <span className="text-primary" data-hint={t('clipLatencyLabel')}>
                                 · {t('clipLatencyBadge', { ms: d.clip_latency_ms })}
@@ -2248,6 +2367,8 @@ export function CrossDeviceScreen() {
                         <Ban className="size-4 shrink-0 text-destructive" />
                       ) : r.kind === 'canceled' ? (
                         <X className="size-4 shrink-0 text-muted-foreground" />
+                      ) : r.kind === 'queued' ? (
+                        <Clock className="size-4 shrink-0 text-amber-500" aria-label={t('outboxQueuedRow')} />
                       ) : r.kind === 'done' || r.kind === 'recv_done' ? (
                         <CheckCircle2 className="size-4 shrink-0 text-emerald-500" />
                       ) : (

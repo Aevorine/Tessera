@@ -12,6 +12,8 @@ from typing import Any, Optional
 
 from sqlcipher3 import dbapi2 as sqlcipher
 
+from modules.file_vault import db_threadsafe
+
 from core.logging import get_logger
 
 logger = get_logger(__name__)
@@ -331,7 +333,7 @@ def connect(db_path: Path, key: bytes) -> sqlite3.Connection:
     """打开（必要时创建）加密剪贴板库；`key` 与已有库不符时抛 sqlcipher.DatabaseError，调用方靠它发
     现密钥错误。"""
     db_path.parent.mkdir(parents=True, exist_ok=True)
-    conn = sqlcipher.connect(str(db_path), check_same_thread=False)
+    conn = db_threadsafe.connect(str(db_path))
     conn.execute(f"PRAGMA key = \"{_hex_key(key)}\"")
     conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("PRAGMA synchronous=NORMAL")
@@ -1318,3 +1320,7 @@ def fetch_all_for_export(
         args,
     )
     return _row_to_dict(cur)
+
+
+# 每个公开函数整段持连接锁（跨线程共用连接，见 db_threadsafe）。
+db_threadsafe.serialize_storage_api(globals())

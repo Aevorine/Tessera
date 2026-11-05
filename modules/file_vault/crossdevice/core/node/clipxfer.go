@@ -78,6 +78,8 @@ func (s *Session) pushClipRep(it *clipboard.Item, mime string) {
 // 逻辑照抄 sendFile（同备料、位图续传、进度节流），但语义不同（无 ConfirmTransfer、
 // relPath、多文件清单），合并只会处处多一句"是不是剪贴板"。
 func (s *Session) sendClipFile(itemID []byte, mime, path string, size int64) error {
+	s.xferActive.Add(1)
+	defer s.xferActive.Add(-1)
 	chunkSize := transfer.DefaultChunkSize
 	if size > 0 && size < int64(chunkSize) {
 		chunkSize = int(size)
@@ -198,6 +200,7 @@ func (s *Session) sendClipFile(itemID []byte, mime, path string, size int64) err
 		if err := s.wc.WriteFrame(&wire.Frame{Type: wire.TypeXferChunk, Payload: pc.frame}); err != nil {
 			return err
 		}
+		s.touch() // 同 sendfile.go：写得动说明对端在消费，判活不该在此时断开
 		sentChunks++
 		report(false)
 	}

@@ -105,5 +105,11 @@
   "historyFilesLabel": "archivos",
   "historyClearButton": "Borrar historial",
   "historyFailedToast": "No se pudo cargar el historial",
-  "historyClearedToast": "Historial borrado"
+  "historyClearedToast": "Historial borrado",
+  "dropHint": "Soltar en {{folder}}",
+  "dropMovedToast": "Se movieron {{count}} elemento(s) a {{folder}}",
+  "dropCopiedToast": "Se copiaron {{count}} elemento(s) a {{folder}}",
+  "dropFailedToast": "No se completó la operación de arrastre",
+  "dropMoveProgressLabel": "Moviendo...",
+  "dropCopyProgressLabel": "Copiando..."
 }

@@ -69,5 +69,11 @@
   "trayAutoStart": "开机自启",
   "traySilentStart": "开机静默启动（只驻留托盘）",
   "trayStatusLocked": "已锁定",
-  "trayStatusUnlocked": "已解锁"
+  "trayStatusUnlocked": "已解锁",
+  "traySendClipboardSent": "剪贴板已发到 {{count}} 台设备",
+  "traySendClipboardNone": "没有在线的设备可以接收剪贴板",
+  "traySendClipboardEmpty": "剪贴板是空的，没有可发送的内容",
+  "traySendClipboardFailed": "剪贴板发送失败：{{detail}}",
+  "fileHookAutostartRestored": "系统级文件快捷键的开机启动项被外部删除，已按你的设置恢复；不需要时请在设置里关闭",
+  "fileHookAutostartRestored360": "360 安全卫士的启动项管理删掉了系统级文件快捷键的开机启动项，已按你的设置恢复。想让它不再被删：在 360「优化加速 → 启动项」里把 hook_agent（Ideal1FileVaultFileHook）改回允许启动"
 }

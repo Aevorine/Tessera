@@ -1,4 +1,4 @@
-import { app, BrowserWindow, clipboard, dialog, globalShortcut, ipcMain, Menu, nativeImage, nativeTheme, powerMonitor, session, shell, Tray } from 'electron'
+import { app, BrowserWindow, clipboard, dialog, globalShortcut, ipcMain, Menu, nativeImage, nativeTheme, Notification, powerMonitor, session, shell, Tray } from 'electron'
 import { createRequire } from 'node:module'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { execFile, execFileSync } from 'node:child_process'
@@ -7,7 +7,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { promisify } from 'node:util'
-import { PythonBridge } from './pythonBridge'
+import { PythonBridge, type BackendExitRecord } from './pythonBridge'
 import {
   DEFAULT_STARTUP_PREFERENCES,
   LOGIN_LAUNCH_ARG,
@@ -29,6 +29,7 @@ import { verifySigner } from './authenticode'
 import { requiredFreeBytes } from './updateVersion'
 import { stripMarkupTags } from '../src/shared/plainText'
 import { formatStartupReport, markStartup } from './startupTiming'
+import { addIdentityTokens, flushAppLogSync, initAppLog, logEvent, setIdentityTokens, type LogLevel } from './appLog'
 import {
   detectInstallFlavor,
   inspectTarget,
@@ -229,6 +230,7 @@ function startCrossDeviceBridge(): void {
   crossDevice = new CrossDeviceBridge(CROSSDEVICE_COMMAND, CROSSDEVICE_DATA_DIR, deviceName)
 
   crossDevice.setEventListener((e) => {
+    logCrossDeviceEvent(e.event, e.data)
     // 本机剪贴板变化事件只给主进程用，不转发渲染进程。
     if (e.event === 'clip_changed') {
       if (clipTimer) onClipChanged()
@@ -265,6 +267,73 @@ function startCrossDeviceBridge(): void {
     sendToRenderer('crossdevice:event', e)
   })
   crossDevice.start()
+}
+
+/** 设备 ID 只记前 8 位：够在日志里区分是哪台，又不把完整身份指纹写进明文文件。 */
+function shortId(id: unknown): string {
+  return typeof id === 'string' ? id.slice(0, 8) : ''
+}
+
+/**
+ * 跨设备守护进程事件 → 结构化日志。只挑排障有用的：连接状态、断链原因、传输结果与自愈重试、守护进程起停。
+ * 不记文件名、设备名、剪贴板内容（data 里有也不取）。
+ */
+function logCrossDeviceEvent(event: string, data: Record<string, unknown> | undefined): void {
+  const d = data ?? {}
+  // 守护进程的 stderr 会写出已配对设备的名字：设备列表一到就把名字加进脱敏词表。
+  if (Array.isArray(d.devices)) addIdentityTokens((d.devices as Array<{ name?: unknown }>).map((x) => x?.name))
+  switch (event) {
+    case 'ready':
+      logEvent('crossdevice', 'info', event)
+      void crossDevice
+        ?.call<Array<{ name?: unknown }>>('list_devices')
+        .then((list) => {
+          if (Array.isArray(list)) addIdentityTokens(list.map((x) => x?.name))
+        })
+        .catch(() => {})
+      return
+    case 'daemon_restarting':
+      logEvent('crossdevice', 'warn', event, undefined, { code: d.code })
+      return
+    case 'state':
+      logEvent('crossdevice', 'info', 'state', undefined, { device: shortId(d.device_id), state: d.state })
+      return
+    case 'link_down': {
+      const unexpected = !['revoked', 'expired', 'node_stopped', 'peer_closed'].includes(String(d.code))
+      logEvent('crossdevice', unexpected ? 'warn' : 'info', 'link_down', String(d.reason ?? ''), {
+        device: shortId(d.device_id),
+        code: d.code,
+        uptime_ms: d.uptime_ms,
+        idle_ms: d.idle_ms,
+        rtt_ms: d.rtt_ms,
+        route: d.route,
+        initiator: d.initiator,
+        transferring: d.transferring,
+      })
+      return
+    }
+    case 'transfer': {
+      const kind = String(d.kind ?? '')
+      if (!['waiting', 'retry', 'error', 'done', 'canceled', 'recv_done'].includes(kind)) return
+      const name = typeof d.name === 'string' ? d.name : ''
+      const dot = name.lastIndexOf('.')
+      logEvent('crossdevice', kind === 'error' ? 'error' : kind === 'retry' ? 'warn' : 'info', `transfer_${kind}`, undefined, {
+        device: shortId(d.device_id),
+        direction: d.direction,
+        item_kind: d.item_kind,
+        ext: dot > 0 ? name.slice(dot).toLowerCase() : '',
+        size: d.size,
+        elapsed_ms: d.elapsed_ms,
+        attempt: d.attempt,
+        code: d.code,
+        error: d.error,
+      })
+      return
+    }
+    case 'notice':
+      logEvent('crossdevice', 'warn', 'notice', String(d.message ?? ''), { device: shortId(d.device_id) })
+      return
+  }
 }
 
 interface IncomingClip {
@@ -648,12 +717,73 @@ function saveAutoLock(settings: AutoLockSettings): void {
   }
 }
 
+// 后端崩溃记录：每次非主动退出一行 JSON（退出码、存活时长、stderr 尾部含 faulthandler 调用栈）。
+// 超过上限整份换成 .1，只留一份历史。
+const BACKEND_EXIT_LOG_MAX_BYTES = 256 * 1024
+
+/** 统一结构化日志（见 appLog.ts）：userData/logs/tessera-日期.jsonl，Claude Code 经 `agent/cli.py logs` 检索。 */
+function startAppLog(): void {
+  initAppLog(path.join(app.getPath('userData'), 'logs'), app.getVersion())
+  let user = ''
+  try {
+    user = os.userInfo().username
+  } catch {
+    // 拿不到用户名就只脱敏主机名
+  }
+  setIdentityTokens([user, os.hostname()])
+  logEvent('main', 'info', 'app_start', undefined, {
+    packaged: app.isPackaged,
+    electron: process.versions.electron,
+    os: `${os.platform()} ${os.release()}`,
+    arch: process.arch,
+    locale: app.getLocale(),
+  })
+  // 只旁听、不改变默认处理（uncaughtExceptionMonitor 不吞异常）。
+  process.on('uncaughtExceptionMonitor', (err) => {
+    logEvent('main', 'error', 'uncaught_exception', err?.stack ?? String(err))
+    flushAppLogSync()
+  })
+  process.on('unhandledRejection', (reason) => {
+    console.error('[main] unhandled rejection:', reason)
+    logEvent('main', 'error', 'unhandled_rejection', reason instanceof Error ? (reason.stack ?? reason.message) : String(reason))
+  })
+  app.on('child-process-gone', (_e, details) => {
+    logEvent('main', details.reason === 'clean-exit' ? 'info' : 'error', 'child_process_gone', details.reason, {
+      type: details.type,
+      exit_code: details.exitCode,
+      name: details.name,
+    })
+  })
+}
+
+function appendBackendExitRecord(record: BackendExitRecord): void {
+  logEvent('backend', 'error', 'exit', record.stderrTail, {
+    code: record.code,
+    signal: record.signal,
+    uptime_ms: record.uptimeMs,
+  })
+  try {
+    const dir = path.join(app.getPath('userData'), 'logs')
+    fs.mkdirSync(dir, { recursive: true })
+    const file = path.join(dir, 'backend-exits.jsonl')
+    try {
+      if (fs.statSync(file).size > BACKEND_EXIT_LOG_MAX_BYTES) fs.renameSync(file, `${file}.1`)
+    } catch {
+      // 文件还不存在
+    }
+    fs.appendFileSync(file, JSON.stringify({ ...record, version: app.getVersion() }) + '\n', 'utf-8')
+  } catch {
+    // 记录失败不影响自动重启
+  }
+}
+
 /** 把金库锁上。`reason` 只用于日志和给渲染端显示一句"为什么被锁了"。 */
 function lockVault(reason: string): void {
   if (!vaultUnlocked) return
   vaultUnlocked = false
   hiddenSince = null
   console.log('[auto-lock] locking vault:', reason)
+  logEvent('main', 'info', 'vault_locked', reason)
   sendToRenderer('vault:locked', reason)
   rebuildTrayMenu() // 「锁定金库」那一项要跟着消失，见 rebuildTrayMenu 里的注释
   bridge?.restartForLock()
@@ -681,12 +811,17 @@ function startAutoLockWatch(): void {
   autoLockTimer = setInterval(autoLockTick, AUTO_LOCK_TICK_MS)
   // 这两个事件不受巡查间隔影响，发生即锁——锁屏和合盖恰恰是最需要"立刻"的两个。
   powerMonitor.on('lock-screen', () => {
+    logEvent('main', 'info', 'power_lock_screen')
     if (autoLock.onScreenLock) lockVault('screen locked')
   })
   powerMonitor.on('suspend', () => {
+    logEvent('main', 'info', 'power_suspend')
     if (autoLock.onSuspend) lockVault('system suspended')
   })
+  powerMonitor.on('resume', () => logEvent('main', 'info', 'power_resume'))
+  powerMonitor.on('unlock-screen', () => logEvent('main', 'info', 'power_unlock_screen'))
   powerMonitor.on('shutdown', () => {
+    logEvent('main', 'info', 'power_shutdown')
     if (autoLock.onSuspend) lockVault('system shutting down')
   })
 }
@@ -848,6 +983,8 @@ let bridge: PythonBridge | null
 let tray: Tray | null = null
 let isQuitting = false
 let isPaused = false
+/** 锁定期间请求的面板跳转（托盘快速访问、查看菜单），解锁后补发。设备与同步另有 pendingDevicesNavigation 通道。 */
+let pendingNavigation: string | null = null
 let languageChangeDebounceHandle: ReturnType<typeof setTimeout> | null = null
 const recentExportPaths: string[] = []
 
@@ -859,6 +996,50 @@ let fileManagerActive = false
 // FileHookStatusCard / SettingsScreen 的 RPC 结果回传刷新，用于原生菜单 checkbox 的 checked。
 // 钩子是独立进程，状态可被外部改变，不能像 alwaysOnTop 那样用 in-process 即时查询。
 let fileHookEnabled = false
+
+/** 菜单勾选直接调后端启停引擎（不依赖文件管理器页面是否打开），以真实结果回写勾选。 */
+async function toggleFileHookFromMenu(): Promise<void> {
+  if (!bridge) return
+  const want = !fileHookEnabled
+  try {
+    const res = (await bridge.call('file_clip_hook_set_running', { running: want })) as {
+      ok: boolean
+      running?: boolean
+      error?: string
+    }
+    if (res.ok && typeof res.running === 'boolean') fileHookEnabled = res.running
+    logEvent('filehook', res.ok ? 'info' : 'error', 'menu_toggle', res.error, { want, running: res.running })
+  } catch (err) {
+    // 后端不可用：保持原值
+    logEvent('filehook', 'error', 'menu_toggle', String(err), { want })
+  }
+  updateItemState('fileHookEnabled', { checked: fileHookEnabled })
+  sendToRenderer('filemanager:hook-state', fileHookEnabled)
+}
+
+/** 启动后读一次真实引擎状态，菜单勾选不再永远从「未勾选」开始。 */
+async function syncFileHookMenuState(): Promise<void> {
+  try {
+    const res = (await bridge?.call('file_clip_hook_status', {} as never)) as
+      | (Record<string, unknown> & { ok: boolean; running?: boolean })
+      | undefined
+    logEvent('filehook', res?.ok ? 'info' : 'warn', 'startup_status', undefined, {
+      running: res?.running,
+      autostart: res?.autostart,
+      autostart_registered: res?.autostart_registered,
+      autostart_approved: res?.autostart_approved,
+      autostart_intent: res?.autostart_intent,
+      restored: res?.restored,
+      error: res?.error,
+    })
+    if (res?.ok && typeof res.running === 'boolean') {
+      fileHookEnabled = res.running
+      updateItemState('fileHookEnabled', { checked: fileHookEnabled })
+    }
+  } catch {
+    // 查询失败不影响启动
+  }
+}
 
 // 用"打开方式"选中本应用时，Windows 以 exe 路径 + 文件路径作命令行参数拉起新进程（见 setFileAssociationRegistered
 // 写入的 shell\open\command），不是拖进已有窗口。从参数里找第一个真实存在且扩展名已关联的路径；
@@ -1151,17 +1332,42 @@ function createWindow() {
 
   bridge = new PythonBridge(BACKEND_TARGET.command, BACKEND_TARGET.leadingArgs, BACKEND_ARGS)
   bridge.setSpawnListener((pid) => backendGovernor.adopt(pid))
-  bridge.setEventListener((payload) => sendToRenderer('vault:event', payload))
+  bridge.setEventListener((payload) => {
+    if (payload.event === 'file_hook_autostart_restored') {
+      const by = payload.removed_by ?? null
+      logEvent('filehook', 'warn', 'autostart_restored', undefined, { removed_by: by })
+      const strings = getCurrentLocale()
+      trayNotice(by === '360' ? strings.fileHookAutostartRestored360 : strings.fileHookAutostartRestored)
+      return
+    }
+    sendToRenderer('vault:event', payload)
+  })
   bridge.setFatalListener((detail) => {
+    logEvent('backend', 'error', 'fatal', detail)
     sendToRenderer('vault:backend-fatal', detail)
   })
+  bridge.setExitListener(appendBackendExitRecord)
   bridge.setRestartListener(() => {
+    logEvent('backend', 'warn', 'restarted', undefined, { vault_was_unlocked: vaultUnlocked })
     isPaused = false // 新进程里剪贴板服务是全新起的，不是"暂停"状态
+    // 新进程没有已解锁的密钥：否则自动锁定会对已锁的金库再重启一次后端，托盘也一直显示「锁定金库」
+    if (vaultUnlocked) {
+      vaultUnlocked = false
+      hiddenSince = null
+      rebuildTrayMenu()
+    }
     sendToRenderer('vault:backend-restarted')
   })
 
   startCrossDeviceBridge()
   markStartup('crossDeviceStarted')
+  void syncFileHookMenuState()
+
+  win.webContents.on('render-process-gone', (_e, details) => {
+    logEvent('renderer', 'error', 'process_gone', details.reason, { exit_code: details.exitCode })
+  })
+  win.on('unresponsive', () => logEvent('renderer', 'warn', 'unresponsive'))
+  win.on('responsive', () => logEvent('renderer', 'info', 'responsive'))
 
   win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
   // Chromium导航会把本地拖入的文件当作一次页面跳转；拦下导航并把已允许的
@@ -1294,6 +1500,15 @@ function createWindow() {
             vaultUnlocked = true
             hiddenSince = win && !win.isVisible() ? Date.now() : null
             rebuildTrayMenu() // 「锁定金库」那一项这时候才该出现
+            // 锁定期间在托盘点了「暂停剪贴板」：那次调用因后端未解锁而失败，托盘却已显示「继续」。解锁后补发一次，
+            // 两边才一致。
+            if (isPaused) void bridge?.call('clipboard_set_paused', { paused: true }).catch(() => {})
+            // 锁定时从托盘 / 菜单 / 全局快捷键点的面板：解锁后再切过去（登录页会丢掉这个跳转）。
+            if (pendingNavigation) {
+              const pane = pendingNavigation
+              pendingNavigation = null
+              setTimeout(() => sendToRenderer('nav:show-pane', pane), 300)
+            }
           }
         })
         .catch(() => {
@@ -1469,12 +1684,57 @@ function createWindow() {
 
   // 系统级文件快捷键钩子的 toggle 事件透传——菜单 checkbox 点击时触发，
   // 渲染进程 FileManagerScreen.tsx 监听同一事件并实际调 RPC。
-  ipcMain.handle('filemanager:getHookEnabled', (event) => {
-    assertTrustedRenderer(event)
-    return fileHookEnabled
+  // 渲染进程的故障也进统一日志（未捕获异常、未处理拒绝、渲染崩溃边界）。限流：10 秒最多 40 条，防止一个循环刷爆磁盘。
+  let rendererLogWindowStart = 0
+  let rendererLogCount = 0
+  ipcMain.on('app:log', (event, payload: unknown) => {
+    const frame = event.senderFrame
+    if (!frame || !isTrustedRendererUrl(frame.url)) return
+    const now = Date.now()
+    if (now - rendererLogWindowStart > 10_000) {
+      rendererLogWindowStart = now
+      rendererLogCount = 0
+    }
+    if (++rendererLogCount > 40) return
+    const p = (payload ?? {}) as Record<string, unknown>
+    const level: LogLevel = p.level === 'warn' || p.level === 'info' ? p.level : 'error'
+    const data: Record<string, unknown> = {}
+    for (const k of ['module', 'code', 'method']) if (typeof p[k] === 'string') data[k] = (p[k] as string).slice(0, 200)
+    logEvent('renderer', level, String(p.event ?? 'ui_failure').slice(0, 80), String(p.msg ?? '').slice(0, 2000), data)
   })
+
+  // 文件管理器行拖出：交给系统原生拖放（资源管理器、桌面、别的程序、本窗口都能接）。必须在 dragstart 里同步调，
+  // 所以走 send 不走 invoke。只收存在的绝对路径，数量封顶，防止渲染端把任意字符串塞进系统拖放。
+  ipcMain.on('filemanager:startDrag', (event, paths: unknown) => {
+    const frame = event.senderFrame
+    if (!frame || !isTrustedRendererUrl(frame.url)) return
+    if (!Array.isArray(paths) || paths.length === 0 || paths.length > 500) return
+    // 不碰 UNC / 设备路径：existsSync 会同步阻塞主线程并触发 SMB 认证。
+    const files = paths.filter(
+      (p): p is string =>
+        typeof p === 'string' && /^[A-Za-z]:[\\/]/.test(p) && path.isAbsolute(p) && fs.existsSync(p),
+    )
+    if (files.length === 0) return
+    const icon = getDragIcon()
+    try {
+      event.sender.startDrag({ file: files[0], files, icon })
+    } catch (err) {
+      logEvent('main', 'warn', 'start_drag_failed', String(err), { count: files.length })
+    }
+  })
+
+  // 文件管理器激活时 Edit 菜单的 Ctrl+C/X/V 走文件操作；焦点在输入框（搜索、改名）时渲染端把动作交回这里做原生文本编辑。
+  ipcMain.on('edit:native', (event, action: unknown) => {
+    const frame = event.senderFrame
+    if (!frame || !isTrustedRendererUrl(frame.url)) return
+    if (action === 'copy') event.sender.copy()
+    else if (action === 'cut') event.sender.cut()
+    else if (action === 'paste') event.sender.paste()
+  })
+
   ipcMain.on('filemanager:setHookEnabled', (event, enabled: boolean) => {
     assertTrustedRenderer(event)
+    if (fileHookEnabled !== enabled) logEvent('filehook', 'info', 'state', undefined, { running: enabled })
     fileHookEnabled = enabled
     updateItemState('fileHookEnabled', { checked: enabled })
   })
@@ -1833,6 +2093,11 @@ function toggleWindow() {
 // 这里不重复定义该类型，主进程只原样转发字符串。
 function sendNav(pane: string) {
   showWindow()
+  // 锁着时渲染端在登录页，收到跳转也只能丢掉：记下来，解锁成功后再切（见 vault:call 里 UNLOCK_METHODS 那段）。
+  if (!vaultUnlocked) {
+    pendingNavigation = pane
+    return
+  }
   sendToRenderer('nav:show-pane', pane)
 }
 
@@ -2135,11 +2400,7 @@ function buildTemplate(t: MenuLocale): MenuTemplateItem[] {
       type: 'checkbox',
       actionKey: 'fileHookEnabled',
       checked: fileHookEnabled,
-      click: () => {
-        fileHookEnabled = !fileHookEnabled
-        updateItemState('fileHookEnabled', { checked: fileHookEnabled })
-        sendToRenderer('filemanager:hook-toggle', fileHookEnabled)
-      },
+      click: () => void toggleFileHookFromMenu(),
     })
     fileSubmenu.push({ type: 'separator' })
   }
@@ -2403,15 +2664,54 @@ function buildAppMenu(lang: SupportedMenuLang): void {
 // 模块级函数而非 createTray 内闭包：语言切换时也要重新调用来刷新托盘菜单文案。
 /** 托盘菜单「把剪贴板发到所有设备」。跟设备页的「发送剪贴板」走同一条路（force：
  *  接收端不做回环去重），只是不用先打开窗口。 */
+let dragIcon: Electron.NativeImage | null = null
+/** 拖放光标旁的图标。Windows 上空图会让 startDrag 抛错，所以用应用图标并缓存。 */
+function getDragIcon(): Electron.NativeImage {
+  if (dragIcon && !dragIcon.isEmpty()) return dragIcon
+  const img = nativeImage.createFromPath(path.join(process.env.VITE_PUBLIC!, 'app-icon.png'))
+  dragIcon = img.isEmpty() ? nativeImage.createFromPath(path.join(process.env.VITE_PUBLIC!, 'icon.ico')) : img.resize({ width: 32, height: 32 })
+  return dragIcon
+}
+
+/** 托盘点了「发送剪贴板」必须有回音：发到几台、没有在线设备、剪贴板为空、失败原因——否则和没点一样。 */
+function trayNotice(body: string): void {
+  try {
+    if (Notification.isSupported()) new Notification({ title: 'Tessera', body, silent: true }).show()
+    else tray?.displayBalloon({ title: 'Tessera', content: body })
+  } catch {
+    // 通知被系统关掉也不影响发送本身
+  }
+}
+
 async function sendClipboardFromTray(): Promise<void> {
-  if (!crossDevice) return
+  const t = getCurrentLocale()
+  if (!crossDevice) {
+    trayNotice(t.traySendClipboardNone)
+    return
+  }
   const local = readLocalClipboard()
-  if (!local) return
+  if (!local) {
+    trayNotice(t.traySendClipboardEmpty)
+    return
+  }
   noteClipboardWritten()
   try {
-    await crossDevice.call('send_clip', { ...local, force: true })
+    const res = (await crossDevice.call('send_clip', { ...local, force: true })) as {
+      sent?: number
+      errors?: string[]
+      skipped?: string
+    }
+    const sent = typeof res?.sent === 'number' ? res.sent : 0
+    logEvent('crossdevice', sent > 0 ? 'info' : 'warn', 'tray_send_clip', undefined, {
+      sent,
+      errors: res?.errors?.length ?? 0,
+      skipped: res?.skipped,
+    })
+    trayNotice(sent > 0 ? t.traySendClipboardSent.replace('{{count}}', String(sent)) : t.traySendClipboardNone)
   } catch (error) {
     console.error('[tray] send clipboard failed', error)
+    logEvent('crossdevice', 'error', 'tray_send_clip', String(error))
+    trayNotice(t.traySendClipboardFailed.replace('{{detail}}', error instanceof Error ? error.message : String(error)))
   }
 }
 
@@ -2443,7 +2743,7 @@ function rebuildTrayMenu(): void {
         try {
           await bridge?.call('clipboard_set_paused', { paused: isPaused })
         } catch {
-          // 后端未解锁/未起来时调用会失败：托盘状态照样翻转，解锁后 AppShell 会用当前 isPaused 重新同步；
+          // 后端未解锁/未起来时调用会失败：托盘状态照样翻转，解锁成功时主进程会按当前 isPaused 补发一次；
           // 容忍静默失败。
         }
         rebuildTrayMenu()
@@ -2652,10 +2952,14 @@ function registerUpdateIpc(): void {
 
   ipcMain.handle('update:check', async (event, force: boolean) => {
     assertTrustedRenderer(event)
-    return getUpdateService().check(force === true, detectInstallFlavor())
+    return logUpdateResult('check', await getUpdateService().check(force === true, detectInstallFlavor()))
   })
 
-  ipcMain.handle('update:install', async (event) => {
+  ipcMain.handle('update:install', async (event) => logUpdateResult('install', await installUpdate(event)))
+}
+
+async function installUpdate(event: IpcMainInvokeEvent) {
+  {
     assertTrustedRenderer(event)
     const service = getUpdateService()
     const pending = service.getPendingUpdate()
@@ -2736,7 +3040,19 @@ function registerUpdateIpc(): void {
     isQuitting = true
     setTimeout(() => app.quit(), 200)
     return { ok: true as const }
-  })
+  }
+}
+
+/** 更新检查 / 安装的结果进日志：失败码与目标版本是"为什么没更新上"的唯一线索。 */
+function logUpdateResult<T>(action: 'check' | 'install', result: T): T {
+  const r = (result ?? {}) as Record<string, unknown>
+  const failed = r.ok === false || typeof r.errorCode === 'string' || r.status === 'error'
+  const pick: Record<string, unknown> = {}
+  for (const k of ['ok', 'status', 'version', 'latestVersion', 'flavor', 'errorCode', 'errorMessage', 'error']) {
+    if (r[k] !== undefined && typeof r[k] !== 'object') pick[k] = r[k]
+  }
+  logEvent('updater', failed ? 'warn' : 'info', action, undefined, pick)
+  return result
 }
 
 /**
@@ -2786,6 +3102,8 @@ function scheduleAutoUpdateCheck(): void {
 }
 
 app.on('will-quit', () => {
+  logEvent('main', 'info', 'app_quit')
+  flushAppLogSync()
   if (autoLockTimer !== null) {
     clearInterval(autoLockTimer)
     autoLockTimer = null
@@ -2845,6 +3163,7 @@ app.whenReady().then(() => {
   // 避免起重复的窗口/后端/托盘。
   if (!gotAppLock) return
   markStartup('appReady')
+  startAppLog()
   denyAllWebPermissions()
   checkMenuLocaleCompleteness()
   // 深色模式偏好要在 createWindow() 之前落好 nativeTheme.themeSource——

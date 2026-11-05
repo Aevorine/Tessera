@@ -245,10 +245,10 @@ async function collectClientFacts(): Promise<Record<string, unknown>> {
       const availability = await api.available()
       facts.crossdeviceRunning = availability?.available ?? null
       if (availability?.available) {
-        const devices = await api.call<{ devices?: Array<{ via?: string; relayed?: boolean }> }>(
-          'list_devices',
-        )
-        const list = devices?.devices ?? []
+        // 守护进程的 list_devices 直接回数组（agent.go: `return d.devices()`）；按对象取 .devices 会让配对数恒为 0。
+        type Dev = { via?: string; relayed?: boolean }
+        const devices = await api.call<Dev[] | { devices?: Dev[] }>('list_devices')
+        const list = Array.isArray(devices) ? devices : (devices?.devices ?? [])
         facts.crossdevicePairedDevices = list.length
         const online = list.filter((d) => d.via || d.relayed != null)
         // 只要**有一台**还在走中继就报中继。取"多数"或"最后一台"都会让提示

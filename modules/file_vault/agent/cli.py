@@ -11,6 +11,8 @@
     tessera encrypt secret.docx
     tessera decrypt secret.docx.ivault -o secret.docx
     tessera tools
+    tessera logs --since 2h --level warn
+    tessera logs --summary --since 1d
 
 ## 密码
 
@@ -35,6 +37,7 @@ import argparse
 import getpass
 import json
 import os
+import re
 import sys
 from pathlib import Path
 from typing import Optional
@@ -121,6 +124,32 @@ def cmd_status(args) -> int:
     payload = {"initialised": exists, "data_dir": info.get("path"), "source": info.get("source")}
     human = "金库{}\n数据目录：{}".format("已建立" if exists else "尚未建立", payload["data_dir"])
     _emit(args, human, payload)
+    return EXIT_OK
+
+
+def cmd_logs(args) -> int:
+    """读统一结构化日志（Electron 主进程写，已脱敏）。不需要解锁，也不启动后端。"""
+    from modules.file_vault import applog_query
+
+    try:
+        result = applog_query.query(
+            log_dir=args.log_dir, since=args.since, component=args.component, level=args.level,
+            event=args.event, grep=args.grep, limit=args.limit, summary=args.summary, regex=args.regex,
+        )
+    except (ValueError, re.error) as exc:
+        print(str(exc), file=sys.stderr)
+        return EXIT_USAGE
+    if args.json or args.summary:
+        print(json.dumps(result, ensure_ascii=False, indent=2))
+        return EXIT_OK
+    if not result["exists"]:
+        print("还没有日志：{}（0.1.53 起由桌面端写入）".format(result["log_dir"]), file=sys.stderr)
+        return EXIT_OK
+    for e in result["entries"]:
+        print(applog_query.format_entry(e))
+    shown = len(result["entries"])
+    if result["total"] > shown:
+        print("… 共 {} 条，只显示最后 {} 条（--limit 调整）".format(result["total"], shown), file=sys.stderr)
     return EXIT_OK
 
 
@@ -281,6 +310,19 @@ def build_parser() -> argparse.ArgumentParser:
 
     sub.add_parser("status", help="金库建了没、数据目录在哪（不需要解锁）").set_defaults(func=cmd_status)
     sub.add_parser("tools", help="列出电脑清理里那批小工具（不需要解锁）").set_defaults(func=cmd_tools)
+
+    logs = sub.add_parser("logs", help="查统一结构化日志：崩溃、断链、传输、更新、界面故障（不需要解锁）")
+    logs.add_argument("--since", default="24h", help="30m / 2h / 1d / ISO 时间；默认 24h")
+    logs.add_argument("--component", default=None,
+                      help="main / backend / crossdevice / filehook / updater / renderer，逗号分隔")
+    logs.add_argument("--level", default=None, help="最低级别：debug / info / warn / error")
+    logs.add_argument("--event", default=None, help="事件名，逗号分隔（如 link_down,transfer_error）")
+    logs.add_argument("--grep", default=None, help="子串匹配整条记录（不区分大小写，a|b 表示任一）")
+    logs.add_argument("--regex", action="store_true", help="把 --grep 当正则（上限 200 字符）")
+    logs.add_argument("--limit", type=int, default=200, help="最多显示最后 N 条（默认 200）")
+    logs.add_argument("--summary", action="store_true", help="出摘要：错误排行、断链原因、传输结果、后端崩溃")
+    logs.add_argument("--log-dir", default=None, help="日志目录（默认 %%APPDATA%%/file-vault-ui/logs）")
+    logs.set_defaults(func=cmd_logs)
 
     search = sub.add_parser("search", help="跨笔记 / 剪贴板 / 密码库搜索")
     search.add_argument("query")

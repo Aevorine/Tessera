@@ -105,5 +105,11 @@
   "historyFilesLabel": "个文件",
   "historyClearButton": "清空历史",
   "historyFailedToast": "无法加载历史",
-  "historyClearedToast": "历史已清空"
+  "historyClearedToast": "历史已清空",
+  "dropHint": "放入 {{folder}}",
+  "dropMovedToast": "已把 {{count}} 项移动到 {{folder}}",
+  "dropCopiedToast": "已把 {{count}} 项复制到 {{folder}}",
+  "dropFailedToast": "拖放未完成",
+  "dropMoveProgressLabel": "正在移动...",
+  "dropCopyProgressLabel": "正在复制..."
 }

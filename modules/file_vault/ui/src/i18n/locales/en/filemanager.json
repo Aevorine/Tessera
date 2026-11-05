@@ -105,5 +105,11 @@
   "historyFilesLabel": "files",
   "historyClearButton": "Clear History",
   "historyFailedToast": "Couldn't load history",
-  "historyClearedToast": "History cleared"
+  "historyClearedToast": "History cleared",
+  "dropHint": "Drop into {{folder}}",
+  "dropMovedToast": "Moved {{count}} item(s) to {{folder}}",
+  "dropCopiedToast": "Copied {{count}} item(s) to {{folder}}",
+  "dropFailedToast": "The drop didn't complete",
+  "dropMoveProgressLabel": "Moving...",
+  "dropCopyProgressLabel": "Copying..."
 }

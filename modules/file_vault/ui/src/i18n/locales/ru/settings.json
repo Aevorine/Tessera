@@ -361,5 +361,9 @@
   "tileNoteTextPlain": "Текст заметок в открытых файлах",
   "tileContentBadge": "ИИ · буфер обмена · заметки",
   "tileOtherBadge": "Диагностика · сброс настроек",
-  "shortcutActionOpenDevices": "Открыть устройства и синхронизацию"
+  "shortcutActionOpenDevices": "Открыть устройства и синхронизацию",
+  "fileHookStatusUnknown": "Не удалось получить состояние движка сочетаний клавиш",
+  "fileHookRetry": "Повторить",
+  "fileHookApprovalDisabled": "Автозапуск отключён в Диспетчере задач Windows › Автозагрузка приложений",
+  "fileHookReenable": "Включить снова"
 }

@@ -13,6 +13,8 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"runtime"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -76,6 +78,9 @@ type Event struct {
 	// Code 是机器可读的原因码，供界面查翻译表。Msg 是给日志的中文，不能当界面文案
 	// （守护进程不知界面语言；曾因此把中文漏到法语/俄语界面）。
 	Code string
+
+	// Detail 是给诊断日志的结构化附加字段（如 link_down 的存活时长、空闲时长、RTT、路由），不进界面文案。
+	Detail map[string]any
 }
 
 // PairRequest 是待用户确认的配对请求。
@@ -850,11 +855,34 @@ func (n *Node) helloMsg(lastRecv uint64) *wire.Hello {
 		UnixMS:      time.Now().UnixMilli(),
 		// 公布混合握手能力。老设备不认识就照旧走纯 X25519（静默降级，不是握手失败，见
 		// crypto/hybrid.go）。clipxfer1 同理：不认识则退回 ClipFetch/ClipData 按需拉取。
-		ProtoFeature: []string{crypto.PQFeature, wire.ClipXferFeature, wire.ClipHistFeature},
+		ProtoFeature: n.protoFeatures(),
 	}
 }
 
+// protoFeatures 本机在 HELLO 里公布的能力；手机端多带一个平台标记，对端据此放慢心跳。
+func (n *Node) protoFeatures() []string {
+	f := []string{crypto.PQFeature, wire.ClipXferFeature, wire.ClipHistFeature}
+	if runtime.GOOS == "android" {
+		f = append(f, MobileFeature)
+	}
+	return f
+}
+
 // ---------- 会话登记 ----------
+
+// activityRW 每读到一段字节（一个加密记录，≤64 KiB）就记一次活动时间。
+type activityRW struct {
+	io.ReadWriter
+	last *atomic.Int64
+}
+
+func (a activityRW) Read(p []byte) (int, error) {
+	n, err := a.ReadWriter.Read(p)
+	if n > 0 {
+		a.last.Store(time.Now().UnixNano())
+	}
+	return n, err
+}
 
 func (n *Node) newSession(peer *store.Peer, car carrier, via string, sc *crypto.SecureConn, initiator bool, peerFeatures []string) *Session {
 	s := &Session{
@@ -863,26 +891,38 @@ func (n *Node) newSession(peer *store.Peer, car carrier, via string, sc *crypto.
 		carrier:      car,
 		via:          via,
 		sc:           sc,
-		wc:           wire.NewConn(sc),
 		initiator:    initiator,
 		peerFeatures: peerFeatures,
 		done:         make(chan struct{}),
+		echoed:       make(chan struct{}, 1),
+		createdAt:    time.Now(),
 		pending:      make(map[string]*clipFetch),
 		recvXfers:    make(map[string]*recvTransfer),
 	}
+	// 按读到的每段字节记活动，而非整帧读完才记：慢链路上一个 4 MiB 分块要好几秒，判活会误判。
+	s.wc = wire.NewConn(activityRW{ReadWriter: sc, last: &s.lastActive})
 	n.mu.Lock()
 	if old, ok := n.sessions[peer.DeviceID]; ok && old.Alive() {
 		// 只有活着的旧会话才需要决胜；已关闭但尚未被 run() 的 defer 摘掉的直接顶替，
 		// 否则可能保留一具尸体，设备再也连不上。
+		// 旧会话已建立超过 glareWindow：新连接是对端丢了旧连接后的重拨，旧的多半是死链，新的胜出。
+		// 两端同一规则（不分拨入拨出），结果一致；以前这里一律按互拨决胜，可能留死链、拒活链，
+		// 同步卡到心跳超时（30–40 秒）。发起方握手前已查过有无活会话（handshakeOver），晚到的
+		// 拨出连接不会走到这里替换刚建好的那条。
+		redial := time.Since(old.createdAt) >= glareWindow
 		// 双方自动重连会同时互拨（glare），各有两条连接；若都"留新关旧"会互踢并立刻重连，
 		// 表现为抖动。所以两端用同一规则算赢家：device_id 较小的一方作为拨号方的那条胜出，
 		// 两边结果一致，恰好留一条。
-		if s.preferred() == old.preferred() || !s.preferred() {
+		if !redial && (s.preferred() == old.preferred() || !s.preferred()) {
 			// 新连接不该赢：保留旧的，让调用方把新连接关掉。
 			n.mu.Unlock()
 			return old
 		}
-		old.close(errors.New("被同时互拨中胜出的连接替换"))
+		if redial {
+			old.close(errors.New("重新连接，替换旧连接"))
+		} else {
+			old.close(errors.New("被同时互拨中胜出的连接替换"))
+		}
 	}
 	n.sessions[peer.DeviceID] = s
 	n.mu.Unlock()
@@ -911,9 +951,50 @@ func (n *Node) dropSession(s *Session) {
 		// “电脑已经不在线了”本身就是“那边没事了”最直接的证据。
 		n.dropContinuity(s.peer.DeviceID)
 		n.setState(s.peer.DeviceID, StateDisconnected)
+		// 断链即刻留痕：原因 + 活了多久 + 最后一次活动距今 + 路由，宿主写进结构化日志，
+		// 用户和后续排查都能当场知道"空闲时死链"是何时、为何被发现的。
+		reason := "连接结束"
+		if s.closeErr != nil {
+			reason = s.closeErr.Error()
+		}
+		n.emit(Event{Kind: "link_down", DeviceID: s.peer.DeviceID, Msg: reason, Code: linkDownCode(reason), Detail: map[string]any{
+			"peer_name":    s.PeerName(),
+			"uptime_ms":    time.Since(s.createdAt).Milliseconds(),
+			"idle_ms":      time.Since(time.Unix(0, s.lastActive.Load())).Milliseconds(),
+			"rtt_ms":       s.RTT().Milliseconds(),
+			"route":        s.Route(),
+			"via":          s.via,
+			"initiator":    s.initiator,
+			"transferring": s.xferActive.Load() > 0,
+		}})
 		return
 	}
 	n.mu.Unlock()
+}
+
+// linkDownCode 把会话关闭原因归成机器可读的码，界面据此用自己的语言说明为什么断（原因本身是中文日志）。
+func linkDownCode(reason string) string {
+	switch {
+	case reason == "心跳超时":
+		return "heartbeat_timeout"
+	case reason == "链路无响应":
+		return "probe_failed"
+	case strings.HasPrefix(reason, "读取失败"):
+		return "read_error"
+	case strings.HasPrefix(reason, "发送失败"):
+		return "write_error"
+	case reason == "对端关闭连接":
+		return "peer_closed"
+	case strings.HasPrefix(reason, "对端致命错误"):
+		return "peer_fatal"
+	case reason == "已被撤销":
+		return "revoked"
+	case reason == "授权已到期":
+		return "expired"
+	case reason == "节点关闭":
+		return "node_stopped"
+	}
+	return "other"
 }
 
 // SessionFor 返回与某设备的当前会话。

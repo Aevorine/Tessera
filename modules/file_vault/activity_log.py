@@ -14,6 +14,8 @@ from typing import List, Optional
 
 from sqlcipher3 import dbapi2 as sqlcipher
 
+from modules.file_vault import db_threadsafe
+
 # 前端渲染时按这四个值选图标，新增模块时只需要前端加一条映射，不需要改这里。
 MODULES = ("files", "notes", "passwords", "clipboard")
 
@@ -60,7 +62,7 @@ def _hex_key(key: bytes) -> str:
 
 def connect(db_path: Path, key: bytes) -> sqlite3.Connection:
     db_path.parent.mkdir(parents=True, exist_ok=True)
-    conn = sqlcipher.connect(str(db_path), check_same_thread=False)
+    conn = db_threadsafe.connect(str(db_path))
     conn.execute(f"PRAGMA key = \"{_hex_key(key)}\"")
     conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("PRAGMA synchronous=NORMAL")
@@ -194,3 +196,7 @@ def clear_all(conn: sqlite3.Connection) -> None:
         "UPDATE chain_meta SET anchor_hash = ?, trimmed = 0 WHERE id = 1", (GENESIS_HASH,)
     )
     conn.commit()
+
+
+# 每个公开函数整段持连接锁（跨线程共用连接，见 db_threadsafe）。
+db_threadsafe.serialize_storage_api(globals())

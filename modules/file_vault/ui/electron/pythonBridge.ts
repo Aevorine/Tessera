@@ -2,6 +2,16 @@ import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process'
 import readline from 'node:readline'
 import type { ProgressEvent, VaultMethodName, VaultMethods, VaultPushEvent } from '../src/shared/ipcTypes'
 import { markStartup } from './startupTiming'
+import { fingerprintLine, logEvent, logStderr, redact } from './appLog'
+
+/** 一次非主动退出的记录（写进 userData/logs/backend-exits.jsonl）。 */
+export interface BackendExitRecord {
+  at: string
+  code: number | null
+  signal: NodeJS.Signals | null
+  uptimeMs: number
+  stderrTail: string
+}
 
 interface PendingRequest {
   resolve: (value: unknown) => void
@@ -102,6 +112,7 @@ export class PythonBridge {
   private onRestart: (() => void) | null = null
   private onFatal: ((detail: string) => void) | null = null
   private onSpawn: ((pid: number | undefined) => void) | null = null
+  private onExit: ((record: BackendExitRecord) => void) | null = null
   private disposed = false
   /** 连续崩溃次数。活过 RESTART_HEALTHY_UPTIME_MS 就清零。 */
   private crashCount = 0
@@ -125,6 +136,7 @@ export class PythonBridge {
 
   private spawnProcess(): void {
     this.spawnedAt = Date.now()
+    this.lastStderr = '' // 崩溃记录只带本进程的 stderr
     this.proc = spawn(this.command, [...this.leadingArgs, ...this.args], {
       stdio: ['pipe', 'pipe', 'pipe'],
       env: { ...process.env, PYTHONIOENCODING: 'utf-8' },
@@ -137,12 +149,23 @@ export class PythonBridge {
     this.proc.stderr.on('data', (chunk: Buffer) => {
       const text = chunk.toString()
       console.error('[python]', text)
+      logStderr('backend', text)
       // 只留最后 2000 字符：traceback 的**结尾**才是根因那一行，
       // 而开头是一堆调用栈。截断留尾不留头。
       this.lastStderr = (this.lastStderr + text).slice(-2000)
     })
 
-    this.proc.on('exit', (code) => {
+    this.proc.on('exit', (code, signal) => {
+      // 非主动退出都交给 main.ts 落盘：崩溃原因只在 exit code 与 stderr 尾部（faulthandler 调用栈）里。
+      if (!this.disposed && !this.lockRestarting) {
+        this.onExit?.({
+          at: new Date().toISOString(),
+          code,
+          signal,
+          uptimeMs: Date.now() - this.spawnedAt,
+          stderrTail: redact(this.lastStderr.slice(-1500)),
+        })
+      }
       const err = new Error(`Python backend exited unexpectedly (code ${code})`)
       for (const entry of this.pending.values()) {
         // 进程都没了，超时计时器留着只会在几十秒后再"失败"一次同一个请求
@@ -175,6 +198,7 @@ export class PythonBridge {
         console.error(
           `[python] backend crashed ${this.crashCount - 1} times in a row; giving up. Last stderr:\n${this.lastStderr}`,
         )
+        logEvent('backend', 'error', 'gave_up', `crashed ${this.crashCount - 1} times in a row`, { code })
         this.onFatal?.(this.lastStderr.trim() || `exit code ${code}`)
         return
       }
@@ -183,6 +207,7 @@ export class PythonBridge {
       console.error(
         `[python] backend crashed (code ${code}), attempt ${this.crashCount}/${RESTART_MAX_ATTEMPTS}, restarting in ${delay}ms`,
       )
+      logEvent('backend', 'warn', 'restart_scheduled', undefined, { code, attempt: this.crashCount, delay_ms: delay })
       setTimeout(() => {
         if (this.disposed) return
         this.spawnProcess()
@@ -201,6 +226,11 @@ export class PythonBridge {
    *  对用户是两件事，前者是提示，后者要给出能照着做的下一步。 */
   setFatalListener(listener: (detail: string) => void): void {
     this.onFatal = listener
+  }
+
+  /** 后端非主动退出（崩溃）时触发一次，带退出码与 stderr 尾部。 */
+  setExitListener(listener: (record: BackendExitRecord) => void): void {
+    this.onExit = listener
   }
 
   /** 每次起进程（含崩溃重拉、锁定重起）都报一次 pid；登记时把当前这个也补报。 */
@@ -266,6 +296,7 @@ export class PythonBridge {
       msg = JSON.parse(trimmed)
     } catch {
       console.error('[python] failed to parse line:', trimmed)
+      logEvent('backend', 'warn', 'bad_line', undefined, fingerprintLine(trimmed))
       return
     }
 
@@ -303,6 +334,8 @@ export class PythonBridge {
    */
   restartForLock(): void {
     if (this.disposed) return
+    // 进程已崩、正等退避重拉：新进程本来就没有密钥；此时立旗会把下一次真崩溃当成锁定而漏记。
+    if (this.proc.exitCode !== null || this.proc.signalCode !== null) return
     this.lockRestarting = true
     this.proc.kill()
   }

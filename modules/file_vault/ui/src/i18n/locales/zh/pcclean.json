@@ -883,5 +883,18 @@
   "health.toggleCategory": "展开或收起这一类",
   "rules.remove": "删除这条规则",
   "popup.removeRule": "删除这条规则",
-  "software.keepAlways": "始终保留，不再提示"
+  "software.keepAlways": "始终保留，不再提示",
+  "defrag.unknownMode": "不支持的磁盘整理方式",
+  "elevate.failed": "管理员操作失败",
+  "elevate.jobWriteFailed": "无法写入管理员任务文件",
+  "helper.actionNotAllowed": "管理员助手拒绝执行这个操作",
+  "helper.badJob": "管理员任务文件无效",
+  "helper.badTarget": "目标不在允许的范围内",
+  "helper.failed": "管理员助手执行失败",
+  "helper.jobExpired": "管理员任务已过期，请重试",
+  "memory.noTargets": "所选项目里没有可释放内存的进程",
+  "scan.noCache": "扫描结果已失效，请重新扫描",
+  "software.launchFailed": "无法启动卸载程序",
+  "toolbox.invalidGuid": "电源方案标识无效",
+  "toolbox.unavailable": "本机暂时无法使用这个工具"
 }

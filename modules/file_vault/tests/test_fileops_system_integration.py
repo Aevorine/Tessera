@@ -108,6 +108,7 @@ def test_reconcile_autostart_repairs_enabled_but_stopped_agent(monkeypatch, tmp_
         "cli_script": str(tmp_path / "runtime" / "core" / "fileops" / "hook_cli.py"),
     }
     calls = []
+    monkeypatch.setattr(si, "autostart_intent_path", lambda: tmp_path / "intent.json")
     monkeypatch.setattr(si, "get_autostart", lambda: True)
     monkeypatch.setattr(si, "get_autostart_value", lambda: si._autostart_value(runtime))
     monkeypatch.setattr(si, "provision_runtime", lambda: runtime)
@@ -143,6 +144,7 @@ def test_reconcile_autostart_restarts_running_agent_when_runtime_changed(monkeyp
         "cli_script": str(tmp_path / "runtime-new" / "core" / "fileops" / "hook_cli.py"),
     }
     calls = []
+    monkeypatch.setattr(si, "autostart_intent_path", lambda: tmp_path / "intent.json")
     monkeypatch.setattr(si, "get_autostart", lambda: True)
     monkeypatch.setattr(si, "get_autostart_value", lambda: '"old-runtime.exe"')
     monkeypatch.setattr(si, "provision_runtime", lambda: runtime)
