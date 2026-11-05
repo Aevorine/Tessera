@@ -1712,6 +1712,10 @@ export interface VaultMethods {
         }
       | { ok: false; error: string; error_params?: Record<string, string | number> }
   }
+  ai_desktop_confirm_respond: {
+    params: { id: string; decision: 'allow' | 'allow_all' | 'deny' }
+    result: { ok: true } | { ok: false; error: string }
+  }
   ai_chat: {
     params: { messages: AiChatMessage[]; no_desktop_tools?: boolean }
     // skills_used 仅 auto 模式非空。tools_used 为模型本次调用的受限全局桌面工具。
@@ -2569,4 +2573,23 @@ export interface FileHookAutostartRestoredEvent {
   removed_by?: string | null
 }
 
-export type VaultPushEvent = ClipboardNewEntryEvent | FileHookAutostartRestoredEvent
+/** AI 想执行一个桌面动作，后端等用户确认（desktop_approval.py）。 */
+export interface AiDesktopConfirmEvent {
+  event: 'ai_desktop_confirm'
+  id: string
+  tool: string
+  summary: { app?: string; process?: string; text?: string; key?: string; button?: string; count?: number; element?: number }
+  timeout_s: number
+}
+
+/** 确认超时被后端收回。 */
+export interface AiDesktopConfirmClosedEvent {
+  event: 'ai_desktop_confirm_closed'
+  id: string
+}
+
+export type VaultPushEvent =
+  | ClipboardNewEntryEvent
+  | FileHookAutostartRestoredEvent
+  | AiDesktopConfirmEvent
+  | AiDesktopConfirmClosedEvent

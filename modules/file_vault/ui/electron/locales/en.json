@@ -75,5 +75,9 @@
   "traySendClipboardEmpty": "The clipboard is empty — nothing to send",
   "traySendClipboardFailed": "Couldn't send the clipboard: {{detail}}",
   "fileHookAutostartRestored": "The startup entry for the system-level file shortcuts was removed outside Tessera and has been restored to match your setting. Turn it off in Settings if you no longer want it.",
-  "fileHookAutostartRestored360": "360 Total Security's startup manager removed the startup entry for the system-level file shortcuts; it has been restored to match your setting. To stop this, allow hook_agent (Ideal1FileVaultFileHook) under 360's Speed Up → Startup items."
+  "fileHookAutostartRestored360": "360 Total Security's startup manager removed the startup entry for the system-level file shortcuts; it has been restored to match your setting. To stop this, allow hook_agent (Ideal1FileVaultFileHook) under 360's Speed Up → Startup items.",
+  "openExecutableTitle": "Run this program?",
+  "openExecutableMessage": "“{{name}}” will run right away.",
+  "openExecutableRun": "Run",
+  "openExecutableCancel": "Cancel"
 }

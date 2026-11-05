@@ -60,5 +60,19 @@
   "starter.toTable": "Convierte lo siguiente en una tabla:",
   "starter.summarize": "Resume este texto largo en cinco puntos o menos:",
   "starter.draftEmail": "Redacta un correo formal sobre:",
-  "starter.debug": "¿Cuál es la causa de este error y cómo lo soluciono?:"
+  "starter.debug": "¿Cuál es la causa de este error y cómo lo soluciono?:",
+  "desktopConfirmTitle.launch": "La IA quiere abrir una app",
+  "desktopConfirmTitle.click": "La IA quiere hacer clic",
+  "desktopConfirmTitle.type": "La IA quiere escribir texto",
+  "desktopConfirmTitle.setValue": "La IA quiere rellenar un campo",
+  "desktopConfirmTitle.key": "La IA quiere pulsar una tecla",
+  "desktopConfirmApp": "App",
+  "desktopConfirmTarget": "Destino",
+  "desktopConfirmKey": "Tecla",
+  "desktopConfirmButton": "Ratón",
+  "desktopConfirmDeny": "Denegar",
+  "desktopConfirmAllowAll": "Permitir todo en este turno",
+  "desktopConfirmAllow": "Permitir",
+  "desktopConfirmCountdown": "Se deniega solo en {{seconds}} s",
+  "desktopConfirmTimedOut": "La confirmación caducó; la IA no ejecutó este paso"
 }

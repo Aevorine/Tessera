@@ -345,6 +345,11 @@ _ACTIONS = {
 }
 
 
+def process_image(pid: int) -> Optional[str]:
+    """给确认框显示目标进程名用。"""
+    return _process_image(pid)
+
+
 def execute(action: str, arguments: Dict[str, Any]) -> Dict[str, Any]:
     """Execute one allowlisted model tool call against cua-driver."""
     handler = _ACTIONS.get(action)

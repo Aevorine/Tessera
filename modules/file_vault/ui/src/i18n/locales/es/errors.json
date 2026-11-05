@@ -241,5 +241,8 @@
   "file_clip.drop_into_self": "No se puede soltar una carpeta dentro de sí misma",
   "file_clip.source_missing": "Algunos elementos ya no existen; se canceló la operación",
   "file_clip.dest_missing": "La carpeta de destino no existe",
-  "ai.desktop_target_blocked": "Por seguridad, la IA no puede abrir ni controlar ventanas de línea de comandos, hosts de scripts, el Editor del Registro ni el propio Tessera."
+  "ai.desktop_target_blocked": "Por seguridad, la IA no puede abrir ni controlar ventanas de línea de comandos, hosts de scripts, el Editor del Registro ni el propio Tessera.",
+  "ai.desktop_denied_by_user": "Denegaste esta acción de escritorio; la IA no la ejecutó.",
+  "ai.desktop_confirm_timeout": "La confirmación caducó; la IA no ejecutó esta acción.",
+  "ai.desktop_confirm_expired": "Esta confirmación ya caducó."
 }

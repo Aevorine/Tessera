@@ -60,5 +60,19 @@
   "starter.toTable": "Turn the following into a table:",
   "starter.summarize": "Summarise this long text in five points or fewer:",
   "starter.draftEmail": "Draft a formal email about:",
-  "starter.debug": "What causes this error and how do I fix it:"
+  "starter.debug": "What causes this error and how do I fix it:",
+  "desktopConfirmTitle.launch": "AI wants to open an app",
+  "desktopConfirmTitle.click": "AI wants to click",
+  "desktopConfirmTitle.type": "AI wants to type text",
+  "desktopConfirmTitle.setValue": "AI wants to fill in a field",
+  "desktopConfirmTitle.key": "AI wants to press a key",
+  "desktopConfirmApp": "App",
+  "desktopConfirmTarget": "Target",
+  "desktopConfirmKey": "Key",
+  "desktopConfirmButton": "Mouse",
+  "desktopConfirmDeny": "Deny",
+  "desktopConfirmAllowAll": "Allow all this turn",
+  "desktopConfirmAllow": "Allow",
+  "desktopConfirmCountdown": "Denied automatically in {{seconds}} s",
+  "desktopConfirmTimedOut": "Confirmation timed out; the AI did not run this step"
 }

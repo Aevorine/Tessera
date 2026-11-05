@@ -111,8 +111,8 @@ modules/file_vault/crossdevice/android/app/libs/*.jar
 # 本地运行台账与备份：发布前的 release 元数据快照、历次任务日志。它们是"这台机器上
 # 干过什么"的记录，不是项目内容；而且里面会顺手记下本机路径。一次 `git add -A` 就会
 # 把它们连人带货推上去。
-ai/logs/
-ai/
+/ai/logs/
+/ai/
 
 # 临时工作目录。里面是排查时随手落的脚本、截图、备份，内容完全不受控——
 # 本轮就发现它里面躺着一张跟本项目无关的截图。它一直是 untracked 状态，

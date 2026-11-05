@@ -589,7 +589,7 @@ export function FileManagerScreen({ isProfessional = false }: { isProfessional?:
       void loadDirectory(full)
     } else {
       void electronApi.openPath(full).then((res) => {
-        if (!res.ok) toast.error(t('openFailedToast'))
+        if (!res.ok && res.error !== 'canceled') toast.error(t('openFailedToast'))
       })
     }
   }

@@ -60,5 +60,19 @@
   "starter.toTable": "حوّل ما يلي إلى جدول:",
   "starter.summarize": "لخّص هذا النص الطويل في خمس نقاط أو أقل:",
   "starter.draftEmail": "اكتب مسودة بريد إلكتروني رسمي حول:",
-  "starter.debug": "ما سبب هذا الخطأ وكيف أُصلحه:"
+  "starter.debug": "ما سبب هذا الخطأ وكيف أُصلحه:",
+  "desktopConfirmTitle.launch": "يريد الذكاء الاصطناعي فتح تطبيق",
+  "desktopConfirmTitle.click": "يريد الذكاء الاصطناعي النقر",
+  "desktopConfirmTitle.type": "يريد الذكاء الاصطناعي كتابة نص",
+  "desktopConfirmTitle.setValue": "يريد الذكاء الاصطناعي ملء حقل",
+  "desktopConfirmTitle.key": "يريد الذكاء الاصطناعي ضغط مفتاح",
+  "desktopConfirmApp": "التطبيق",
+  "desktopConfirmTarget": "الهدف",
+  "desktopConfirmKey": "المفتاح",
+  "desktopConfirmButton": "الفأرة",
+  "desktopConfirmDeny": "رفض",
+  "desktopConfirmAllowAll": "السماح بالكل لهذا الدور",
+  "desktopConfirmAllow": "سماح",
+  "desktopConfirmCountdown": "يُرفض تلقائيًا بعد {{seconds}} ث",
+  "desktopConfirmTimedOut": "انتهت مهلة التأكيد؛ لم ينفّذ الذكاء الاصطناعي هذه الخطوة"
 }

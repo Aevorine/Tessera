@@ -241,5 +241,8 @@
   "file_clip.drop_into_self": "Impossible de déposer un dossier dans lui-même",
   "file_clip.source_missing": "Certains éléments n'existent plus — dépôt annulé",
   "file_clip.dest_missing": "Le dossier cible n'existe pas",
-  "ai.desktop_target_blocked": "Par sécurité, l'IA ne peut ni lancer ni piloter les fenêtres de ligne de commande, les hôtes de scripts, l'Éditeur du Registre ou Tessera lui-même."
+  "ai.desktop_target_blocked": "Par sécurité, l'IA ne peut ni lancer ni piloter les fenêtres de ligne de commande, les hôtes de scripts, l'Éditeur du Registre ou Tessera lui-même.",
+  "ai.desktop_denied_by_user": "Vous avez refusé cette action ; l’IA ne l’a pas exécutée.",
+  "ai.desktop_confirm_timeout": "Confirmation expirée ; l’IA n’a pas exécuté cette action.",
+  "ai.desktop_confirm_expired": "Cette confirmation a expiré."
 }
