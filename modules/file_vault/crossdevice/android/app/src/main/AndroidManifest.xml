@@ -9,6 +9,9 @@
     <uses-permission android:name="android.permission.CHANGE_WIFI_MULTICAST_STATE" />
     <!-- 传输期间持 Wi-Fi 高性能锁与部分唤醒锁（TransferBoost），空闲即放。 -->
     <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <!-- 荣耀 / 华为厂商人脸服务（VendorFace）的调用权限：没有这套服务的机型上无效果、不弹任何框。 -->
+    <uses-permission android:name="com.hihonor.permission.USE_FACERECOGNITION" />
+    <uses-permission android:name="com.huawei.permission.USE_FACERECOGNITION" />
 
     <!-- 前台服务：设备要能"断联后自动连回来"，进程就必须活着。
          Android 14 起必须声明与实际用途相符的 serviceType，否则启动即抛异常。 -->

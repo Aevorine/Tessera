@@ -101,12 +101,20 @@ object AppLock {
         return javax.crypto.SecretKeyFactory.getInstance("PBKDF2WithHmacSHA256").generateSecret(spec).encoded
     }
 
-    /** 本机有的生物识别硬件，按 人脸 → 指纹 → 虹膜。 */
-    fun biometricKinds(c: Context): List<Kind> {
+    @Volatile private var vendorFaceCache: Boolean? = null
+
+    /** 荣耀 / 华为厂商人脸是否可用（见 VendorFace）。探测要初始化一次厂商服务，结果缓存，refresh 时重查。 */
+    fun vendorFaceAvailable(c: Context, refresh: Boolean = false): Boolean {
+        if (!refresh) vendorFaceCache?.let { return it }
+        return VendorFace.available(c).also { vendorFaceCache = it }
+    }
+
+    /** 本机有的生物识别硬件，按 人脸 → 指纹 → 虹膜。includeVendor 把厂商人脸也算作「人脸」。 */
+    fun biometricKinds(c: Context, includeVendor: Boolean = true): List<Kind> {
         val pm = c.packageManager
         val q = Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q
         return buildList {
-            if (q && pm.hasSystemFeature(PackageManager.FEATURE_FACE)) add(Kind.FACE)
+            if ((q && pm.hasSystemFeature(PackageManager.FEATURE_FACE)) || (includeVendor && vendorFaceAvailable(c))) add(Kind.FACE)
             if (pm.hasSystemFeature(PackageManager.FEATURE_FINGERPRINT)) add(Kind.FINGERPRINT)
             if (q && pm.hasSystemFeature(PackageManager.FEATURE_IRIS)) add(Kind.IRIS)
         }
@@ -120,13 +128,13 @@ object AppLock {
         c.getSystemService(KeyguardManager::class.java)?.isDeviceSecure == true
 
     /** 这台设备能不能用"生物识别"这一档（含锁屏密码兜底）。 */
-    fun biometricAvailable(c: Context): Boolean = biometricEnrolled(c) || deviceSecure(c)
+    fun biometricAvailable(c: Context): Boolean = biometricEnrolled(c) || deviceSecure(c) || vendorFaceAvailable(c)
 
     /** 当前模式下这台设备真正有得验的方式；全空表示锁形同虚设（如设备没设锁屏且未设应用密码）。 */
     fun hasAnyVerifier(c: Context): Boolean = when (mode(c)) {
         Mode.NONE -> false
         Mode.PASSWORD -> hasPassword(c)
-        Mode.BIOMETRIC -> biometricEnrolled(c) || deviceSecure(c) || hasPassword(c)
+        Mode.BIOMETRIC -> biometricEnrolled(c) || deviceSecure(c) || hasPassword(c) || vendorFaceAvailable(c)
     }
 
     // ---- 会话 ----

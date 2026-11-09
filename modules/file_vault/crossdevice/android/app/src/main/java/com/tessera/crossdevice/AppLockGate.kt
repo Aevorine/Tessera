@@ -1,7 +1,14 @@
 package com.tessera.crossdevice
 
+import android.Manifest
+import android.content.pm.PackageManager
+import android.graphics.Outline
+import android.graphics.SurfaceTexture
 import android.os.Build
 import android.text.InputType
+import android.view.Surface
+import android.view.TextureView
+import android.view.ViewOutlineProvider
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
@@ -19,6 +26,7 @@ import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.isVisible
 import com.google.android.material.button.MaterialButton
 import com.google.android.material.color.MaterialColors
+import com.google.android.material.progressindicator.CircularProgressIndicator
 import com.google.android.material.textfield.TextInputEditText
 import com.google.android.material.textfield.TextInputLayout
 
@@ -41,6 +49,15 @@ class AppLockGate(private val activity: AppCompatActivity) {
     private lateinit var passwordLayout: TextInputLayout
     private lateinit var passwordInput: TextInputEditText
     private lateinit var errorText: TextView
+    private lateinit var btnFace: MaterialButton
+    private lateinit var faceBox: LinearLayout
+    private lateinit var faceRing: CircularProgressIndicator
+    private lateinit var faceHint: TextView
+    private lateinit var facePreview: TextureView
+    private var faceSession: VendorFace.Session? = null
+    private var faceSurface: Surface? = null
+    /** 厂商人脸（荣耀 / 华为）在这台设备上可用；每次上锁时重查一次（录入状态可能变）。 */
+    private var vendorFace = false
     private var autoTried = false
     private var prompting = false
 
@@ -72,6 +89,7 @@ class AppLockGate(private val activity: AppCompatActivity) {
     }
 
     fun onStop(changingConfigurations: Boolean) {
+        stopFace()
         if (changingConfigurations || prompting) return
         AppLock.onBackground()
         if (!AppLock.isUnlocked(activity)) show()
@@ -91,6 +109,7 @@ class AppLockGate(private val activity: AppCompatActivity) {
     }
 
     private fun hide() {
+        stopFace()
         overlay.isVisible = false
         backCallback.isEnabled = false
         activity.getSystemService(InputMethodManager::class.java)
@@ -103,6 +122,8 @@ class AppLockGate(private val activity: AppCompatActivity) {
         DiagnosticLog.record(activity, "applock", "unlocked", "via=$via")
     }
 
+    private fun faceOffered() = vendorFace && AppLock.mode(activity) == AppLock.Mode.BIOMETRIC
+
     private fun biometricOffered() =
         AppLock.mode(activity) == AppLock.Mode.BIOMETRIC && AppLock.biometricEnrolled(activity)
 
@@ -114,7 +135,10 @@ class AppLockGate(private val activity: AppCompatActivity) {
 
     /** 按硬件给生物识别按钮命名与配图；不支持的方式整行隐藏。 */
     private fun refreshMethods() {
-        val kinds = AppLock.biometricKinds(activity)
+        vendorFace = AppLock.vendorFaceAvailable(activity, refresh = true)
+        btnFace.isVisible = faceOffered()
+        faceBox.isVisible = false
+        val kinds = AppLock.biometricKinds(activity, includeVendor = false)
         btnBiometric.text = activity.getString(
             when {
                 AppLock.Kind.FACE in kinds && AppLock.Kind.FINGERPRINT in kinds -> R.string.lock_btn_face_fingerprint
@@ -124,7 +148,9 @@ class AppLockGate(private val activity: AppCompatActivity) {
                 else -> R.string.lock_btn_biometric
             },
         )
-        btnBiometric.setIconResource(if (AppLock.Kind.FACE in kinds && AppLock.Kind.FINGERPRINT !in kinds) R.drawable.ic_lock_face else R.drawable.ic_lock_fingerprint)
+        // 有厂商人脸时，系统框只剩指纹（厂商人脸不在系统框里），按钮按指纹命名，免得写着「面容」却只弹指纹。
+        if (vendorFace && AppLock.Kind.FINGERPRINT in kinds) btnBiometric.text = activity.getString(R.string.lock_btn_fingerprint)
+        btnBiometric.setIconResource(if (!vendorFace && AppLock.Kind.FACE in kinds && AppLock.Kind.FINGERPRINT !in kinds) R.drawable.ic_lock_face else R.drawable.ic_lock_fingerprint)
         btnBiometric.isVisible = biometricOffered()
         btnPassword.isVisible = passwordOffered()
         btnCredential.isVisible = credentialOffered() && !biometricOffered()
@@ -137,6 +163,7 @@ class AppLockGate(private val activity: AppCompatActivity) {
     /** 自动发起排第一的方式。 */
     private fun startPrimary() {
         when {
+            faceOffered() -> startFace()
             biometricOffered() -> promptBiometric(credentialOnly = false)
             credentialOffered() -> promptBiometric(credentialOnly = true)
             passwordOffered() -> openPassword()
@@ -164,6 +191,93 @@ class AppLockGate(private val activity: AppCompatActivity) {
                 else -> showError(activity.getString(R.string.lock_biometric_failed))
             }
         }
+    }
+
+    // ---- 厂商人脸 ----
+
+    /** 显示圆形取景框，预览面就绪后开始比对。比对在系统人脸服务里做，应用只收到通过 / 不通过。 */
+    private fun startFace() {
+        if (faceSession != null || prompting) return
+        errorText.isVisible = false
+        faceHint.text = activity.getString(R.string.face_hint_look)
+        faceBox.isVisible = true
+        faceRing.isIndeterminate = true
+        btnFace.isVisible = false
+        val st = facePreview.surfaceTexture
+        if (st != null) beginFace(st) // 已就绪；否则等 onSurfaceTextureAvailable
+    }
+
+    private fun beginFace(st: SurfaceTexture) {
+        if (!faceBox.isVisible || faceSession != null) return
+        val surface = Surface(st).also { faceSurface = it }
+        val session = VendorFace.authenticate(activity, surface, object : VendorFace.Listener {
+            override fun onHint(hint: VendorFace.Hint) {
+                faceHint.text = activity.getString(faceHintText(hint))
+            }
+
+            override fun onSuccess() {
+                faceSession = null
+                DiagnosticLog.record(activity, "applock", "vendor_face_ok")
+                unlocked("vendor_face")
+            }
+
+            override fun onFailure(reason: VendorFace.Failure) {
+                faceSession = null
+                DiagnosticLog.record(activity, "applock", "vendor_face_failed", reason.name)
+                stopFace()
+                if (reason == VendorFace.Failure.CANCELED) return
+                if (reason == VendorFace.Failure.CAMERA && !hasCamera()) {
+                    requestCamera()
+                    return
+                }
+                showError(activity.getString(
+                    when (reason) {
+                        VendorFace.Failure.LOCKOUT -> R.string.face_fail_lockout
+                        VendorFace.Failure.TIMEOUT -> R.string.face_fail_timeout
+                        VendorFace.Failure.CAMERA -> R.string.face_fail_camera
+                        else -> R.string.face_fail_generic
+                    },
+                ))
+            }
+        })
+        if (session == null) {
+            stopFace()
+            if (!hasCamera()) requestCamera() else showError(activity.getString(R.string.face_fail_generic))
+            return
+        }
+        faceSession = session
+    }
+
+    private fun stopFace() {
+        if (!::faceBox.isInitialized) return
+        faceSession?.cancel()
+        faceSession = null
+        faceSurface?.release()
+        faceSurface = null
+        faceBox.isVisible = false
+        btnFace.isVisible = faceOffered() && overlay.isVisible
+    }
+
+    private fun hasCamera() =
+        activity.checkSelfPermission(Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED
+
+    private fun requestCamera() {
+        showError(activity.getString(R.string.face_need_camera))
+        AppLock.expectReturn()
+        activity.requestPermissions(arrayOf(Manifest.permission.CAMERA), REQ_CAMERA)
+    }
+
+    private fun faceHintText(h: VendorFace.Hint) = when (h) {
+        VendorFace.Hint.NO_FACE -> R.string.face_hint_look
+        VendorFace.Hint.TOO_FAR -> R.string.face_hint_closer
+        VendorFace.Hint.TOO_CLOSE -> R.string.face_hint_farther
+        VendorFace.Hint.MOVE -> R.string.face_hint_center
+        VendorFace.Hint.DARK -> R.string.face_hint_dark
+        VendorFace.Hint.BRIGHT -> R.string.face_hint_bright
+        VendorFace.Hint.EYES_CLOSED -> R.string.face_hint_eyes
+        VendorFace.Hint.OCCLUDED -> R.string.face_hint_occluded
+        VendorFace.Hint.KEEP_STILL -> R.string.face_hint_still
+        VendorFace.Hint.LIVENESS -> R.string.face_hint_live
     }
 
     private fun openPassword() {
@@ -246,6 +360,57 @@ class AppLockGate(private val activity: AppCompatActivity) {
             return b
         }
 
+        // 厂商人脸取景框：圆形预览 + 外圈转动的进度环 + 实时提示。只在比对时出现。
+        faceBox = LinearLayout(activity).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER_HORIZONTAL
+            isVisible = false
+        }
+        val ring = FrameLayout(activity)
+        faceRing = CircularProgressIndicator(activity).apply {
+            isIndeterminate = true
+            indicatorSize = dp(184)
+            trackThickness = dp(4)
+            trackCornerRadius = dp(2)
+        }
+        ring.addView(faceRing, FrameLayout.LayoutParams(dp(184), dp(184), Gravity.CENTER))
+        facePreview = TextureView(activity).apply {
+            outlineProvider = object : ViewOutlineProvider() {
+                override fun getOutline(view: View, outline: Outline) = outline.setOval(0, 0, view.width, view.height)
+            }
+            clipToOutline = true
+            surfaceTextureListener = object : TextureView.SurfaceTextureListener {
+                override fun onSurfaceTextureAvailable(st: SurfaceTexture, w: Int, h: Int) {
+                    if (faceBox.isVisible) beginFace(st)
+                }
+                override fun onSurfaceTextureSizeChanged(st: SurfaceTexture, w: Int, h: Int) = Unit
+                override fun onSurfaceTextureDestroyed(st: SurfaceTexture): Boolean {
+                    stopFace()
+                    return true
+                }
+                override fun onSurfaceTextureUpdated(st: SurfaceTexture) = Unit
+            }
+            contentDescription = activity.getString(R.string.face_preview_desc)
+        }
+        ring.addView(facePreview, FrameLayout.LayoutParams(dp(168), dp(168), Gravity.CENTER))
+        faceBox.addView(ring, LinearLayout.LayoutParams(dp(184), dp(184)))
+        faceHint = TextView(activity).apply {
+            setTextAppearance(com.google.android.material.R.style.TextAppearance_Material3_BodyLarge)
+            setTextColor(onSurface)
+            gravity = Gravity.CENTER
+            accessibilityLiveRegion = View.ACCESSIBILITY_LIVE_REGION_POLITE
+        }
+        faceBox.addView(faceHint, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(16) })
+        faceBox.addView(MaterialButton(activity, null, com.google.android.material.R.attr.borderlessButtonStyle).apply {
+            text = activity.getString(android.R.string.cancel)
+            setOnClickListener { stopFace() }
+        }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(4) })
+        column.addView(faceBox, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { bottomMargin = dp(8) })
+
+        btnFace = button(false) { startFace() }.apply {
+            text = activity.getString(R.string.lock_btn_face)
+            setIconResource(R.drawable.ic_lock_face)
+        }
         btnBiometric = button(false) { promptBiometric(credentialOnly = false) }
         btnCredential = button(false) { promptBiometric(credentialOnly = true) }.apply {
             text = activity.getString(R.string.lock_btn_device_credential)
@@ -284,5 +449,9 @@ class AppLockGate(private val activity: AppCompatActivity) {
         }
         column.addView(errorText, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(16) })
         return root
+    }
+
+    private companion object {
+        const val REQ_CAMERA = 0x7e5f
     }
 }

@@ -600,4 +600,21 @@
     <string name="layout_menu_move_first">移到最前</string>
     <string name="layout_menu_move_last">移到最后</string>
     <string name="layout_menu_reset_order">恢复默认顺序</string>
+    <!-- 厂商人脸（荣耀 / 华为，VendorFace）：取景提示与失败原因 -->
+    <string name="face_preview_desc">人脸取景框</string>
+    <string name="face_hint_look">请正对屏幕</string>
+    <string name="face_hint_closer">请靠近一点</string>
+    <string name="face_hint_farther">请离远一点</string>
+    <string name="face_hint_center">请把脸放在圆框中间</string>
+    <string name="face_hint_dark">光线太暗，换个亮一点的地方</string>
+    <string name="face_hint_bright">光线太强，避开强光</string>
+    <string name="face_hint_eyes">请睁开眼睛</string>
+    <string name="face_hint_occluded">请露出完整的脸（摘下口罩或遮挡物）</string>
+    <string name="face_hint_still">请保持不动</string>
+    <string name="face_hint_live">请正对屏幕，稍微眨眨眼</string>
+    <string name="face_fail_timeout">没有认出你的脸，可以再试一次或改用指纹 / 密码</string>
+    <string name="face_fail_lockout">人脸失败次数过多，已暂时停用，请改用指纹或密码</string>
+    <string name="face_fail_camera">摄像头被其它应用占用，请稍后重试</string>
+    <string name="face_fail_generic">人脸识别没有成功，请改用指纹或密码</string>
+    <string name="face_need_camera">人脸识别需要使用前置摄像头，请允许相机权限后再点「面容解锁」</string>
 </resources>
