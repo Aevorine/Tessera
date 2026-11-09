@@ -63,7 +63,7 @@ func (l *eventLog) transferErrors() []string {
 	return out
 }
 
-func newE2EPair(t *testing.T) *e2ePair {
+func newE2EPair(t *testing.T, delivery ...func(string) (string, error)) *e2ePair {
 	t.Helper()
 	p := &e2ePair{hostEv: &eventLog{}, guestEv: &eventLog{}}
 
@@ -73,7 +73,11 @@ func newE2EPair(t *testing.T) *e2ePair {
 		t.Fatalf("电脑端启动失败: %v", err)
 	}
 	t.Cleanup(func() { _ = p.host.Close() })
-	p.guest, err = New(Config{DataDir: t.TempDir(), Name: "手机", Addr: "127.0.0.1:0", Sink: p.guestEv.sink})
+	guestCfg := Config{DataDir: t.TempDir(), Name: "手机", Addr: "127.0.0.1:0", Sink: p.guestEv.sink}
+	if len(delivery) > 0 {
+		guestCfg.DeliverFile = func(path, _ string) (string, error) { return delivery[0](path) }
+	}
+	p.guest, err = New(guestCfg)
 	if err != nil {
 		t.Fatalf("手机端启动失败: %v", err)
 	}
@@ -258,7 +262,7 @@ func TestF1_FolderWithManyFilesArrivesIntact(t *testing.T) {
 		name := fmt.Sprintf("文件 %03d (副本) #%d.dat", i, i%5)
 		writeRandom(t, filepath.Join(dir, name), sizes[i%len(sizes)])
 	}
-	writeRandom(t, filepath.Join(src, "跨块.bin"), 5<<20+123)  // 两个 4 MiB 块，最后一块很短
+	writeRandom(t, filepath.Join(src, "跨块.bin"), 5<<20+123)    // 两个 4 MiB 块，最后一块很短
 	writeRandom(t, filepath.Join(src, "大文件", "a.bin"), 40<<20) // 走大文件车道
 	writeRandom(t, filepath.Join(src, "大文件", "b.bin"), 36<<20)
 

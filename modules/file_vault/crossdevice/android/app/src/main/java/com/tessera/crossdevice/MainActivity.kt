@@ -1804,7 +1804,11 @@ class MainActivity : AppCompatActivity() {
                     renderTransfers()
                 }
                 when (ending) {
-                    TransferEventAction.HIDE_PROGRESS -> Unit
+                    TransferEventAction.HIDE_PROGRESS -> {
+                        if (data.optString("kind") == "done") snack(getString(
+                            if (data.optBoolean("delivery_confirmed")) R.string.receipt_saved else R.string.receipt_legacy,
+                        ))
+                    }
                     TransferEventAction.HIDE_PROGRESS_WITH_ERROR -> snack(data.optString("error"))
                     TransferEventAction.DELIVER_RECEIVED_FILE -> onTransfer(data)
                     TransferEventAction.QUEUED -> {
@@ -2518,16 +2522,12 @@ class MainActivity : AppCompatActivity() {
         }
     )
 
-    /** 收到文件后搬到用户选定的目录。没选过就留在应用私有目录，不做任何事。 */
+    /** 投递由后台服务完成，页面只展示结果。 */
     private fun onTransfer(data: JSONObject) {
         // 只认 recv_done——它是唯一带 path 的那个，表示文件已经完整落地。
         // 别去匹配提示文案：换个措辞就悄悄失灵，而失灵的表现是"收到了但找不到"。
         if (data.optString("kind") != "recv_done") return
-        val path = data.optString("path").takeIf { it.isNotEmpty() } ?: return
-        Thread {
-            val moved = FileBridge.deliverToUserFolder(this, File(path))
-            if (moved) runOnUiThread { snack(getString(R.string.save_to_changed)) }
-        }.start()
+        if (data.optString("path").isNotEmpty()) snack(getString(R.string.receipt_received, data.optString("name")))
     }
 
     private fun showQr(code: String, expiresAt: Long) {

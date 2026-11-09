@@ -79,5 +79,6 @@
   "openExecutableTitle": "运行这个程序？",
   "openExecutableMessage": "「{{name}}」会直接运行。",
   "openExecutableRun": "运行",
-  "openExecutableCancel": "取消"
+  "openExecutableCancel": "取消",
+  "receivedTitle": "已收到来自 {{device}} 的文件"
 }

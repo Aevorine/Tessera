@@ -202,10 +202,11 @@ type HaveBitmap struct {
 }
 
 type XferAccept struct {
-	TransferID []byte       `cbor:"1,keyasint"`
-	Have       []HaveBitmap `cbor:"2,keyasint,omitempty"`
-	SkipFiles  []int        `cbor:"3,keyasint,omitempty"` // 秒传：Merkle 根相同，整文件跳过
-	DestHint   string       `cbor:"4,keyasint,omitempty"`
+	TransferID        []byte       `cbor:"1,keyasint"`
+	Have              []HaveBitmap `cbor:"2,keyasint,omitempty"`
+	SkipFiles         []int        `cbor:"3,keyasint,omitempty"` // 秒传：Merkle 根相同，整文件跳过
+	DestHint          string       `cbor:"4,keyasint,omitempty"`
+	DeliveryConfirmed bool         `cbor:"5,keyasint,omitempty"`
 }
 
 type XferReject struct {
@@ -236,10 +237,12 @@ type XferStatus struct {
 }
 
 type XferDone struct {
-	TransferID []byte `cbor:"1,keyasint"`
-	OK         bool   `cbor:"2,keyasint"`
-	Msg        string `cbor:"3,keyasint,omitempty"`
-	Failed     []int  `cbor:"4,keyasint,omitempty"`
+	TransferID        []byte `cbor:"1,keyasint"`
+	OK                bool   `cbor:"2,keyasint"`
+	Msg               string `cbor:"3,keyasint,omitempty"`
+	Failed            []int  `cbor:"4,keyasint,omitempty"`
+	SavedTo           string `cbor:"5,keyasint,omitempty"`
+	DeliveryConfirmed bool   `cbor:"6,keyasint,omitempty"`
 }
 
 // ---------- 设备管理 ----------

@@ -323,5 +323,8 @@
   "linkDownReason.read_error": "接收数据失败",
   "linkDownReason.write_error": "发送数据失败",
   "linkDownReason.peer_fatal": "对端报告严重错误",
-  "linkDownReason.other": "连接中断"
+  "linkDownReason.other": "连接中断",
+  "receiptSaved": "接收端已保存",
+  "receiptLegacy": "旧版接收回执",
+  "receiptLegacyHint": "接收端尚未提供最终保存确认，请同时更新接收设备。"
 }

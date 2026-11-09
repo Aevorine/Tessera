@@ -106,10 +106,11 @@ type Sink func(line string)
 
 // Config 是启动一个 Agent 所需的全部参数。
 type Config struct {
-	DataDir string // 身份、设备名单、传输断点都放这里
-	Name    string // 本机设备名；留空则取主机名
-	Addr    string // 监听地址；留空则用 :39421
-	Sink    Sink   // 必填
+	DataDir     string // 身份、设备名单、传输断点都放这里
+	Name        string // 本机设备名；留空则取主机名
+	Addr        string // 监听地址；留空则用 :39421
+	Sink        Sink   // 必填
+	DeliverFile func(string, string) (string, error)
 }
 
 // New 创建并启动一个 Agent。返回后节点已在监听，且已对已配对的长期设备开启自动重连。
@@ -182,6 +183,7 @@ func New(cfg Config) (*Agent, error) {
 			Logger:          log.New(os.Stderr, "[crossdevice] ", log.LstdFlags),
 			ConfirmPair:     d.confirmPair,
 			ConfirmTransfer: d.confirmTransfer,
+			DeliverFile:     cfg.DeliverFile,
 			OnClip:          d.onClip,
 			OnProgress:      d.onProgress,
 			OnEvent:         d.onNodeEvent,
@@ -1424,8 +1426,10 @@ func (d *Agent) sendOne(dev string, it sendItem, rej *rejectedFolders) sendOutco
 		"size":   res.Size, "chunks": res.Chunks, "sent_chunks": res.SentChunks,
 		// skipped 让界面能说"对方已经有了"，而不是笼统的"已发送"。
 		// 0 字节完成如果和正常传输显示成一样，用户会怀疑到底传没传。
-		"skipped":    res.Skipped,
-		"elapsed_ms": res.Elapsed.Milliseconds(),
+		"skipped":            res.Skipped,
+		"saved_to":           res.SavedTo,
+		"delivery_confirmed": res.DeliveryConfirmed,
+		"elapsed_ms":         res.Elapsed.Milliseconds(),
 	})
 	return outcomeSent
 }
@@ -1640,11 +1644,15 @@ func (d *Agent) onNodeEvent(e node.Event) {
 			m["kind"] = "error"
 			m["error"] = e.Err.Error()
 		} else if e.Path != "" {
-			// 有 Path 表示文件已完整落地；单独给一个 kind，让平台层可靠接住"收完了、在这个路径上"（安卓据此把文
-			// 件搬到用户选的目录）。
+			// 有 Path 表示文件已投递到最终位置（安卓为 content:// URI）；平台层据此通知用户。
 			m["kind"] = "recv_done"
 			m["path"] = e.Path
-			m["name"] = filepath.Base(e.Path)
+			if p, err := d.store.GetPeer(e.DeviceID); err == nil {
+				m["device_name"] = p.Name
+			}
+			if e.Xfer == nil || e.Xfer.Name == "" {
+				m["name"] = filepath.Base(e.Path)
+			}
 		}
 		d.emit("transfer", m)
 

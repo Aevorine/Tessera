@@ -323,5 +323,8 @@
   "linkDownReason.read_error": "فشل الاستلام",
   "linkDownReason.write_error": "فشل الإرسال",
   "linkDownReason.peer_fatal": "أبلغ الجهاز الآخر عن خطأ فادح",
-  "linkDownReason.other": "انقطع الاتصال"
+  "linkDownReason.other": "انقطع الاتصال",
+  "receiptSaved": "حُفظ لدى المستلم",
+  "receiptLegacy": "إيصال قديم",
+  "receiptLegacyHint": "لم يؤكد المستلم الحفظ النهائي. حدّث التطبيق على جهاز الاستقبال."
 }

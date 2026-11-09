@@ -2,9 +2,14 @@ package com.tessera.crossdevice
 
 import android.app.Activity
 import android.content.ActivityNotFoundException
+import android.content.ContentUris
 import android.content.Intent
 import android.net.Uri
+import android.os.Build
+import android.os.Environment
 import android.provider.DocumentsContract
+import android.provider.MediaStore
+import androidx.annotation.RequiresApi
 import android.text.TextUtils
 import android.text.format.DateUtils
 import android.text.format.Formatter
@@ -35,10 +40,34 @@ object ReceivedFolder {
     class Entry(val name: String, val size: Long, val modified: Long, val uri: Uri)
 
     /** 列出收件夹里的文件（新的在前），给首页搜索用。会碰磁盘 / SAF，只能在后台线程调。 */
-    fun list(activity: Activity): List<Entry> {
-        val tree = FileBridge.saveTree(activity)
-        return runCatching { if (tree != null) listTree(activity, tree) else listPrivate(activity) }
-            .getOrDefault(emptyList())
+    fun list(activity: Activity): List<Entry> =
+        listPrivate(activity) + listExternal(activity, FileBridge.saveTree(activity))
+
+    /** 选过文件夹列 SAF 树；否则 Android 10+ 列公共「下载/Tessera」。 */
+    private fun listExternal(activity: Activity, tree: Uri?): List<Entry> = runCatching {
+        when {
+            tree != null -> listTree(activity, tree)
+            Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q -> listMedia(activity)
+            else -> emptyList()
+        }
+    }.getOrDefault(emptyList())
+
+    @RequiresApi(Build.VERSION_CODES.Q)
+    private fun listMedia(activity: Activity): List<Entry> {
+        val base = "${Environment.DIRECTORY_DOWNLOADS}/${FileBridge.PUBLIC_SUBDIR}/"
+        val coll = MediaStore.Downloads.EXTERNAL_CONTENT_URI
+        val out = ArrayList<Entry>()
+        activity.contentResolver.query(coll, arrayOf(
+            MediaStore.MediaColumns._ID, MediaStore.MediaColumns.DISPLAY_NAME, MediaStore.MediaColumns.SIZE,
+            MediaStore.MediaColumns.DATE_MODIFIED, MediaStore.MediaColumns.RELATIVE_PATH,
+        ), "${MediaStore.MediaColumns.RELATIVE_PATH} LIKE ? AND ${MediaStore.MediaColumns.IS_PENDING}=0",
+            arrayOf("$base%"), "${MediaStore.MediaColumns.DATE_MODIFIED} DESC")?.use { c ->
+            while (c.moveToNext() && out.size < LIST_MAX) {
+                val sub = c.getString(4).removePrefix(base)
+                out += Entry(sub + c.getString(1), c.getLong(2), c.getLong(3) * 1000, ContentUris.withAppendedId(coll, c.getLong(0)))
+            }
+        }
+        return out
     }
 
     /** 打开一个文件，与列表里点一行相同。 */
@@ -49,14 +78,15 @@ object ReceivedFolder {
 
     fun open(activity: Activity) {
         val tree = FileBridge.saveTree(activity)
-        if (tree != null && openInFileManager(activity, tree)) return
         Thread {
-            val items = runCatching { if (tree != null) listTree(activity, tree) else listPrivate(activity) }
-                .getOrElse {
-                activity.runOnUiThread { Toast.makeText(activity, R.string.no_app_to_open, Toast.LENGTH_SHORT).show() }
-                return@Thread
+            val pending = listPrivate(activity)
+            val external = listExternal(activity, tree)
+            val items = (pending + external).sortedByDescending { it.modified }
+            activity.runOnUiThread {
+                if (!activity.isFinishing && !(tree != null && pending.isEmpty() && openInFileManager(activity, tree))) {
+                    showList(activity, tree, items)
+                }
             }
-            activity.runOnUiThread { if (!activity.isFinishing) showList(activity, tree, items) }
         }.start()
     }
 
@@ -79,7 +109,7 @@ object ReceivedFolder {
     private fun listPrivate(activity: Activity): List<Entry> {
         val root = File(activity.filesDir, "downloads")
         val authority = "${activity.packageName}.updates"
-        return root.walkTopDown().filter { it.isFile }.take(LIST_MAX).map {
+        return root.walkTopDown().filter { FileBridge.isCompletedFile(it) }.take(LIST_MAX).map {
             Entry(it.relativeTo(root).path, it.length(), it.lastModified(), FileProvider.getUriForFile(activity, authority, it))
         }.sortedByDescending { it.modified }.toList()
     }

@@ -142,8 +142,10 @@ type SendFileResult struct {
 	SentChunks int // 实际发送的块数；断点续传时会小于 Chunks
 	// Skipped：对方已有相同内容，整份跳过（秒传，0 字节）。SentChunks==0 区分不出"秒传"
 	// 和"对方本来就收齐了"，界面措辞不同，所以单设字段。
-	Skipped bool
-	Elapsed time.Duration
+	Skipped           bool
+	SavedTo           string
+	DeliveryConfirmed bool
+	Elapsed           time.Duration
 }
 
 // SendFile 把一个文件发给对端，支持断点续传。内存恒定为一个块大小，与文件大小无关。
@@ -386,6 +388,9 @@ func (s *Session) sendFileOnce(ctx context.Context, path, relPath, offerKind, gr
 			return nil, fmt.Errorf("%w（错误码 %d）: %s", ErrPeerRejected, r.code, r.msg)
 		}
 		acc = r.accept
+		if acc == nil {
+			return nil, errors.New("接收端返回了无效的接收确认")
+		}
 	case <-ctx.Done():
 		return nil, ctx.Err()
 	case <-s.done:
@@ -412,7 +417,8 @@ func (s *Session) sendFileOnce(ctx context.Context, path, relPath, offerKind, gr
 		return &SendFileResult{
 			ID: key, Name: display, Kind: kind,
 			Path: path, Size: snd.Size(), Chunks: total,
-			SentChunks: 0, Skipped: true, Elapsed: time.Since(start),
+			SentChunks: 0, Skipped: true, SavedTo: acc.DestHint, Elapsed: time.Since(start),
+			DeliveryConfirmed: acc.DeliveryConfirmed,
 		}, nil
 	}
 
@@ -530,7 +536,8 @@ func (s *Session) sendFileOnce(ctx context.Context, path, relPath, offerKind, gr
 			return &SendFileResult{
 				ID: key, Name: display, Kind: kind,
 				Path: path, Size: snd.Size(), Chunks: total,
-				SentChunks: len(plan), Elapsed: time.Since(start),
+				SentChunks: len(plan), SavedTo: r.done.SavedTo, Elapsed: time.Since(start),
+				DeliveryConfirmed: r.done.DeliveryConfirmed,
 			}, nil
 		case <-ctx.Done():
 			return nil, ctx.Err()

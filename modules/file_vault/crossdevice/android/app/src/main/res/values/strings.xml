@@ -563,4 +563,9 @@
     <string name="search_type_pc">电脑</string>
     <string name="search_dir_send">发送</string>
     <string name="search_dir_recv">接收</string>
+    <string name="receipt_saved">接收端已保存</string>
+    <string name="receipt_legacy">旧版接收端未确认最终保存，请更新接收设备</string>
+    <string name="receipt_received">已保存 %1$s</string>
+    <string name="channel_received">收到的文件</string>
+    <string name="notif_received_title">已收到来自 %1$s 的文件</string>
 </resources>
