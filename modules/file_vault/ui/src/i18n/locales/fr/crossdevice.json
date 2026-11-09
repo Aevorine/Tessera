@@ -323,5 +323,8 @@
   "linkDownReason.read_error": "échec de réception",
   "linkDownReason.write_error": "échec d'envoi",
   "linkDownReason.peer_fatal": "l'autre appareil a signalé une erreur fatale",
-  "linkDownReason.other": "connexion interrompue"
+  "linkDownReason.other": "connexion interrompue",
+  "receiptSaved": "Enregistré à destination",
+  "receiptLegacy": "Ancien accusé",
+  "receiptLegacyHint": "Le destinataire ne confirme pas la sauvegarde finale. Mettez son application à jour."
 }

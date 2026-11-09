@@ -79,5 +79,6 @@
   "openExecutableTitle": "Запустить эту программу?",
   "openExecutableMessage": "«{{name}}» будет запущен сразу.",
   "openExecutableRun": "Запустить",
-  "openExecutableCancel": "Отмена"
+  "openExecutableCancel": "Отмена",
+  "receivedTitle": "Получен файл от {{device}}"
 }

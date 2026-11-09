@@ -39,7 +39,7 @@
 | crossdevice | `stderr` | 守护进程日志 | `msg` |
 | crossdevice | `state` | 设备连接状态变化 | `device`（ID 前 8 位）、`state` |
 | crossdevice | `link_down` | 一条连接断了（发现即记） | `code`、`idle_ms`（最后一次有字节到判死）、`uptime_ms`、`rtt_ms`、`route`、`transferring` |
-| crossdevice | `transfer_waiting` / `transfer_retry` / `transfer_done` / `transfer_error` / `transfer_canceled` / `transfer_recv_done` | 文件发送自愈过程与结果 | `attempt`、`ext`、`size`、`elapsed_ms`、`error` |
+| crossdevice | `transfer_waiting` / `transfer_retry` / `transfer_done` / `transfer_error` / `transfer_canceled` / `transfer_recv_done` | 文件发送自愈过程与结果 | `attempt`、`ext`、`size`、`elapsed_ms`、`error`、`delivery_confirmed`、`skipped`、`receipt_location`（仅位置类型，不含路径） |
 | crossdevice | `daemon_exit` / `spawn_failed` / `ready` / `daemon_restarting` | 守护进程起停 | `code` |
 | crossdevice | `tray_send_clip` | 托盘「发送剪贴板」 | `sent`、`errors` |
 | filehook | `startup_status` / `menu_toggle` / `state` | 快捷键引擎启动对账、菜单开关 | `autostart`、`autostart_registered`、`autostart_approved`、`autostart_intent`、`restored` |

@@ -27,6 +27,7 @@ import (
 
 	"github.com/Aevorine/Tessera/crossdevice/core/agent"
 	"github.com/Aevorine/Tessera/crossdevice/core/netif"
+	"github.com/Aevorine/Tessera/crossdevice/core/transfer"
 )
 
 // SetNetworkInterfaces hands Go the local interface list. Do not remove as redundant.
@@ -54,6 +55,24 @@ type EventSink interface {
 	OnLine(line string)
 }
 
+// FileDelivery saves a staged file before the peer receives a success receipt.
+// Implementations run off the UI thread and must retain the source on failure.
+type FileDelivery interface {
+	Deliver(path, contentKey string) (string, error)
+}
+
+// FileContentKey binds a delivery receipt to the verified content and chunk size.
+func FileContentKey(path string, chunkSize int64) (string, error) {
+	if chunkSize < transfer.MinChunkSize || chunkSize > transfer.MaxChunkSize {
+		return "", fmt.Errorf("invalid chunk size")
+	}
+	d, err := transfer.DigestFile(path, int(chunkSize))
+	if err != nil {
+		return "", err
+	}
+	return fmt.Sprintf("%d:%x", chunkSize, d.Root), nil
+}
+
 // Agent is the binding-layer handle. It wraps agent.Agent because gomobile only exports types
 // declared in the bound package; otherwise the .aar is empty.
 type Agent struct {
@@ -66,11 +85,21 @@ type Agent struct {
 // Pass an empty listenAddr to let the OS pick a port: a fixed port may clash with other apps,
 // and pairing code and mDNS advertise the actual port anyway.
 func NewAgent(dataDir, deviceName, listenAddr string, sink EventSink) (*Agent, error) {
+	return NewAgentWithDelivery(dataDir, deviceName, listenAddr, sink, nil)
+}
+
+// NewAgentWithDelivery also installs a service-owned file delivery callback.
+func NewAgentWithDelivery(dataDir, deviceName, listenAddr string, sink EventSink, delivery FileDelivery) (*Agent, error) {
+	var deliver func(string, string) (string, error)
+	if delivery != nil {
+		deliver = delivery.Deliver
+	}
 	a, err := agent.New(agent.Config{
-		DataDir: dataDir,
-		Name:    deviceName,
-		Addr:    listenAddr,
-		Sink:    func(line string) { sink.OnLine(line) },
+		DataDir:     dataDir,
+		Name:        deviceName,
+		Addr:        listenAddr,
+		Sink:        func(line string) { sink.OnLine(line) },
+		DeliverFile: deliver,
 	})
 	if err != nil {
 		return nil, err

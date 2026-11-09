@@ -895,11 +895,22 @@ func (s *Session) handleFileOffer(o *wire.XferOffer) error {
 	// （见 transfer.FindIdentical）。放在 OpenReceiver 之前：它会创建 .cbpart 并按全长
 	// 预分配磁盘，这条路不需要。
 	if have, ok := transfer.FindIdentical(dest, entry.Size, o.ChunkSize, entry.MerkleRoot); ok {
+		location, err := s.deliverFile(have, entry.MerkleRoot, o.ChunkSize)
+		if err != nil {
+			s.node.emit(Event{Kind: "transfer", DeviceID: s.peer.DeviceID,
+				Code: "delivery_failed", Msg: "保存失败，文件已保留", Err: err,
+				Xfer: xferRef(key, filepath.Base(have), kindOfTransfer(o.Kind, entry.RelPath))})
+			return s.wc.WriteMsg(wire.TypeXferReject, 0, &wire.XferReject{
+				TransferID: o.TransferID, Code: wire.ErrCodeNoSpace, Msg: "保存到接收目录失败: " + err.Error(),
+			})
+		}
 		acc.SkipFiles = []int{0}
-		// 这条事件绝不能带 Path：上层看到 Path 非空就判定为"收完一个新文件"（kind=recv_done），
-		// Android 会把它再投递到保存目录，导致每次秒传多出一份副本。秒传是"什么都没发生"。
+		acc.DestHint = location
+		acc.DeliveryConfirmed = true
+		// 平台投递已完成，重复发送也必须给接收界面一个可定位的结果。
 		s.node.emit(Event{Kind: "transfer", DeviceID: s.peer.DeviceID,
 			Msg:  "已有相同文件，无需传输: " + filepath.Base(have),
+			Path: location,
 			Code: "instant_skip",
 			Xfer: xferRef(key, filepath.Base(have), kindOfTransfer(o.Kind, entry.RelPath))})
 		// 不登记 recvXfer：这次传输在这里就结束了，发送端看到 SkipFiles
@@ -1075,12 +1086,32 @@ func (s *Session) finishRecv(key string, rt *recvTransfer, tid []byte) {
 		return
 	}
 
+	location, err := s.deliverFile(final, rt.entry.MerkleRoot, rt.chunkSize)
+	if err != nil {
+		s.node.emit(Event{Kind: "transfer", DeviceID: s.peer.DeviceID,
+			Code: "delivery_failed", Msg: "保存失败，文件已保留", Err: err,
+			Xfer: xferRef(key, filepath.Base(final), rt.ctl.kind)})
+		reply(false, "保存到接收目录失败: "+err.Error())
+		return
+	}
+
 	// 名字用**真正落地的那个**：重名时接收端会改成 `报告 (1).pdf`，
 	// 界面要是还显示原名，用户按图索骥就找不到文件。
 	s.node.emit(Event{Kind: "transfer", DeviceID: s.peer.DeviceID,
 		Msg:  "已接收 " + filepath.Base(final),
-		Path: final, Xfer: xferRef(key, filepath.Base(final), rt.ctl.kind)})
-	reply(true, "")
+		Path: location, Xfer: xferRef(key, filepath.Base(final), rt.ctl.kind)})
+	_ = s.wc.WriteMsg(wire.TypeXferDone, 0, &wire.XferDone{TransferID: tid, OK: true, SavedTo: location, DeliveryConfirmed: true})
+}
+
+func (s *Session) deliverFile(path string, root []byte, chunkSize int) (string, error) {
+	if s.node.cfg.DeliverFile == nil {
+		return path, nil
+	}
+	location, err := s.node.cfg.DeliverFile(path, fmt.Sprintf("%d:%x", chunkSize, root))
+	if err == nil && location == "" {
+		err = errors.New("接收端未提供保存位置")
+	}
+	return location, err
 }
 
 // failRecvTransfer 中止无法继续的接收并告知发送端原因。残片保留（keepPartial）：位图里

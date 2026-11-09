@@ -66,9 +66,8 @@ func TestInstantTransferSkipsAnIdenticalFile(t *testing.T) {
 	}
 }
 
-// 秒传通知绝不能带落地路径：上层以 Path 非空判定收完新文件（kind=recv_done），
-// 安卓据此投递到保存目录，秒传带 Path 会导致每传一次就复制一份。
-func TestInstantTransferTellsNobodyAFileArrived(t *testing.T) {
+// 秒传要让接收端看得见已有文件；投递在核心内幂等完成，不再由界面二次复制。
+func TestInstantTransferSurfacesExistingFile(t *testing.T) {
 	pc := newTestNode(t, "电脑", identity.TypePC)
 	ph := newTestNode(t, "手机", identity.TypePhone)
 	pair(t, pc, ph)
@@ -92,10 +91,21 @@ func TestInstantTransferTellsNobodyAFileArrived(t *testing.T) {
 	if !res.Skipped {
 		t.Fatal("第二次没有秒传")
 	}
+	// 秒传须指向已有那份（接收端可定位），且不得多出副本。
+	var surfaced string
 	for _, e := range ph.events() {
 		if e.Kind == "transfer" && e.Path != "" {
-			t.Errorf("秒传的事件带了落地路径 %q——安卓会把已有文件再投递一次", e.Path)
+			surfaced = e.Path
 		}
+	}
+	if surfaced != dst {
+		t.Errorf("秒传事件应指向已有文件 %q，实际 %q", dst, surfaced)
+	}
+	if res.SavedTo != dst {
+		t.Errorf("发送端回执应为 %q，实际 %q", dst, res.SavedTo)
+	}
+	if _, err := os.Stat(filepath.Join(ph.dir, "downloads", "重复 (1).bin")); err == nil {
+		t.Error("秒传产生了重复副本")
 	}
 }
 

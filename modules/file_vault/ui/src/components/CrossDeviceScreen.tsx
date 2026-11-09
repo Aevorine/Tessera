@@ -275,6 +275,8 @@ interface TransferRow {
   /** 秒传：对方已有一份内容相同的文件，0 字节完成。
    *  不单独标出来的话，一次 44 MB 的传输"瞬间就完成了"会让人怀疑它到底传没传。 */
   skipped?: boolean
+  savedTo?: string
+  deliveryConfirmed?: boolean
   at: number
   /** 直连还是中继。必须在传输完成那一刻定格，事后查到的是当前链路而非那次传输的。 */
   relayed?: boolean
@@ -932,6 +934,8 @@ export function CrossDeviceScreen() {
             elapsedMs: d.elapsed_ms as number | undefined,
             error: d.error as string | undefined,
             skipped: d.skipped === true || code === 'instant_skip',
+            savedTo: d.saved_to as string | undefined,
+            deliveryConfirmed: d.delivery_confirmed === true || kind === 'recv_done',
             at: Date.now(),
             // 从当前设备列表里取这条连接的路由，就地定格进这一行。
             relayed: devicesRef.current.find((x) => x.device_id === d.device_id)?.relayed,
@@ -2390,6 +2394,16 @@ export function CrossDeviceScreen() {
                       {r.skipped && (
                         <span className="shrink-0 rounded bg-emerald-500/10 px-1.5 py-0.5 text-2xs text-emerald-600 dark:text-emerald-400">
                           {t('instantSkip')}
+                        </span>
+                      )}
+                      {r.direction === 'send' && r.kind === 'done' && (
+                        <span
+                          className={cn('shrink-0 rounded px-1.5 py-0.5 text-2xs',
+                            r.deliveryConfirmed ? 'bg-success/12 text-success' : 'bg-warning/12 text-warning')}
+                          data-hint={r.deliveryConfirmed ? r.savedTo : t('receiptLegacyHint')}
+                          title={r.deliveryConfirmed ? r.savedTo : t('receiptLegacyHint')}
+                        >
+                          {t(r.deliveryConfirmed ? 'receiptSaved' : 'receiptLegacy')}
                         </span>
                       )}
                       {r.error && <span className="truncate text-sm text-destructive">{r.error}</span>}

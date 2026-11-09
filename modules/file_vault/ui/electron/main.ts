@@ -239,6 +239,7 @@ function startCrossDeviceBridge(): void {
 
   crossDevice.setEventListener((e) => {
     logCrossDeviceEvent(e.event, e.data)
+    if (e.event === 'transfer') notifyReceived(e.data)
     // 本机剪贴板变化事件只给主进程用，不转发渲染进程。
     if (e.event === 'clip_changed') {
       if (clipTimer) onClipChanged()
@@ -329,6 +330,11 @@ function logCrossDeviceEvent(event: string, data: Record<string, unknown> | unde
         ext: dot > 0 ? name.slice(dot).toLowerCase() : '',
         size: d.size,
         elapsed_ms: d.elapsed_ms,
+        delivery_confirmed: d.delivery_confirmed === true,
+        skipped: d.skipped === true,
+        receipt_location: typeof d.saved_to === 'string' && d.saved_to
+          ? (d.saved_to.startsWith('content://') ? 'document_provider' : 'filesystem')
+          : 'unreported',
         attempt: d.attempt,
         code: d.code,
         error: d.error,
@@ -2562,6 +2568,26 @@ function getDragIcon(): Electron.NativeImage {
   const img = nativeImage.createFromPath(path.join(process.env.VITE_PUBLIC!, 'app-icon.png'))
   dragIcon = img.isEmpty() ? nativeImage.createFromPath(path.join(process.env.VITE_PUBLIC!, 'icon.ico')) : img.resize({ width: 32, height: 32 })
   return dragIcon
+}
+
+/** 窗口不在前台时收到文件弹系统通知，点击在资源管理器中定位。 */
+function notifyReceived(d: Record<string, unknown> | undefined): void {
+  if (!d || d.kind !== 'recv_done' || d.item_kind === 'clip' || typeof d.path !== 'string' || !d.path) return
+  if (win && win.isVisible() && win.isFocused()) return
+  const file = d.path
+  const t = getCurrentLocale()
+  try {
+    if (!Notification.isSupported()) return
+    const n = new Notification({
+      title: t.receivedTitle.replace('{{device}}', typeof d.device_name === 'string' && d.device_name ? d.device_name : 'Tessera'),
+      body: typeof d.name === 'string' && d.name ? d.name : path.basename(file),
+      silent: true,
+    })
+    n.on('click', () => shell.showItemInFolder(file))
+    n.show()
+  } catch {
+    // 通知被系统关掉不影响接收
+  }
 }
 
 /** 托盘点了「发送剪贴板」必须有回音：发到几台、没有在线设备、剪贴板为空、失败原因——否则和没点一样。 */

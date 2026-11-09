@@ -17,6 +17,8 @@ import android.os.IBinder
 import androidx.core.app.NotificationCompat
 import mobile.Agent
 import mobile.EventSink
+import mobile.FileDelivery
+import mobile.Mobile
 import org.json.JSONObject
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.CopyOnWriteArrayList
@@ -36,6 +38,8 @@ class SyncService : Service() {
         // 渠道。
         internal const val CHANNEL_ID = "tessera_sync_v2"
         private const val NOTIF_ID = 1
+        private const val RECV_CHANNEL_ID = "tessera_received"
+        private const val RECV_NOTIF_BASE = 0x10000
 
         /** 进程内单例：Activity 要拿它发请求，服务重启则重新赋值。 */
         @Volatile
@@ -181,6 +185,33 @@ class SyncService : Service() {
             enableVibration(false)
         }
         nm.createNotificationChannel(ch)
+        nm.createNotificationChannel(NotificationChannel(
+            RECV_CHANNEL_ID, getString(R.string.channel_received), NotificationManager.IMPORTANCE_DEFAULT,
+        ))
+    }
+
+    /** 后台收到文件时发通知，点开即看；同名文件合并成一条，避免刷屏。 */
+    private fun notifyReceived(data: JSONObject) {
+        if (data.optString("kind") != "recv_done" || data.optString("item_kind") == "clip") return
+        val loc = data.optString("path").takeIf { it.isNotEmpty() } ?: return
+        val name = data.optString("name").ifEmpty { loc.substringAfterLast('/') }
+        val uri = if (loc.startsWith("content://")) android.net.Uri.parse(loc) else runCatching {
+            androidx.core.content.FileProvider.getUriForFile(this, "$packageName.updates", java.io.File(loc))
+        }.getOrNull() ?: return
+        val mime = android.webkit.MimeTypeMap.getSingleton()
+            .getMimeTypeFromExtension(name.substringAfterLast('.', "").lowercase()) ?: "*/*"
+        val view = Intent(Intent.ACTION_VIEW).setDataAndType(uri, mime)
+            .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
+        val tap = PendingIntent.getActivity(this, name.hashCode(), Intent.createChooser(view, name)
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK), PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+        val n = NotificationCompat.Builder(this, RECV_CHANNEL_ID)
+            .setSmallIcon(android.R.drawable.stat_sys_download_done)
+            .setContentTitle(getString(R.string.notif_received_title, data.optString("device_name").ifEmpty { "Tessera" }))
+            .setContentText(name)
+            .setContentIntent(tap)
+            .setAutoCancel(true)
+            .build()
+        runCatching { getSystemService(NotificationManager::class.java).notify(RECV_NOTIF_BASE + (name.hashCode() and 0xFFFF), n) }
     }
 
     private fun buildNotification(): android.app.Notification {
@@ -239,9 +270,11 @@ class SyncService : Service() {
                         "设备发现（附近设备 / 扫描局域网 / 手动地址）都会失效，请检查 Wi-Fi 是否连接",
                     )
                 }
-                val a = Agent(dataDir, name, "", EventSink { line -> dispatch(line) })
+                val a = Mobile.newAgentWithDelivery(dataDir, name, "", EventSink { line -> dispatch(line) },
+                    FileDelivery { path, key -> FileBridge.deliverReceivedFile(this, java.io.File(path), key) })
                 agent = a
                 starting = false
+                Thread({ FileBridge.recoverPending(this) }, "tessera-receive-recovery").start()
                 // 核心起来先报一次当前网络的计费属性：只靠 NetworkCallback 不够，启动时网络早已连好、回调不再触发，
                 // 核心会误以为不计费而放心走中继。
                 getSystemService(ConnectivityManager::class.java)?.let { reportMetered(it) }
@@ -277,6 +310,10 @@ class SyncService : Service() {
             // 写进去的这份登记为"见过"：输入法模式的后台监听随后会看到这次变化，
             // 不登记就会把对端内容当成本机新复制再广播回去。
             if (ImeMode.isDefault(this)) ClipDedupe.markCurrent(this)
+        }
+        if (obj.optString("event") == "transfer") obj.optJSONObject("data")?.let { d ->
+            runCatching { notifyReceived(d) }
+                .onFailure { DiagnosticLog.record(this, "receive", "通知失败", it.javaClass.simpleName) }
         }
         callbacks.remove(obj.optInt("id", -1))?.let { cb ->
             runCatching { cb(obj) }

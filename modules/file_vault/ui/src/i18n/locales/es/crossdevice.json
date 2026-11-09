@@ -323,5 +323,8 @@
   "linkDownReason.read_error": "falló la recepción",
   "linkDownReason.write_error": "falló el envío",
   "linkDownReason.peer_fatal": "el otro dispositivo informó un error grave",
-  "linkDownReason.other": "conexión interrumpida"
+  "linkDownReason.other": "conexión interrumpida",
+  "receiptSaved": "Guardado en destino",
+  "receiptLegacy": "Confirmación antigua",
+  "receiptLegacyHint": "El receptor no confirmó el guardado final. Actualiza la aplicación receptora."
 }

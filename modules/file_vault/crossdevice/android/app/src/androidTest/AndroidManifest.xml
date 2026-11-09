@@ -1,0 +1,9 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application>
+        <receiver android:name="com.tessera.crossdevice.DeliveryGrantReceiver" android:exported="true" />
+        <provider android:name="com.tessera.crossdevice.DeliveryTestProvider"
+            android:authorities="com.tessera.crossdevice.delivery.e2e"
+            android:exported="true" android:grantUriPermissions="true"
+            android:permission="android.permission.MANAGE_DOCUMENTS" />
+    </application>
+</manifest>

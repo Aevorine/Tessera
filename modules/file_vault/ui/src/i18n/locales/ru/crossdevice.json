@@ -323,5 +323,8 @@
   "linkDownReason.read_error": "ошибка приёма",
   "linkDownReason.write_error": "ошибка отправки",
   "linkDownReason.peer_fatal": "другое устройство сообщило о критической ошибке",
-  "linkDownReason.other": "соединение прервано"
+  "linkDownReason.other": "соединение прервано",
+  "receiptSaved": "Сохранено получателем",
+  "receiptLegacy": "Старое подтверждение",
+  "receiptLegacyHint": "Получатель не подтвердил окончательное сохранение. Обновите приложение на устройстве получателя."
 }

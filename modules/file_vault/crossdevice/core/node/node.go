@@ -153,6 +153,9 @@ type Config struct {
 	// ConfirmTransfer 决定是否接收文件、落到哪个目录。
 	ConfirmTransfer func(TransferOffer) (accept bool, destDir string)
 
+	// DeliverFile 在回执前完成平台投递；失败须保留暂存文件供重试。
+	DeliverFile func(path, contentKey string) (location string, err error)
+
 	// OnProgress 传输进行中的进度回调。按时间节流（见 progressInterval），
 	// 不是每块都回调——每块都推会把 UI 的事件处理压垮，进度条反而更卡。
 	OnProgress func(Progress)

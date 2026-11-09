@@ -323,5 +323,8 @@
   "linkDownReason.read_error": "receive failed",
   "linkDownReason.write_error": "send failed",
   "linkDownReason.peer_fatal": "the other device reported a fatal error",
-  "linkDownReason.other": "connection interrupted"
+  "linkDownReason.other": "connection interrupted",
+  "receiptSaved": "Saved by receiver",
+  "receiptLegacy": "Legacy receipt",
+  "receiptLegacyHint": "The receiver did not confirm final delivery. Update the receiving device."
 }

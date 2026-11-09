@@ -79,5 +79,6 @@
   "openExecutableTitle": "¿Ejecutar este programa?",
   "openExecutableMessage": "«{{name}}» se ejecutará de inmediato.",
   "openExecutableRun": "Ejecutar",
-  "openExecutableCancel": "Cancelar"
+  "openExecutableCancel": "Cancelar",
+  "receivedTitle": "Archivo recibido de {{device}}"
 }
