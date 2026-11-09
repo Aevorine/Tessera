@@ -152,6 +152,22 @@
     <string name="lock_wrong_password">密码不对</string>
     <string name="lock_unlock">解锁</string>
     <string name="lock_biometric_unavailable">这台设备没有可用的指纹或面容识别</string>
+    <string name="lock_screen_title">Tessera 已锁定</string>
+    <string name="lock_btn_face">面容解锁</string>
+    <string name="lock_btn_fingerprint">指纹解锁</string>
+    <string name="lock_btn_face_fingerprint">面容或指纹解锁</string>
+    <string name="lock_btn_iris">虹膜解锁</string>
+    <string name="lock_btn_biometric">生物识别解锁</string>
+    <string name="lock_btn_app_password">应用密码</string>
+    <string name="lock_btn_device_credential">锁屏密码</string>
+    <string name="lock_biometric_failed">没验过，可再试一次或换一种方式</string>
+    <string name="lock_biometric_locked_out">生物识别暂时被系统锁定，请用密码</string>
+    <string name="lock_locked_out">错误次数过多，%1$d 秒后再试</string>
+    <string name="lock_opt_face">面容</string>
+    <string name="lock_opt_fingerprint">指纹</string>
+    <string name="lock_opt_face_fingerprint">面容 / 指纹</string>
+    <string name="lock_opt_iris">虹膜</string>
+    <string name="lock_opt_credential">锁屏密码</string>
 
     <!-- 信任等级 -->
     <string name="trust_title">这台设备算</string>

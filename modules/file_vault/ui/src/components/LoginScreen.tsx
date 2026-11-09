@@ -1,37 +1,11 @@
-import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { ShieldCheck } from 'lucide-react'
-import { Tabs, TabsContent } from '@/components/ui/tabs'
 import { LanguageSwitcher } from '@/components/LanguageSwitcher'
-import {
-  BiometricTab,
-  DEFAULT_UNLOCK_FACTOR,
-  EmailTab,
-  PasswordTab,
-  RecoveryTab,
-  TotpTab,
-  UnlockFactorTabsList,
-} from '@/components/UnlockTabs'
-import { useBiometricStatus } from '@/lib/useBiometricStatus'
-import { useWindowActivation } from '@/lib/useWindowActivation'
+import { UnlockFactorTabs } from '@/components/UnlockTabs'
 import { PageTitle, Wordmark } from '@/components/ui/page'
 
 export function LoginScreen({ onUnlocked }: { onUnlocked: () => void }) {
   const { t } = useTranslation('login')
-  // 受控而不是 defaultValue：机器上用不了生物识别时要能从代码里切走（见下面的
-  // onUnavailable）。非受控的 Tabs 挂载后就再也改不动了。
-  const [factor, setFactor] = useState<string>(DEFAULT_UNLOCK_FACTOR)
-  const biometric = useBiometricStatus()
-  const activation = useWindowActivation()
-  const usable = Boolean(biometric?.available && biometric.bound)
-
-  // 窗口每次被重新唤出（托盘、快捷键、任务栏），都回到生物识别并立即发起。
-  // 上一次自动尝试超时后切到了密码，这次用户回来时不该还停在密码框上。
-  useEffect(() => {
-    if (activation.generation > 0 && activation.visible && usable) setFactor(DEFAULT_UNLOCK_FACTOR)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activation.generation])
-
   return (
     <div className="ds-page-wash relative flex min-h-screen items-center justify-center bg-background p-6">
       {/* 语言选择放在登录页而不是只放在主界面里：看不懂界面的人本来就过不了
@@ -57,30 +31,7 @@ export function LoginScreen({ onUnlocked }: { onUnlocked: () => void }) {
         </div>
 
         <div className="rounded-2xl border border-border bg-card p-8 shadow-sm">
-          <Tabs value={factor} onValueChange={setFactor}>
-            <UnlockFactorTabsList modality={biometric?.preferred} />
-            <TabsContent value="fingerprint">
-              <BiometricTab
-                autoStart
-                status={biometric}
-                onUnlocked={onUnlocked}
-                onUnavailable={() => setFactor('password')}
-                onUseAnotherFactor={() => setFactor('password')}
-              />
-            </TabsContent>
-            <TabsContent value="password">
-              <PasswordTab onUnlocked={onUnlocked} />
-            </TabsContent>
-            <TabsContent value="totp">
-              <TotpTab onUnlocked={onUnlocked} />
-            </TabsContent>
-            <TabsContent value="email">
-              <EmailTab onUnlocked={onUnlocked} />
-            </TabsContent>
-            <TabsContent value="recovery">
-              <RecoveryTab onUnlocked={onUnlocked} />
-            </TabsContent>
-          </Tabs>
+          <UnlockFactorTabs onUnlocked={onUnlocked} />
         </div>
       </div>
     </div>

@@ -2,38 +2,47 @@ import { useEffect, useState } from 'react'
 import { vaultApi } from '@/lib/vaultApi'
 import type { BiometricModality } from '@/shared/ipcTypes'
 
-/** 后端 `biometric_status` 的返回。`chain` 已按 人脸 → 指纹 → 虹膜 排好序，
- *  前端不再重排一遍——排序规则只应该有一处。 */
+export type SecretFactor = 'password' | 'totp' | 'email' | 'recovery'
+
+/** 后端 `biometric_status` 的返回。`chain` 已按 人脸 → 指纹 → 虹膜 排好序，前端不重排。 */
 export interface BiometricStatus {
   available: boolean
   chain: BiometricModality[]
   preferred: BiometricModality | null
   bound: boolean
+  /** 金库配了哪些非生物识别因子 */
+  factors: Record<SecretFactor, boolean>
+  /** 这份答案是真探测结果；false = 后端没答上（重启中/超时），不能据此判"本机没有生物识别" */
+  probed: boolean
 }
 
-const NONE: BiometricStatus = { available: false, chain: [], preferred: null, bound: false }
+const ALL_FACTORS: Record<SecretFactor, boolean> = { password: true, totp: true, email: true, recovery: true }
+const UNKNOWN: BiometricStatus = {
+  available: false,
+  chain: [],
+  preferred: null,
+  bound: false,
+  factors: ALL_FACTORS,
+  probed: false,
+}
 const STORAGE_KEY = 'tessera.biometricStatus'
 const MODALITIES: readonly BiometricModality[] = ['face', 'fingerprint', 'iris']
+const RETRY_DELAYS_MS = [400, 1200, 3000, 6000]
 
-function parseStored(raw: string | null): BiometricStatus | null {
-  if (!raw) return null
-  try {
-    const v = JSON.parse(raw) as Partial<BiometricStatus>
-    const chain = Array.isArray(v.chain) ? v.chain.filter((m): m is BiometricModality => MODALITIES.includes(m)) : []
-    return {
-      available: v.available === true,
-      chain,
-      preferred: chain[0] ?? null,
-      bound: v.bound === true,
-    }
-  } catch {
-    return null
+function normalize(v: Partial<BiometricStatus> & { factors?: Partial<Record<SecretFactor, boolean>> }, probed: boolean): BiometricStatus {
+  const chain = Array.isArray(v.chain) ? v.chain.filter((m): m is BiometricModality => MODALITIES.includes(m)) : []
+  const factors = { ...ALL_FACTORS }
+  for (const k of Object.keys(ALL_FACTORS) as SecretFactor[]) {
+    if (typeof v.factors?.[k] === 'boolean') factors[k] = v.factors[k] as boolean
   }
+  factors.password = true
+  return { available: v.available === true, chain, preferred: chain[0] ?? null, bound: v.bound === true, factors, probed }
 }
 
 function readStored(): BiometricStatus | null {
   try {
-    return parseStored(window.localStorage.getItem(STORAGE_KEY))
+    const raw = window.localStorage.getItem(STORAGE_KEY)
+    return raw ? normalize(JSON.parse(raw), true) : null
   } catch {
     return null
   }
@@ -47,47 +56,55 @@ function writeStored(status: BiometricStatus) {
   }
 }
 
-/**
- * 本次会话最新的答案与上次会话留下的答案，模块级缓存。
- * 登录页每次锁定都重新挂载，先用缓存直接发起验证，后端答案回来再校正；缓存错了验证会报「不可用」并降到密码。
- */
 let sessionStatus: BiometricStatus | null = null
 let inflight: Promise<BiometricStatus> | null = null
 const listeners = new Set<(status: BiometricStatus) => void>()
 
-function fetchStatus(): Promise<BiometricStatus> {
+async function probeOnce(refresh: boolean): Promise<BiometricStatus | null> {
+  try {
+    const res = await vaultApi.call('biometric_status', refresh ? { refresh: true } : {})
+    return res.ok ? normalize(res as Partial<BiometricStatus>, true) : null
+  } catch {
+    return null
+  }
+}
+
+function publish(status: BiometricStatus) {
+  sessionStatus = status
+  for (const listener of listeners) listener(status)
+}
+
+/** 探测失败不写缓存、不当成"没有生物识别"，退避重试；全失败才发一个 probed=false 的保守答案。 */
+function fetchStatus(refresh = false): Promise<BiometricStatus> {
   if (inflight) return inflight
-  inflight = vaultApi
-    .call('biometric_status', {})
-    .then((res) =>
-      res.ok
-        ? {
-            available: Boolean(res.available),
-            chain: (res.chain ?? []) as BiometricModality[],
-            preferred: (res.preferred ?? null) as BiometricModality | null,
-            bound: Boolean(res.bound),
-          }
-        : NONE,
-    )
-    .catch(() => NONE)
-    .then((status) => {
-      sessionStatus = status
-      writeStored(status)
-      inflight = null
-      for (const listener of listeners) listener(status)
-      return status
-    })
+  inflight = (async () => {
+    let status = await probeOnce(refresh)
+    for (let i = 0; !status && i < RETRY_DELAYS_MS.length; i++) {
+      await new Promise((r) => setTimeout(r, RETRY_DELAYS_MS[i]))
+      status = await probeOnce(refresh)
+    }
+    const final = status ?? sessionStatus ?? readStored() ?? UNKNOWN
+    if (status) writeStored(status)
+    inflight = null
+    publish(final)
+    return final
+  })()
   return inflight
 }
 
-/** 启动时就发出去，跟 identity_exists 并行，登录页挂载时答案多半已经在了。 */
+/** 启动时就发出去，跟 identity_exists 并行。 */
 export function primeBiometricStatus(): void {
   if (!sessionStatus) void fetchStatus()
 }
 
+/** 强制重新探测（插拔传感器、在设置里重绑之后）。 */
+export function refreshBiometricStatus(): Promise<BiometricStatus> {
+  return fetchStatus(true)
+}
+
+
 /**
- * 这台机器可用的生物识别及金库是否已绑定。有缓存同步返回并后台刷新，都没有返回 null（探测中）。
- * 拉取失败返回「什么都没有」而不抛错，解锁页必须始终能渲染。
+ * 这台机器可用的生物识别、金库是否已绑定、配了哪些因子。有缓存同步返回并后台刷新，都没有返回 null（探测中）。
  */
 export function useBiometricStatus(): BiometricStatus | null {
   const [status, setStatus] = useState<BiometricStatus | null>(() => sessionStatus ?? readStored())

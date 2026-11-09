@@ -784,6 +784,8 @@ export interface VaultMethods {
       chain: BiometricModality[]
       preferred: BiometricModality | null
       bound: boolean
+      /** 金库实际配置的非生物识别因子；旧后端不回这个字段，按全开处理。 */
+      factors?: Partial<Record<'password' | 'totp' | 'email' | 'recovery', boolean>>
     }
   }
   setup_verify_fingerprint: { params: Record<string, never>; result: { ok: true } | { ok: false; error: string; error_params?: Record<string, string | number> } }

@@ -1353,6 +1353,11 @@ function createWindow() {
     ])
     if (FINGERPRINT_METHODS.has(method)) {
       const p = (params as Record<string, unknown>) ?? {}
+      // 父窗口不在前台时 Hello 框会沉在后面，自动那次 25 s 超时就落到密码；先把可见的主窗口提到前台
+      if (win && win.isVisible() && !win.isFocused()) {
+        if (win.isMinimized()) win.restore()
+        win.focus()
+      }
       if (!p.hwnd && win) {
         // Windows 上 getNativeWindowHandle 返回的 Buffer 装着 HWND，HWND 在所有 Windows 平台都放得进 32 位，ReadUInt32LE 足够。
         const hwndBuf = win.getNativeWindowHandle()

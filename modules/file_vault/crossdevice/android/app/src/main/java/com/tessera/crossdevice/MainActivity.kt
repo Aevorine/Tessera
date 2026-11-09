@@ -9,6 +9,7 @@ import android.graphics.Color
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import androidx.core.view.isVisible
 import android.os.Handler
 import android.os.Looper
 import android.view.KeyEvent
@@ -33,6 +34,16 @@ import java.util.concurrent.atomic.AtomicInteger
 
 /** 首页。刻意做薄：状态真相都在 Go 侧，这里只发 JSON 请求、渲染 JSON 事件，两端共用一套状态机。 */
 class MainActivity : AppCompatActivity() {
+    private lateinit var lockGate: AppLockGate
+
+    /** 本应用拉起的页面（选文件、扫码、系统设置）回来不重新上锁。 */
+    @Deprecated("Activity API")
+    override fun startActivityForResult(intent: Intent, requestCode: Int, options: Bundle?) {
+        AppLock.expectReturn()
+        @Suppress("DEPRECATION")
+        super.startActivityForResult(intent, requestCode, options)
+    }
+
 
     private companion object {
         /** 能立刻收东西的状态。与桌面端 ONLINE_STATES 保持一致——
@@ -259,7 +270,7 @@ class MainActivity : AppCompatActivity() {
         requestIgnoreBatteryOptimizationsIfNeeded()
         wireSystemPermissionsSetting()
         refreshSystemPermissionsStatus()
-        gateOnAppLock()
+        lockGate = AppLockGate(this).also { it.attach() }
         ContextCompat.startForegroundService(this, Intent(this, SyncService::class.java))
         SyncService.listeners.add(onEvent)
 
@@ -1071,41 +1082,22 @@ class MainActivity : AppCompatActivity() {
         refreshLog()
     }
 
-    /**
-     * 打开应用时按用户选的方式验证；这道锁与设备配对、设备间身份认证互不相干，不共用密码。
-     * 验证不通过只结束 Activity，同步服务照常在后台跑，否则已配对设备的自动重连形同虚设。
-     */
-    private fun gateOnAppLock() {
-        when (AppLock.mode(this)) {
-            AppLock.Mode.NONE -> Unit
-            AppLock.Mode.BIOMETRIC -> AppLock.promptBiometric(this) { ok -> if (!ok) finish() }
-            AppLock.Mode.PASSWORD -> promptPassword()
-        }
-    }
-
-    private fun promptPassword() {
-        val input = android.widget.EditText(this).apply {
-            inputType = android.text.InputType.TYPE_CLASS_TEXT or
-                android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD
-            hint = getString(R.string.lock_enter_password)
-        }
-        AlertDialog.Builder(this)
-            .setTitle(R.string.lock_prompt_title)
-            .setView(input)
-            .setPositiveButton(R.string.lock_unlock) { _, _ ->
-                if (!AppLock.checkPassword(this, input.text.toString())) {
-                    snack(getString(R.string.lock_wrong_password))
-                    finish()
-                }
-            }
-            .setCancelable(false)
-            .show()
-    }
-
     /** 设置区：选打开应用时的验证方式。 */
     private fun wireAppLockSetting() {
-        // 没有可用的生物识别就不给这个选项——给了也点不动，只会让人以为坏了。
-        ui.lockBiometric.isEnabled = AppLock.biometricAvailable(this)
+        // 设备做不到的方式不显示；文字按真实硬件写（人脸 / 指纹 / 虹膜 / 锁屏密码）
+        val kinds = AppLock.biometricKinds(this)
+        val enrolled = AppLock.biometricEnrolled(this)
+        ui.lockBiometric.isVisible = AppLock.biometricAvailable(this) || AppLock.mode(this) == AppLock.Mode.BIOMETRIC
+        ui.lockBiometric.text = getString(
+            when {
+                !enrolled -> R.string.lock_opt_credential
+                AppLock.Kind.FACE in kinds && AppLock.Kind.FINGERPRINT in kinds -> R.string.lock_opt_face_fingerprint
+                AppLock.Kind.FACE in kinds -> R.string.lock_opt_face
+                AppLock.Kind.FINGERPRINT in kinds -> R.string.lock_opt_fingerprint
+                AppLock.Kind.IRIS in kinds -> R.string.lock_opt_iris
+                else -> R.string.lock_biometric
+            },
+        )
 
         when (AppLock.mode(this)) {
             AppLock.Mode.NONE -> ui.lockNone.isChecked = true
@@ -2589,6 +2581,7 @@ class MainActivity : AppCompatActivity() {
 
     override fun onStart() {
         super.onStart()
+        if (::lockGate.isInitialized) lockGate.onStart()
         activityVisible = true
         if (appearanceConfig.interfaceMode == InterfaceMode.PROFESSIONAL && panels.isOpen(P_PRO)) {
             metricsHandler.post(refreshMetrics)
@@ -2600,6 +2593,7 @@ class MainActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
+        if (::lockGate.isInitialized) lockGate.onResume()
         // 安卓 10 起只有前台应用读得到剪贴板，所以"回到前台"是这个平台上
         // 能拿到剪贴板变化的唯一时机。详见 syncClipboardOnResume 的说明。
         syncClipboardOnResume()
@@ -2613,6 +2607,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     override fun onStop() {
+        if (::lockGate.isInitialized) lockGate.onStop(isChangingConfigurations)
         activityVisible = false
         metricsHandler.removeCallbacks(refreshMetrics)
         statusPollHandler.removeCallbacks(refreshStatusPoll)

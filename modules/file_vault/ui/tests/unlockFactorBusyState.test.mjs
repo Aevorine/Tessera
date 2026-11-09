@@ -83,7 +83,7 @@ test('自动发起的那一次带短预算，手动那次不带', () => {
 })
 
 test('自动那次超时后替用户切到密码——那一刻他自己切不动', () => {
-  assert.match(BIOMETRIC, /if \(isAutoAttempt && isTimeout\) onUseAnotherFactor\?\.\(\)/)
+  assert.match(BIOMETRIC, /if \(isAutoAttempt && isTimeout\) \(onTimeout \?\? onUseAnotherFactor\)\?\.\(\)/)
 })
 
 test('取消走的是后端的协商撤销，不是只改前端状态', () => {
