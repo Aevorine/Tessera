@@ -136,5 +136,11 @@
   "searchHotkey": "快速搜索 Ctrl+F 或 /，↑↓ 切换结果，Enter 打开",
   "searchNoResults": "没有匹配的内容",
   "searchHub": "搜索设备、文件、同步记录、功能",
-  "searchGroupFeatures": "功能"
+  "searchGroupFeatures": "功能",
+  "closeSectionLabel": "关闭「{{name}}」（可在 设置 › 外观 恢复）",
+  "navReorderItem": "拖动调整「{{name}}」的位置（键盘：空格拿起，上下方向键移动，空格放下）",
+  "navCloseItem": "从侧边栏关闭「{{name}}」（Ctrl+K 仍可打开，可在 设置 › 外观 恢复）",
+  "layoutEditStart": "编辑布局",
+  "layoutEditDone": "完成",
+  "layoutEditHint": "点任意内容右上角的 × 关闭它；可在 设置 › 外观 恢复（Esc 退出）"
 }

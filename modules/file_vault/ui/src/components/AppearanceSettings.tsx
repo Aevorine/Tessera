@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Label } from '@/components/ui/label'
-import { useDisplayMode, type DisplayMode } from '@/lib/displayMode'
+import { HiddenContentSettings } from '@/components/HiddenContentSettings'
 import { useAppearance } from '@/lib/appearanceContext'
 import { electronApi } from '@/lib/electronApi'
 import {
@@ -23,7 +23,6 @@ type ThemeChoice = 'system' | 'light' | 'dark'
 export function AppearanceSettings() {
   const { t } = useTranslation('settings')
   const { theme = 'system', setTheme } = useTheme()
-  const { mode, setMode } = useDisplayMode()
   const {
     preferences,
     setVisualStyle,
@@ -38,14 +37,6 @@ export function AppearanceSettings() {
       <div>
         <p className="font-medium">{t('appearanceStudioTitle')}</p>
       </div>
-
-      <ChoiceGroup<DisplayMode>
-        label={t('interfaceModeTitle')}
-        value={mode}
-        options={['simple', 'professional']}
-        labelFor={(value) => t(value === 'simple' ? 'interfaceModeSimple' : 'interfaceModeProfessional')}
-        onChange={setMode}
-      />
 
       <ChoiceGroup<ThemeChoice>
         label={t('colorModeTitle')}
@@ -114,6 +105,8 @@ export function AppearanceSettings() {
           ))}
         </div>
       </div>
+
+      <HiddenContentSettings />
     </div>
   )
 }

@@ -1,6 +1,9 @@
 import * as React from 'react'
-import { ChevronDown } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
+import { ChevronDown, X } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
+import { hideContent, sectionKey, useHiddenContent, usePaneId } from '@/lib/hiddenContent'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 
 import { cn } from '@/lib/utils'
 
@@ -272,6 +275,8 @@ export function PageSection({
   defaultExpanded = true,
   storageKey,
   onExpandedChange,
+  closeKey,
+  closable = true,
   className,
   contentClassName,
   children,
@@ -292,10 +297,22 @@ export function PageSection({
    * （如每秒刷新的实时指标的定时器）。
    */
   onExpandedChange?: (expanded: boolean) => void
+  /**
+   * 关闭键（同页内唯一）。不传就用 storageKey，再没有就用字符串标题。关掉的分区整块不渲染，
+   * 在 设置 › 外观 ›「已关闭的内容」里恢复。
+   */
+  closeKey?: string
+  /** 少数分区关掉会让页面失去意义（如设置页里的「已关闭的内容」本身），传 false 不给关闭钮。 */
+  closable?: boolean
   className?: string
   contentClassName?: string
   children?: React.ReactNode
 }) {
+  const { t } = useTranslation('common')
+  const pane = usePaneId()
+  const hidden = useHiddenContent()
+  const closeId = closeKey ?? storageKey ?? (typeof title === 'string' ? title : undefined)
+  const key = closable && pane && closeId ? sectionKey(pane, closeId) : undefined
   const hasHeader = Boolean(title || actions)
   const [expanded, setExpanded] = useSectionExpanded(storageKey, defaultExpanded)
   // collapsible 关掉时永远当展开处理——否则给一个不可折叠的分区传了
@@ -304,12 +321,17 @@ export function PageSection({
 
   // 挂载时也报一次：宿主要靠它决定初始状态下要不要启动定时器，
   // 只在切换时通知的话，"打开页面时本来就是收起的"这一档会被漏掉。
+  const isHidden = key !== undefined && key in hidden
   React.useEffect(() => {
-    onExpandedChange?.(open)
-  }, [open, onExpandedChange])
+    // 关掉的分区不渲染内容，对宿主而言等同于收起：让它停掉定时器之类的开销。
+    onExpandedChange?.(open && !isHidden)
+  }, [open, isHidden, onExpandedChange])
+
+  if (isHidden) return null
+  const closeLabel = typeof title === 'string' ? title : closeId ?? ''
 
   return (
-    <section className={cn('overflow-hidden rounded-xl border border-border/70 bg-card', className)}>
+    <section className={cn('group/section overflow-hidden rounded-xl border border-border/70 bg-card', className)}>
       {hasHeader && (
         <header
           className={cn(
@@ -340,6 +362,22 @@ export function PageSection({
               />
               <span className="sr-only">{title}</span>
             </button>
+          )}
+          {key && (
+            // 平时隐形，悬停到分区或 Tab 到按钮才出现：每块都常驻一个 × 会让整页像一排可删除的通知。
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  type="button"
+                  onClick={() => hideContent(key, closeLabel, pane)}
+                  aria-label={t('closeSectionLabel', { name: closeLabel })}
+                  className="ds-focus-ring shrink-0 rounded-md p-1 text-muted-foreground opacity-0 transition-opacity hover:bg-muted hover:text-foreground focus-visible:opacity-100 group-hover/section:opacity-100"
+                >
+                  <X className="size-4" aria-hidden="true" />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent>{t('closeSectionLabel', { name: closeLabel })}</TooltipContent>
+            </Tooltip>
           )}
         </header>
       )}

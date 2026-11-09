@@ -365,5 +365,12 @@
   "fileHookStatusUnknown": "Couldn't read the shortcut engine status",
   "fileHookRetry": "Retry",
   "fileHookApprovalDisabled": "Startup is turned off in Windows Task Manager › Startup apps",
-  "fileHookReenable": "Turn back on"
+  "fileHookReenable": "Turn back on",
+  "hiddenContentTitle": "Closed content",
+  "hiddenContentEmpty": "Nothing is closed. Hover a sidebar entry or a page section and click the × to close it.",
+  "hiddenContentRestoreAll": "Restore all ({{count}})",
+  "hiddenContentRestore": "Restore",
+  "hiddenContentKindNav": "Sidebar entry",
+  "hiddenContentKindSection": "Section on the {{pane}} page",
+  "navResetOrder": "Reset sidebar order"
 }

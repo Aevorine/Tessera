@@ -7,6 +7,8 @@
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
     <uses-permission android:name="android.permission.CHANGE_WIFI_MULTICAST_STATE" />
+    <!-- 传输期间持 Wi-Fi 高性能锁与部分唤醒锁（TransferBoost），空闲即放。 -->
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
 
     <!-- 前台服务：设备要能"断联后自动连回来"，进程就必须活着。
          Android 14 起必须声明与实际用途相符的 serviceType，否则启动即抛异常。 -->

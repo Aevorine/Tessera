@@ -311,6 +311,10 @@ class SyncService : Service() {
             // 不登记就会把对端内容当成本机新复制再广播回去。
             if (ImeMode.isDefault(this)) ClipDedupe.markCurrent(this)
         }
+        // 有字节在动就把 Wi-Fi / CPU 拉到高性能档（见 TransferBoost），空闲 15 秒自动放。
+        when (obj.optString("event")) {
+            "progress", "transfer", "xfer_state" -> TransferBoost.touch(this)
+        }
         if (obj.optString("event") == "transfer") obj.optJSONObject("data")?.let { d ->
             runCatching { notifyReceived(d) }
                 .onFailure { DiagnosticLog.record(this, "receive", "通知失败", it.javaClass.simpleName) }
@@ -344,6 +348,7 @@ class SyncService : Service() {
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onDestroy() {
+        TransferBoost.releaseNow()
         clipWatcher?.stop()
         clipWatcher = null
         networkCallback?.let { cb ->

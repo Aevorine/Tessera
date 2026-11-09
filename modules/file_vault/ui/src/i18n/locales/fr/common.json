@@ -136,5 +136,11 @@
   "searchHotkey": "Rechercher : Ctrl+F ou /, ↑↓ pour naviguer, Entrée pour ouvrir",
   "searchNoResults": "Aucun résultat",
   "searchHub": "Rechercher appareils, fichiers, synchronisation, fonctions",
-  "searchGroupFeatures": "Fonctions"
+  "searchGroupFeatures": "Fonctions",
+  "closeSectionLabel": "Fermer « {{name}} » (à rétablir dans Paramètres › Apparence)",
+  "navReorderItem": "Glisser pour déplacer « {{name}} » (clavier : Espace pour saisir, ↑/↓ pour déplacer, Espace pour déposer)",
+  "navCloseItem": "Retirer « {{name}} » de la barre latérale (toujours accessible avec Ctrl+K ; à rétablir dans Paramètres › Apparence)",
+  "layoutEditStart": "Modifier la disposition",
+  "layoutEditDone": "Terminé",
+  "layoutEditHint": "Cliquez sur le × d’un bloc pour le fermer ; à rétablir dans Paramètres › Apparence (Échap pour quitter)"
 }

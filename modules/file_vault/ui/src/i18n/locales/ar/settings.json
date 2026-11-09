@@ -365,5 +365,12 @@
   "fileHookStatusUnknown": "تعذّرت قراءة حالة محرك الاختصارات",
   "fileHookRetry": "إعادة المحاولة",
   "fileHookApprovalDisabled": "التشغيل عند بدء التشغيل معطّل في مدير مهام Windows › تطبيقات بدء التشغيل",
-  "fileHookReenable": "إعادة التفعيل"
+  "fileHookReenable": "إعادة التفعيل",
+  "hiddenContentTitle": "المحتوى المغلق",
+  "hiddenContentEmpty": "لا يوجد محتوى مغلق. مرّر المؤشر فوق عنصر في الشريط الجانبي أو قسم في الصفحة وانقر × لإغلاقه.",
+  "hiddenContentRestoreAll": "استعادة الكل ({{count}})",
+  "hiddenContentRestore": "استعادة",
+  "hiddenContentKindNav": "عنصر في الشريط الجانبي",
+  "hiddenContentKindSection": "قسم في صفحة {{pane}}",
+  "navResetOrder": "إعادة ترتيب الشريط الجانبي الافتراضي"
 }

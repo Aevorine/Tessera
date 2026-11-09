@@ -825,6 +825,10 @@ type recvTransfer struct {
 	lastReport time.Time
 	lastDone   int64
 	gotChunks  int
+
+	// 写盘协程（见 rxwriter.go）：读循环只负责收帧，哈希与写盘在这里异步做。
+	wOnce  sync.Once
+	writer *rxWriter
 }
 
 func (s *Session) onXferOffer(f *wire.Frame) error {
@@ -971,48 +975,8 @@ func (s *Session) onXferChunk(f *wire.Frame) error {
 		return nil // 已取消
 	}
 
-	// 块哈希只算这一次：既用来核对发送端报的值，也交给接收器记在账上——
-	// 收完之后的整体校验直接用它们拼 Merkle 根，不用再读一遍盘。
-	leaf := transfer.HashChunk(data)
-	if hdr.Hash != nil && !eqBytes(leaf, hdr.Hash) {
-		return s.wc.WriteMsg(wire.TypeError, 0, &wire.Error{
-			Code: wire.ErrCodeBadChunk, Msg: fmt.Sprintf("分块 %d 校验失败", hdr.ChunkIndex),
-			Ref: hdr.TransferID,
-		})
-	}
-	if err := rt.recv.WriteChunkHashed(hdr.ChunkIndex, data, leaf); err != nil {
-		// 写盘失败（磁盘满、目标被占用…）不会自愈，后面每块都会同样失败。当场告诉发送端让它停，
-		// 否则它会把剩下的几个 GB 照发，最后只收到莫名的"仍有分块未收到"。
-		s.failRecvTransfer(key, rt, err)
-		return nil
-	}
-
-	rt.gotChunks++
-	if cb := s.node.cfg.OnProgress; cb != nil {
-		now := time.Now()
-		if now.Sub(rt.lastReport) >= progressInterval {
-			// 已完成字节取接收器位图里已有的全部块，不是本次会话收到的块数：续传时前面的块不再重传，
-			// 只数本次的话进度会从 0 重爬且永远到不了 100%。
-			done, _ := rt.recv.Progress()
-			var speed int64
-			if !rt.lastReport.IsZero() {
-				if el := now.Sub(rt.lastReport).Seconds(); el > 0 {
-					speed = int64(float64(done-rt.lastDone) / el)
-				}
-			}
-			rt.lastReport, rt.lastDone = now, done
-			total := rt.totalChunks
-			have := total - len(rt.recv.Missing())
-			cb(Progress{
-				ID: hex.EncodeToString(hdr.TransferID),
-				// 名字用**显示名**：RelPath 在传文件夹时是多级路径，
-				// 直接摆进界面只会被截断成一串看不出是什么的字符。
-				DeviceID: s.peer.DeviceID, DeviceName: s.PeerName(),
-				Name: rt.display, Kind: rt.ctl.kind, Direction: "recv",
-				Done: done, Total: rt.entry.Size,
-				Chunks: have, TotalChunk: total, Speed: speed,
-			})
-		}
+	if w := s.writerFor(key, rt); w != nil {
+		s.enqueue(w, rxChunk{hdr: hdr, data: data})
 	}
 	return nil
 }
@@ -1037,6 +1001,8 @@ func (s *Session) onXferDone(f *wire.Frame) error {
 	// 收完（不论成败）都要从注册表里摘掉，否则界面上的"暂停/取消"按钮会一直
 	// 挂在一条已经结束的传输上，点下去什么都不会发生。
 	s.node.xfers.remove(key)
+	// 不会再有新块：写盘协程写完队列里剩下的就退出，finishRecv 等它。
+	rt.closeWriter()
 
 	// 收尾（刷盘、核对、改名、投递）不在读循环里做：最后的 fsync 在慢盘上可达几十秒，期间
 	// 心跳回声不回，发送端三次没等到就断连，文件其实已收全却报"连接已断开"。
@@ -1059,6 +1025,8 @@ func (s *Session) finishRecv(key string, rt *recvTransfer, tid []byte) {
 		_ = s.wc.WriteMsg(wire.TypeXferDone, 0, &wire.XferDone{TransferID: tid, OK: ok, Msg: msg})
 	}
 
+	// 读循环把最后几块交给写盘协程就返回了，核对前必须等它们真正写进文件。
+	rt.waitWriter(s.done)
 	if err := rt.recv.Finish(); err != nil {
 		if rt.isClip {
 			s.node.recordClipSyncResult(s.peer, rt.clipItemID, rt.clipMime, false, err.Error())
@@ -1128,6 +1096,7 @@ func (s *Session) failRecvTransfer(key string, rt *recvTransfer, cause error) {
 	if !ok {
 		return // 已经被取消 / 收尾了，别重复报
 	}
+	rt.stopWriter()
 	_ = rt.recv.Abort(true)
 	s.node.xfers.remove(key)
 	if rt.isClip {
@@ -1226,5 +1195,6 @@ func (s *Session) abortRecvTransfer(id string, keepPartial bool) {
 	if !ok {
 		return
 	}
+	rt.stopWriter()
 	_ = rt.recv.Abort(keepPartial)
 }

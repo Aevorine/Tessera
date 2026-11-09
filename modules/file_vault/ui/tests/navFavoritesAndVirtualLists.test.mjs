@@ -85,9 +85,9 @@ test('折叠态下常用区仍然渲染——不能做成"只有展开才有"', 
   assert.match(block, /<SortableFavoriteRow/, '展开态走可拖拽的行')
 })
 
-test('常用区置顶：它排在 NAV_GROUPS 的渲染之前', () => {
+test('常用区置顶：它排在「全部功能」（可拖动排序的平铺列表）的渲染之前', () => {
   const favoritesAt = APP_SHELL.indexOf('{favoriteItems.length > 0 && (')
-  const allGroupsAt = APP_SHELL.indexOf('{NAV_GROUPS.map((group) => (')
+  const allGroupsAt = APP_SHELL.indexOf('{orderedNavItems.map((item) => {')
   assert.ok(favoritesAt > 0 && allGroupsAt > 0, '两段渲染代码都要在')
   assert.ok(favoritesAt < allGroupsAt, '常用区必须渲染在「全部功能」之前')
 })

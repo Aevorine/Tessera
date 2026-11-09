@@ -365,5 +365,12 @@
   "fileHookStatusUnknown": "暂时读不到快捷键引擎状态",
   "fileHookRetry": "重试",
   "fileHookApprovalDisabled": "开机自启动已在 Windows「任务管理器 › 启动应用」里被禁用",
-  "fileHookReenable": "重新启用"
+  "fileHookReenable": "重新启用",
+  "hiddenContentTitle": "已关闭的内容",
+  "hiddenContentEmpty": "还没有关闭任何内容。把鼠标移到侧边栏入口或页面分区上，点右上角的 × 即可关闭。",
+  "hiddenContentRestoreAll": "全部恢复（{{count}}）",
+  "hiddenContentRestore": "恢复",
+  "hiddenContentKindNav": "侧边栏入口",
+  "hiddenContentKindSection": "{{pane}} 页面里的分区",
+  "navResetOrder": "侧边栏恢复默认顺序"
 }

@@ -1266,6 +1266,36 @@
                                 android:text="@string/guide_button" />
                         </LinearLayout>
 
+                        <!-- 界面自定义：进入编辑布局（每块右上角出现 ×）/ 恢复关掉的内容。这个入口本身不可关闭。 -->
+                        <LinearLayout
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="8dp"
+                            android:gravity="center_vertical"
+                            android:orientation="horizontal">
+
+                            <com.google.android.material.button.MaterialButton
+                                android:id="@+id/btnEditLayout"
+                                style="?attr/materialButtonOutlinedStyle"
+                                android:layout_width="0dp"
+                                android:layout_weight="1"
+                                android:layout_height="wrap_content"
+                                android:minWidth="0dp"
+                                android:text="@string/layout_edit_start"
+                                app:icon="@drawable/ic_close" />
+
+                            <com.google.android.material.button.MaterialButton
+                                android:id="@+id/btnManageLayout"
+                                style="?attr/materialButtonOutlinedStyle"
+                                android:layout_width="0dp"
+                                android:layout_weight="1"
+                                android:layout_height="wrap_content"
+                                android:layout_marginStart="8dp"
+                                android:minWidth="0dp"
+                                android:text="@string/layout_manage_button"
+                                app:icon="@drawable/ic_refresh" />
+                        </LinearLayout>
+
                         <TextView
                             android:id="@+id/textIntegrity"
                             android:layout_width="match_parent"
