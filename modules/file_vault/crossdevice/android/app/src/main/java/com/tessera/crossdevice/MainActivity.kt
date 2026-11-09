@@ -1203,7 +1203,7 @@ class MainActivity : AppCompatActivity() {
     private fun wireAppLockSetting() {
         // 设备做不到的方式不显示；文字按真实硬件写（人脸 / 指纹 / 虹膜 / 锁屏密码）
         val kinds = AppLock.biometricKinds(this)
-        val enrolled = AppLock.biometricEnrolled(this)
+        val enrolled = AppLock.biometricEnrolled(this) || AppLock.vendorFaceAvailable(this, refresh = true)
         ui.lockBiometric.isVisible = AppLock.biometricAvailable(this) || AppLock.mode(this) == AppLock.Mode.BIOMETRIC
         ui.lockBiometric.text = getString(
             when {

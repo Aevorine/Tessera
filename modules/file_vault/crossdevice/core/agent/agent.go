@@ -190,6 +190,10 @@ func New(cfg Config) (*Agent, error) {
 			// 跨网。两项都留空时整块功能不启用，只走局域网——这是默认状态。
 			RendezvousAddr:   opts.RendezvousAddr,
 			RendezvousSecret: opts.RendezvousSecret,
+			// 只绑回环的节点局域网里根本连不上，公布自己只会让真实设备的「附近设备」里冒出连不上的
+			// 幽灵（测试节点「测试机」「电脑」「手机」），还会在 0.0.0.0 上开信标端口，Windows 防火墙
+			// 因此弹「是否允许 agent.test.exe 访问网络」。
+			DisableDiscovery: isLoopbackAddr(addr),
 		})
 	}
 
@@ -206,11 +210,16 @@ func New(cfg Config) (*Agent, error) {
 	if err := n.Start(); err != nil {
 		// 固定端口（39421）可能被占用、上个实例未退净或开了两份；退到系统分配的端口重试一次，
 		// 没有东西依赖该端口——配对码和 mDNS 公布的都是实际监听端口。
-		if cfg.Addr == ":0" {
+		// 只换端口、保留主机：要求只绑回环的节点退到 ":0" 会悄悄改成监听全部网卡。
+		fallback := ":0"
+		if host, _, splitErr := net.SplitHostPort(cfg.Addr); splitErr == nil && host != "" {
+			fallback = net.JoinHostPort(host, "0")
+		}
+		if cfg.Addr == fallback {
 			return nil, err
 		}
-		log.Printf("在 %s 监听失败（%v），改用系统分配的端口重试", cfg.Addr, err)
-		n2, err2 := newNode(":0")
+		log.Printf("在 %s 监听失败（%v），改用 %s 重试", cfg.Addr, err, fallback)
+		n2, err2 := newNode(fallback)
 		if err2 != nil {
 			return nil, err
 		}
@@ -1768,4 +1777,17 @@ func strSlice(m map[string]any, k string) []string {
 		}
 	}
 	return out
+}
+
+// isLoopbackAddr 报告监听地址是否只绑回环（127.x / ::1 / localhost）。":0"、":39421" 这类全网卡地址返回 false。
+func isLoopbackAddr(addr string) bool {
+	host, _, err := net.SplitHostPort(addr)
+	if err != nil || host == "" {
+		return false
+	}
+	if host == "localhost" {
+		return true
+	}
+	ip := net.ParseIP(host)
+	return ip != nil && ip.IsLoopback()
 }

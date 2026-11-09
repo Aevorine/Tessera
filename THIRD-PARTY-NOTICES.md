@@ -156,3 +156,7 @@ Discrepancies are bugs — please report them.
 ## Unicode search data
 
 The desktop and Android pinyin search tables are derived from Unicode Unihan data (Unicode, Inc.). Unicode License V3 applies to these tables. The full copyright and permission notice is distributed in `modules/file_vault/ui/public/licenses/UNICODE.txt` and Android's `assets/licenses/UNICODE.txt`.
+
+## Android vendor face interface shapes
+
+`VendorFace.kt` (Android app lock) calls the Honor / Huawei system face service by reflection. The class names, method signatures and callback codes it relies on were taken from the interface stubs of AdvancedBiometricPromptCompat by Sergey Komlach (https://github.com/Salat-Cx65/AdvancedBiometricPromptCompat), licensed under the Apache License 2.0. Tessera's code is a rewrite; no file from that project is included, and no vendor or stub class is shipped in the APK.
