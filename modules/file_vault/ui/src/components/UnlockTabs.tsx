@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
   Eye,
@@ -17,19 +17,19 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Alert, AlertDescription } from '@/components/ui/alert'
-import { TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { vaultApi } from '@/lib/vaultApi'
 import { translateError } from '@/i18n/errors'
+import { refreshBiometricStatus, useBiometricStatus } from '@/lib/useBiometricStatus'
+import { isBiometricFactor, unlockFactorOrder } from '@/lib/unlockFactors'
+import type { UnlockFactor } from '@/lib/unlockFactors'
 import type { BiometricStatus } from '@/lib/useBiometricStatus'
 import { useWindowActivation } from '@/lib/useWindowActivation'
 import type { BiometricModality } from '@/shared/ipcTypes'
 
-// Shared by UnlockDialog.tsx (popup) and LoginScreen.tsx (full page): same five factor tabs.
+// LoginScreen（整页）和 UnlockDialog（复验弹窗）共用：同一套因子顺序与面板。
 
-/** 启动时默认选中的解锁方式：生物识别排第一并自动发起 Windows Hello，不可用时 `BiometricTab`
- *  经 onUnavailable 切到密码。值仍叫 'fingerprint'：它同时是 Tabs value、后端槽位名
- *  SLOT_FINGERPRINT 和测试断言对象；界面显示名由 MODALITY_PRESENTATION 决定。 */
-export const DEFAULT_UNLOCK_FACTOR = 'fingerprint'
+export type { UnlockFactor }
 
 // 「用户照着别处敲进来的一串码」的统一样式，全应用只这两档，按码长是否固定区分：
 // CODE_INPUT_CLASS 定长码（TOTP/邮箱验证码/配对码 6 位）：居中 + 宽字距，便于数位数。
@@ -75,9 +75,6 @@ const NEUTRAL_PRESENTATION = {
   hintKey: 'biometricInitialStatus',
 }
 
-function presentationFor(modality: BiometricModality | null | undefined) {
-  return modality ? MODALITY_PRESENTATION[modality] : NEUTRAL_PRESENTATION
-}
 
 type UnlockOutcome = { ok: true } | { ok: false; error?: string; error_params?: Record<string, string | number> }
 
@@ -88,49 +85,137 @@ type UnlockOutcome = { ok: true } | { ok: false; error?: string; error_params?: 
  * "message 就是错误码"由 lib/vaultApi.ts 保证（ipcRenderer.invoke 在渲染端会加
  * `Error invoking remote method ...` 前缀，已在 IPC 边界剥掉，见 lib/ipcError.ts）。
  */
-async function attemptUnlock(call: () => Promise<UnlockOutcome>): Promise<UnlockOutcome> {
+async function attemptUnlock(call: () => Promise<UnlockOutcome>, factor: UnlockFactor, auto = false): Promise<UnlockOutcome> {
+  const t0 = performance.now()
+  let res: UnlockOutcome
   try {
-    return await call()
+    res = await call()
   } catch (err) {
     const code = err instanceof Error ? err.message.trim() : ''
-    return { ok: false, error: code || undefined }
+    res = { ok: false, error: code || undefined }
   }
+  // 统一日志：因子、结果、错误码、耗时；不含任何输入内容
+  window.electronAPI?.logEvent?.({
+    level: res.ok ? 'info' : 'warn',
+    event: 'unlock_attempt',
+    module: 'login',
+    code: res.ok ? 'ok' : (res.error ?? 'failed'),
+    msg: `factor=${factor} auto=${auto} ms=${Math.round(performance.now() - t0)}`,
+  })
+  return res
 }
 
-/**
- * 五个解锁方式的标签栏，登录页和强制重新验证对话框共用。
- * 布局永远五等分一行，文字自己折行：`grid-cols-5` 单用会因基础样式 whitespace-nowrap 重叠，
- * flex-wrap 则行数随语言变化。故加 `whitespace-normal`、图标摞在文字上方（`flex-col`），
- * 并用 `min-h-16` 定高，保证任何语言和窗口宽度下五个因子都可见。
- */
-export function UnlockFactorTabsList({ modality }: { modality?: BiometricModality | null } = {}) {
+const FACTOR_PRESENTATION: Record<Exclude<UnlockFactor, BiometricModality | 'biometric'>, { icon: LucideIcon; tabKey: string }> = {
+  password: { icon: KeyRound, tabKey: 'tabPassword' },
+  totp: { icon: ShieldCheck, tabKey: 'tabTotp' },
+  email: { icon: Mail, tabKey: 'tabEmail' },
+  recovery: { icon: KeySquare, tabKey: 'tabRecovery' },
+}
+
+function factorPresentation(f: UnlockFactor) {
+  if (f === 'biometric') return NEUTRAL_PRESENTATION
+  if (f === 'face' || f === 'fingerprint' || f === 'iris') return MODALITY_PRESENTATION[f]
+  return FACTOR_PRESENTATION[f]
+}
+
+/** 因子标签栏：按 unlockFactorOrder 一行等分，个数随设备变化；文字可折行，图标在上。 */
+export function UnlockFactorTabsList({ factors }: { factors: UnlockFactor[] }) {
   const { t } = useTranslation('login')
-  // 第一个标签随本机真实模态变化（人脸/指纹）；探测未回（modality 为空）时用中性指纹呈现，避免图标闪
-  // 烁。
-  const bio = presentationFor(modality)
-  const factors = [
-    { value: 'fingerprint', label: t(bio.tabKey), icon: bio.icon },
-    { value: 'password', label: t('tabPassword'), icon: KeyRound },
-    { value: 'totp', label: t('tabTotp'), icon: ShieldCheck },
-    { value: 'email', label: t('tabEmail'), icon: Mail },
-    { value: 'recovery', label: t('tabRecovery'), icon: KeySquare },
-  ]
+  if (factors.length < 2) return null
   return (
-    <TabsList className="grid h-auto w-full grid-cols-5 gap-1.5 bg-surface-strong p-1.5 group-data-[orientation=horizontal]/tabs:h-auto">
-      {factors.map((factor) => {
-        const Icon = factor.icon
+    <TabsList
+      className="grid h-auto w-full gap-1.5 bg-surface-strong p-1.5 group-data-[orientation=horizontal]/tabs:h-auto"
+      style={{ gridTemplateColumns: `repeat(${factors.length}, minmax(0, 1fr))` }}
+    >
+      {factors.map((value) => {
+        const p = factorPresentation(value)
+        const Icon = p.icon
         return (
           <TabsTrigger
-            key={factor.value}
+            key={value}
             className="h-auto min-h-16 flex-col gap-1.5 whitespace-normal px-2 py-2.5 text-center leading-snug data-[state=active]:bg-card data-[state=active]:text-primary"
-            value={factor.value}
+            value={value}
           >
             <Icon className="size-5 shrink-0" aria-hidden="true" />
-            {factor.label}
+            {t(p.tabKey)}
           </TabsTrigger>
         )
       })}
     </TabsList>
+  )
+}
+
+/**
+ * 完整的解锁因子区：顺序、隐藏、自动发起、回退都在这里，登录页与复验弹窗只管放置。
+ * - 默认选第一个因子（有可用生物识别就是它，并自动发起 Hello）。
+ * - 探测结果晚到或变化时，用户没手动选过就跟随新的第一个（修：缓存说"不可用"先落到密码后，真结果回来不再回切）。
+ * - 窗口每次重新可见都回到第一个；探测没答上时顺手重探。
+ */
+export function UnlockFactorTabs({ onUnlocked, active = true }: { onUnlocked: () => void; active?: boolean }) {
+  const status = useBiometricStatus()
+  const activation = useWindowActivation()
+  const factors = useMemo(() => unlockFactorOrder(status), [status])
+  const orderKey = factors.join(',')
+  const [factor, setFactor] = useState<UnlockFactor>(factors[0])
+  const userPicked = useRef(false)
+  const factorsRef = useRef(factors)
+  factorsRef.current = factors
+
+  useEffect(() => {
+    setFactor((cur) => (!userPicked.current || !factorsRef.current.includes(cur) ? factorsRef.current[0] : cur))
+  }, [orderKey])
+
+  useEffect(() => {
+    if (!active) return
+    userPicked.current = false
+    setFactor(factorsRef.current[0])
+  }, [active])
+
+  useEffect(() => {
+    if (activation.generation === 0 || !activation.visible) return
+    userPicked.current = false
+    setFactor(factorsRef.current[0])
+    if (status && !status.probed) void refreshBiometricStatus()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activation.generation])
+
+  const fallbackTo = (target: UnlockFactor | undefined) => target && setFactor(target)
+  const nextAfter = (f: UnlockFactor) => factors[factors.indexOf(f) + 1] ?? 'password'
+  const firstSecret = factors.find((f) => !isBiometricFactor(f)) ?? 'password'
+
+  return (
+    <Tabs
+      value={factor}
+      onValueChange={(v) => {
+        userPicked.current = true
+        setFactor(v as UnlockFactor)
+      }}
+    >
+      <UnlockFactorTabsList factors={factors} />
+      {factors.map((f) => (
+        <TabsContent key={f} value={f}>
+          {isBiometricFactor(f) ? (
+            <BiometricTab
+              factor={f}
+              autoStart={active && f === factors[0]}
+              status={status}
+              onUnlocked={onUnlocked}
+              onUnavailable={() => fallbackTo(firstSecret)}
+              onTimeout={() => fallbackTo(firstSecret)}
+              onUseAnotherFactor={() => fallbackTo(nextAfter(f))}
+            />
+          ) : f === 'password' ? (
+            <PasswordTab onUnlocked={onUnlocked} />
+          ) : f === 'totp' ? (
+            <TotpTab onUnlocked={onUnlocked} />
+          ) : f === 'email' ? (
+            <EmailTab onUnlocked={onUnlocked} />
+          ) : (
+            <RecoveryTab onUnlocked={onUnlocked} />
+          )}
+        </TabsContent>
+      ))}
+    </Tabs>
   )
 }
 
@@ -158,7 +243,7 @@ export function PasswordTab({ onUnlocked }: { onUnlocked: () => void }) {
   async function handleUnlock() {
     setBusy(true)
     try {
-      const res = await attemptUnlock(() => vaultApi.call('unlock_password', { password }))
+      const res = await attemptUnlock(() => vaultApi.call('unlock_password', { password }), 'password')
       if (res.ok) onUnlocked()
       else setError(res.error ? translateError(res.error, res.error_params) : t('unlockFailedFallback'))
     } finally {
@@ -197,7 +282,7 @@ export function TotpTab({ onUnlocked }: { onUnlocked: () => void }) {
   async function handleUnlock() {
     setBusy(true)
     try {
-      const res = await attemptUnlock(() => vaultApi.call('unlock_totp', { code }))
+      const res = await attemptUnlock(() => vaultApi.call('unlock_totp', { code }), 'totp')
       if (res.ok) onUnlocked()
       else setError(res.error ? translateError(res.error, res.error_params) : t('unlockFailedFallback'))
     } finally {
@@ -243,7 +328,7 @@ export function EmailTab({ onUnlocked }: { onUnlocked: () => void }) {
     setSending(true)
     setStatus(t('emailSending'))
     try {
-      const res = await attemptUnlock(() => vaultApi.call('unlock_email_start', {}))
+      const res = await attemptUnlock(() => vaultApi.call('unlock_email_start', {}), 'email')
       if (res.ok) {
         setSent(true)
         setStatus(t('emailSentStatus', { address: (res as { email_address?: string }).email_address }))
@@ -262,7 +347,7 @@ export function EmailTab({ onUnlocked }: { onUnlocked: () => void }) {
     }
     setBusy(true)
     try {
-      const res = await attemptUnlock(() => vaultApi.call('unlock_email_finish', { code }))
+      const res = await attemptUnlock(() => vaultApi.call('unlock_email_finish', { code }), 'email')
       if (res.ok) onUnlocked()
       else setError(res.error ? translateError(res.error, res.error_params) : t('unlockFailedFallback'))
     } finally {
@@ -309,7 +394,7 @@ export function RecoveryTab({ onUnlocked }: { onUnlocked: () => void }) {
   async function handleUnlock() {
     setBusy(true)
     try {
-      const res = await attemptUnlock(() => vaultApi.call('unlock_recovery', { recovery_key: key }))
+      const res = await attemptUnlock(() => vaultApi.call('unlock_recovery', { recovery_key: key }), 'recovery')
       if (res.ok) onUnlocked()
       else setError(res.error ? translateError(res.error, res.error_params) : t('unlockFailedFallback'))
     } finally {
@@ -341,12 +426,18 @@ export function RecoveryTab({ onUnlocked }: { onUnlocked: () => void }) {
 }
 
 export function BiometricTab({
+  factor = 'biometric',
   onUnlocked,
   onUnavailable,
+  onTimeout,
   onUseAnotherFactor,
   autoStart = false,
   status: bio,
 }: {
+  /** 这个标签代表的模态，决定图标与文案；验证本身都是同一个 Windows Hello */
+  factor?: UnlockFactor
+  /** 自动那次超时（验证框多半没浮到前面）时回调，调用方切到密码 */
+  onTimeout?: () => void
   onUnlocked: () => void
   /** 这台机器用不了生物识别时回调，调用方据此切到别的解锁方式。不传就原地
    *  留着，用户仍可手动切标签。 */
@@ -377,11 +468,8 @@ export function BiometricTab({
   const onUnavailableRef = useRef(onUnavailable)
   onUnavailableRef.current = onUnavailable
 
-  const presentation = presentationFor(bio?.preferred)
+  const presentation = factor === 'face' || factor === 'fingerprint' || factor === 'iris' ? MODALITY_PRESENTATION[factor] : NEUTRAL_PRESENTATION
   const Icon = presentation.icon
-  // 链条上除了首选之外的其它模态。有人脸也有指纹时，用户该知道"按传感器也行"，
-  // 而不是对着一个只写了人脸的界面等摄像头。
-  const alternatives = (bio?.chain ?? []).filter((m) => m !== bio?.preferred)
 
   useEffect(() => setStatusText(t(presentation.hintKey)), [t, presentation.hintKey])
 
@@ -400,6 +488,8 @@ export function BiometricTab({
           'unlock_fingerprint',
           isAutoAttempt ? { timeout_seconds: AUTO_ATTEMPT_TIMEOUT_SECONDS } : {},
         ),
+        factor,
+        isAutoAttempt,
       )
     } finally {
       // finally 而不是"await 后面那一行"：见 attemptUnlock 的说明。这个按钮
@@ -433,7 +523,7 @@ export function BiometricTab({
 
     // 自动那次超时就替用户切到密码：验证框很可能没浮到前面，期间窗口被系统禁用，用户自己切不了。
     // 手动重试不切。
-    if (isAutoAttempt && isTimeout) onUseAnotherFactor?.()
+    if (isAutoAttempt && isTimeout) (onTimeout ?? onUseAnotherFactor)?.()
   }
 
   /** 撤销在途的验证，是验证框没弹到最前时用户唯一的出路。走协商路径（后端往辅助程序 stdin
@@ -484,13 +574,6 @@ export function BiometricTab({
           <Icon className="size-8" />
         </span>
         <p className="max-w-[42ch] text-sm leading-relaxed text-muted-foreground">{statusText}</p>
-        {alternatives.length > 0 && (
-          <p className="text-sm text-muted-foreground">
-            {t('alsoAvailable', {
-              methods: alternatives.map((m) => t(MODALITY_PRESENTATION[m].tabKey)).join(t('methodSeparator')),
-            })}
-          </p>
-        )}
       </div>
       <FactorError message={error} />
       <Button className="w-full" onClick={() => handleVerify(false)} disabled={verifying}>

@@ -394,15 +394,25 @@ def rpc_biometric_status(params, request_id):
     def fn():
         chain = fingerprint.preferred_chain(refresh=refresh)
         bound = False
+        # 金库实际配了哪些非生物识别因子；没配的界面不显示。读不出时全开，宁可多显示也不能把用户锁在外面。
+        factors = {"password": True, "totp": True, "email": True, "recovery": True}
         try:
             store = _require_store()
             bound = store.slots.get(identity.SLOT_FINGERPRINT) is not None and (
                 identity.fingerprint_binding_is_usable(store)
             )
+            factors["totp"] = store.slots.get(identity.SLOT_TOTP) is not None
+            factors["recovery"] = store.slots.get(identity.SLOT_RECOVERY) is not None
+            has_email = store.slots.get(identity.SLOT_EMAIL) is not None and bool(store.email_address)
+            try:
+                factors["email"] = has_email and identity.load_smtp_config() is not None
+            except Exception:
+                factors["email"] = has_email
         except Exception:
             # 还没建库（首次运行向导）或存储读不出来。两种情况下"没绑"都是对的答案。
             bound = False
         return {
+            "factors": factors,
             "ok": True,
             "available": fingerprint.is_available(),
             "modalities": fingerprint.available_modalities(),
