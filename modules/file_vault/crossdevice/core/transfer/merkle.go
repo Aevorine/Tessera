@@ -9,6 +9,9 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"runtime"
+	"sync"
+	"sync/atomic"
 
 	"lukechampine.com/blake3"
 )
@@ -104,6 +107,18 @@ func digestOpenFile(f *os.File, chunkSize int) (*FileDigest, error) {
 	if bufSize == 0 {
 		d.Root = MerkleRoot(nil)
 		return d, nil
+	}
+	// 多块文件并行读+哈希：发送前要先把整份文件过一遍算 Merkle 叶子，此前单线程顺序读，几 GB 的文件
+	// 在手机上要先空等几十秒才发出第一个字节。叶子按块号独立，可以几个协程各读各的块（ReadAt 并发
+	// 安全），闪存/SSD 队列深度上去后吞吐近似线性提升；结果按块号回填，与串行算法逐字节相同。
+	if chunks := (st.Size() + int64(chunkSize) - 1) / int64(chunkSize); chunks > 1 {
+		if leaves, n, err := digestParallel(f, st.Size(), chunkSize, int(chunks)); err == nil {
+			d.Leaves = leaves
+			d.Size = n
+			d.Root = MerkleRoot(d.Leaves)
+			return d, nil
+		}
+		// 并行路径出错（多半是文件在 stat 之后变短）退回串行，以真正读到的为准。
 	}
 	buf := make([]byte, bufSize)
 	var off int64
@@ -247,4 +262,76 @@ func UnmarshalBitmap(p []byte) (*Bitmap, error) {
 	b := &Bitmap{n: n, bits: make([]byte, len(p)-4)}
 	copy(b.bits, p[4:])
 	return b, nil
+}
+
+// digestWorkers 是并行算摘要的协程上限：再多磁盘也喂不饱，只多占内存（每个协程一块 chunkSize 缓冲）。
+const digestWorkers = 4
+
+// digestParallel 按块号并行读文件算叶子。任何一块读不满（文件在 stat 之后变短）都返回错误，
+// 由调用方退回串行路径按实际读到的长度重算。
+func digestParallel(f *os.File, size int64, chunkSize, chunks int) ([][]byte, int64, error) {
+	workers := runtime.NumCPU()
+	if workers > digestWorkers {
+		workers = digestWorkers
+	}
+	if workers > chunks {
+		workers = chunks
+	}
+	if workers < 2 {
+		return nil, 0, errors.New("单核不并行")
+	}
+	leaves := make([][]byte, chunks)
+	var next atomic.Int64
+	var failed atomic.Bool
+	var errMu sync.Mutex
+	var firstErr error
+	fail := func(err error) {
+		errMu.Lock()
+		if firstErr == nil {
+			firstErr = err
+		}
+		errMu.Unlock()
+		failed.Store(true)
+	}
+	var wg sync.WaitGroup
+	for w := 0; w < workers; w++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			buf := make([]byte, chunkSize)
+			for {
+				if failed.Load() {
+					return
+				}
+				i := int(next.Add(1) - 1)
+				if i >= chunks {
+					return
+				}
+				off := int64(i) * int64(chunkSize)
+				want := int64(chunkSize)
+				if rem := size - off; rem < want {
+					want = rem
+				}
+				n, err := f.ReadAt(buf[:want], off)
+				if int64(n) != want {
+					if err == nil {
+						err = io.ErrUnexpectedEOF
+					}
+					fail(err)
+					return
+				}
+				leaves[i] = HashChunk(buf[:n])
+			}
+		}()
+	}
+	wg.Wait()
+	if firstErr != nil {
+		return nil, 0, firstErr
+	}
+	// 文件在 stat 之后变长：多出来的部分不在这份摘要里，交给串行路径按实际长度算。
+	var probe [1]byte
+	if n, _ := f.ReadAt(probe[:], size); n > 0 {
+		return nil, 0, errors.New("文件在读取期间变长")
+	}
+	return leaves, size, nil
 }

@@ -365,5 +365,12 @@
   "fileHookStatusUnknown": "No se pudo leer el estado del motor de atajos",
   "fileHookRetry": "Reintentar",
   "fileHookApprovalDisabled": "El inicio automático está desactivado en Administrador de tareas de Windows › Aplicaciones de arranque",
-  "fileHookReenable": "Volver a activar"
+  "fileHookReenable": "Volver a activar",
+  "hiddenContentTitle": "Contenido cerrado",
+  "hiddenContentEmpty": "No hay nada cerrado. Pasa el ratón sobre una entrada de la barra lateral o una sección y pulsa × para cerrarla.",
+  "hiddenContentRestoreAll": "Restaurar todo ({{count}})",
+  "hiddenContentRestore": "Restaurar",
+  "hiddenContentKindNav": "Entrada de la barra lateral",
+  "hiddenContentKindSection": "Sección de la página {{pane}}",
+  "navResetOrder": "Restablecer el orden de la barra lateral"
 }

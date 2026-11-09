@@ -584,4 +584,20 @@
     <string name="receipt_received">已保存 %1$s</string>
     <string name="channel_received">收到的文件</string>
     <string name="notif_received_title">已收到来自 %1$s 的文件</string>
+    <!-- 界面自定义（LayoutCustomizer）：关闭 / 恢复 / 拖动排序 -->
+    <string name="layout_edit_start">编辑布局</string>
+    <string name="layout_edit_done">完成</string>
+    <string name="layout_edit_hint">点任意内容右上角的 × 关闭它；长按功能格可拖动排序</string>
+    <string name="layout_close_item">关闭「%1$s」</string>
+    <string name="layout_closed">已关闭「%1$s」</string>
+    <string name="layout_undo">撤销</string>
+    <string name="layout_manage_button">已关闭的内容</string>
+    <string name="layout_manage_title">恢复已关闭的内容</string>
+    <string name="layout_manage_empty">还没有关闭任何内容。进入「编辑布局」后，点内容右上角的 × 即可关闭。</string>
+    <string name="layout_restore_selected">恢复所选</string>
+    <string name="layout_restore_all">全部恢复</string>
+    <string name="layout_menu_hide">关闭这一项</string>
+    <string name="layout_menu_move_first">移到最前</string>
+    <string name="layout_menu_move_last">移到最后</string>
+    <string name="layout_menu_reset_order">恢复默认顺序</string>
 </resources>

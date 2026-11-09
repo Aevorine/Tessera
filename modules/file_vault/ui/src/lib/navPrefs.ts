@@ -18,6 +18,7 @@ export const FAVORITABLE_PANES = [
   'network',
   'pcclean',
   'filemanager',
+  'security',
   'settings',
   'diagnostics',
   'help',
@@ -38,16 +39,37 @@ export const DEFAULT_FAVORITE_PANES: FavoritablePane[] = []
 export interface NavPreferences {
   /** 有序。顺序就是「常用」区里从上到下的显示顺序。 */
   favorites: FavoritablePane[]
+  /** 「全部功能」的用户顺序（上下拖动得来）；空 = 默认顺序。没列到的入口（升级新增）排在后面。 */
+  order?: FavoritablePane[]
 }
 
+/** 不允许从侧边栏关掉的入口：设置页是恢复其它入口的地方，关掉它就再也找不回来（关闭状态存在 lib/hiddenContent.ts）。 */
+export const UNHIDEABLE_PANES: readonly FavoritablePane[] = ['settings']
+
 const STORAGE_KEY = 'ideal1-nav-preferences-v1'
+
+/** 设置页「侧边栏恢复默认顺序」后广播，AppShell 收到就把内存里的顺序清空。 */
+export const NAV_ORDER_RESET_EVENT = 'tessera-nav-order-reset'
 
 function isFavoritablePane(value: unknown): value is FavoritablePane {
   return typeof value === 'string' && (FAVORITABLE_PANES as readonly string[]).includes(value)
 }
 
 function cloneDefaults(): NavPreferences {
-  return { favorites: [...DEFAULT_FAVORITE_PANES] }
+  return { favorites: [...DEFAULT_FAVORITE_PANES], order: [] }
+}
+
+/** 去掉未知面板名与重复项；不是数组就当空。 */
+function cleanPaneList(value: unknown): FavoritablePane[] {
+  if (!Array.isArray(value)) return []
+  const seen = new Set<FavoritablePane>()
+  const out: FavoritablePane[] = []
+  for (const entry of value) {
+    if (!isFavoritablePane(entry) || seen.has(entry)) continue
+    seen.add(entry)
+    out.push(entry)
+  }
+  return out
 }
 
 /**
@@ -60,14 +82,27 @@ export function normalizeNavPreferences(value: unknown): NavPreferences {
   if (typeof value !== 'object' || value === null) return cloneDefaults()
   const candidate = value as Record<string, unknown>
   if (!Array.isArray(candidate.favorites)) return cloneDefaults()
-  const seen = new Set<FavoritablePane>()
-  const favorites: FavoritablePane[] = []
-  for (const entry of candidate.favorites) {
-    if (!isFavoritablePane(entry) || seen.has(entry)) continue
-    seen.add(entry)
-    favorites.push(entry)
+  return {
+    favorites: cleanPaneList(candidate.favorites),
+    order: cleanPaneList(candidate.order),
   }
-  return { favorites }
+}
+
+/**
+ * 按用户顺序排列入口：order 里有的按 order，没有的（升级新增）按原相对次序排在后面。
+ * 不改入参。
+ */
+export function orderNavPanes<T extends { pane: string }>(items: readonly T[], order: readonly string[] | undefined): T[] {
+  if (!order || order.length === 0) return [...items]
+  const rank = new Map(order.map((p, i) => [p, i]))
+  return items
+    .map((item, index) => ({ item, index }))
+    .sort((a, b) => {
+      const ra = rank.get(a.item.pane) ?? order.length + a.index
+      const rb = rank.get(b.item.pane) ?? order.length + b.index
+      return ra - rb || a.index - b.index
+    })
+    .map((x) => x.item)
 }
 
 export function loadNavPreferences(

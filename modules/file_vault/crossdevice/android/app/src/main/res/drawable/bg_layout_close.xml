@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 编辑布局时块右上角的关闭钮底：实心圆 + 细白边，压在任何底色上都看得清。 -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="oval">
+    <solid android:color="#E0B3261E" />
+    <stroke android:width="1.5dp" android:color="#FFFFFFFF" />
+</shape>

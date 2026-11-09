@@ -365,5 +365,12 @@
   "fileHookStatusUnknown": "Impossible de lire l'état du moteur de raccourcis",
   "fileHookRetry": "Réessayer",
   "fileHookApprovalDisabled": "Le démarrage automatique est désactivé dans le Gestionnaire des tâches de Windows › Applications de démarrage",
-  "fileHookReenable": "Réactiver"
+  "fileHookReenable": "Réactiver",
+  "hiddenContentTitle": "Contenu fermé",
+  "hiddenContentEmpty": "Rien n’est fermé. Survolez une entrée de la barre latérale ou une section et cliquez sur × pour la fermer.",
+  "hiddenContentRestoreAll": "Tout rétablir ({{count}})",
+  "hiddenContentRestore": "Rétablir",
+  "hiddenContentKindNav": "Entrée de la barre latérale",
+  "hiddenContentKindSection": "Section de la page {{pane}}",
+  "navResetOrder": "Rétablir l’ordre de la barre latérale"
 }

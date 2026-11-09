@@ -66,6 +66,12 @@ class MainActivity : AppCompatActivity() {
         const val P_UPDATE = "update"
         const val P_SECURITY = "security"
         const val P_PRO = "pro"
+
+        /** 界面级小偏好（本机名字缓存等）。 */
+        const val UI_PREFS = "tessera_ui"
+        const val KEY_SELF_NAME = "self_name"
+        /** 与 Go 侧 set_device_name 的截断长度一致。 */
+        const val MAX_DEVICE_NAME = 64
     }
 
     private lateinit var homeSearch: HomeSearch
@@ -85,7 +91,17 @@ class MainActivity : AppCompatActivity() {
     private var updateAttention = false
     private var permIssues = 0
     private var lastTiles: List<FeatureTile> = emptyList()
+    private lateinit var layoutCustomizer: LayoutCustomizer
     private var heroOnline = -1
+
+    /**
+     * 本机名字。以前名字和「正在启动同步服务…」共用 textDeviceName：服务未就绪时请求排队会把名字盖成
+     * 状态文字，而重新打开界面时服务早已发过 ready、不会再发，status 响应里虽带 name 却没人读——
+     * 标题就一直停在「正在启动同步服务…」，点改名还把这句状态当名字预填。现在名字单独记在这里并缓存，
+     * 状态文字只在名字未知时占位。
+     */
+    private var selfName = ""
+    private var repairingName = false
 
     /**
      * 进行中的传输，按 transfer_id 索引。用 LinkedHashMap 保序，否则进度刷新会让用户要点的「取消」挪位
@@ -206,6 +222,9 @@ class MainActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         ui = ActivityMainBinding.inflate(layoutInflater)
         setContentView(ui.root)
+        // 上次已知的名字先显示出来：核心起来前的这一两秒不该让人看到一句状态文字当标题。
+        getSharedPreferences(UI_PREFS, MODE_PRIVATE).getString(KEY_SELF_NAME, null)
+            ?.takeIf { it.isNotBlank() }?.let { setSelfName(it, persist = false) }
         pairedDeviceAdapter = PairedDeviceAdapter(
             stateLabel = ::stateLabel,
             onSelectionChanged = ::refreshDeviceSelectionUi,
@@ -312,6 +331,7 @@ class MainActivity : AppCompatActivity() {
         ui.btnPickSaveDir.setOnClickListener { pickSaveFolder.launch(null) }
         ui.btnAppearance.setOnClickListener { showAppearanceSettings() }
         ui.btnGuide.setOnClickListener { FirstRunGuide.show(this) }
+        wireLayoutCustomizer()
 
         handleShareIntent(intent)
 
@@ -342,6 +362,71 @@ class MainActivity : AppCompatActivity() {
     }
 
     // ---- 主界面：功能格 + 全屏面板 ----
+
+    /**
+     * 界面内容可关闭 / 恢复 / 排序（LayoutCustomizer）。自动登记全部带 id 的卡片与按钮，外加搜索框、
+     * 「接着刚才」横幅；功能格在 refreshTiles 里按偏好过滤与排序。
+     * 「本机」格与自定义入口本身不可关闭，否则关掉后再也找不到恢复入口。
+     */
+    private fun wireLayoutCustomizer() {
+        layoutCustomizer = LayoutCustomizer(
+            ui.root as android.view.ViewGroup,
+            onChanged = { lastTiles = emptyList(); refreshTiles() },
+            onRestored = { recreate() },
+        )
+        layoutCustomizer.registerTree(
+            ui.root,
+            skipIds = setOf(R.id.btnEditLayout, R.id.btnManageLayout, R.id.panelDevice),
+        )
+        layoutCustomizer.register("box:searchBox", ui.searchBox) { getString(R.string.search_action) }
+        layoutCustomizer.register("row:rowContinuity", ui.rowContinuity) { ui.textContinuity.text.toString().take(24) }
+        ui.btnEditLayout.setOnClickListener { layoutCustomizer.toggleEdit() }
+        ui.btnManageLayout.setOnClickListener { layoutCustomizer.showManager() }
+        // 首页快捷按钮：长按直接给「关闭这一项 / 编辑布局」菜单，不必先进编辑模式。
+        listOf(ui.btnScan, ui.btnShowCode, ui.btnSendClip, ui.btnSendFiles, ui.btnRenameDevice).forEach { b ->
+            val name = resources.getResourceEntryName(b.id)
+            b.setOnLongClickListener { v ->
+                showCustomizeMenu(v, "btn:$name", b.text?.toString().orEmpty().ifBlank { name }, tileKey = null)
+                true
+            }
+        }
+        ui.gridFeatures.setOnCustomize(
+            reorder = { keys -> LayoutPrefs.setTileOrder(this, keys) },
+            menu = { tile, v -> showCustomizeMenu(v, "tile:${tile.key}", getString(tile.title), tileKey = tile.key) },
+        )
+    }
+
+    private fun showCustomizeMenu(anchor: android.view.View, key: String, label: String, tileKey: String?) {
+        val menu = android.widget.PopupMenu(this, anchor)
+        val hideable = tileKey != P_DEVICE
+        if (hideable) menu.menu.add(0, 1, 0, R.string.layout_menu_hide)
+        if (tileKey != null) {
+            menu.menu.add(0, 2, 1, R.string.layout_menu_move_first)
+            menu.menu.add(0, 3, 2, R.string.layout_menu_move_last)
+            menu.menu.add(0, 4, 3, R.string.layout_menu_reset_order)
+        }
+        menu.menu.add(0, 5, 4, R.string.layout_edit_start)
+        menu.menu.add(0, 6, 5, R.string.layout_manage_button)
+        menu.setOnMenuItemClickListener { item ->
+            val keys = lastTiles.map { it.key }.toMutableList()
+            when (item.itemId) {
+                1 -> layoutCustomizer.hide(key, label)
+                2, 3 -> if (tileKey != null && keys.remove(tileKey)) {
+                    if (item.itemId == 2) keys.add(0, tileKey) else keys.add(tileKey)
+                    LayoutPrefs.setTileOrder(this, keys)
+                    refreshTiles()
+                }
+                4 -> {
+                    LayoutPrefs.setTileOrder(this, emptyList())
+                    refreshTiles()
+                }
+                5 -> layoutCustomizer.enterEdit()
+                6 -> layoutCustomizer.showManager()
+            }
+            true
+        }
+        menu.show()
+    }
 
     private fun setupTiles() {
         ui.gridFeatures.setOnOpen { tile, view -> panels.open(tile.key, view) }
@@ -421,9 +506,12 @@ class MainActivity : AppCompatActivity() {
                 add(FeatureTile(P_PRO, R.drawable.ic_log, R.string.tile_pro, getString(R.string.badge_pro)))
             }
         }
-        if (tiles == lastTiles) return
-        lastTiles = tiles
-        ui.gridFeatures.submit(tiles)
+        // 关掉的格不显示（「本机」格不可关闭，它是自定义入口所在）；顺序按用户拖过的来。
+        val hidden = LayoutPrefs.hidden(this).keys
+        val shown = LayoutPrefs.ordered(this, tiles.filter { it.key == P_DEVICE || "tile:${it.key}" !in hidden }) { it.key }
+        if (shown == lastTiles) return
+        lastTiles = shown
+        ui.gridFeatures.submit(shown)
     }
 
     /** 沉浸式（安卓 15 起强制）下主界面四边让出系统栏与刘海；非沉浸式时拿到 0。 */
@@ -940,12 +1028,41 @@ class MainActivity : AppCompatActivity() {
         if (activityVisible && professional && panels.isOpen(P_PRO)) metricsHandler.post(refreshMetrics)
     }
 
+    /** 记下本机名字并显示；persist 时写缓存，下次打开界面先显示它。 */
+    private fun setSelfName(name: String, persist: Boolean = true) {
+        val clean = name.trim()
+        if (clean.isEmpty()) return
+        if (isStatusText(clean)) {
+            // 旧版本的改名框预填了状态文字，用户点了确定就真把名字改成了「正在启动同步服务…」。
+            // 这是旧 bug 造出来的名字，换回机型名并告诉用户（可随时再改）。
+            if (persist && !repairingName) {
+                repairingName = true
+                val model = android.os.Build.MODEL.orEmpty().trim().ifEmpty { "Android" }
+                send("set_device_name", JSONObject().put("name", model))
+            }
+            return
+        }
+        repairingName = false
+        selfName = clean
+        if (ui.textDeviceName.text.toString() != clean) ui.textDeviceName.text = clean
+        if (persist) {
+            getSharedPreferences(UI_PREFS, MODE_PRIVATE).edit().putString(KEY_SELF_NAME, clean).apply()
+        }
+    }
+
+    /** 旧版本可能把状态文字当名字提交过；这几句永远不算名字。 */
+    private fun isStatusText(text: String): Boolean =
+        text == getString(R.string.starting) || text == getString(R.string.service_failed)
+
     /** 给本机改名；不用重连，名字随下一次心跳（≤10 秒）捎给已配对设备，重连会打断传输。 */
     private fun askRenameDevice() {
         val input = android.widget.EditText(this).apply {
-            setText(ui.textDeviceName.text)
+            // 只预填真名字；名字未知时留空给提示，绝不把「正在启动同步服务…」这类状态文字当名字。
+            setText(selfName)
             setSelection(text.length)
-            hint = getString(R.string.rename_device_title)
+            hint = android.os.Build.MODEL.orEmpty().ifBlank { getString(R.string.rename_device_title) }
+            isSingleLine = true
+            filters = arrayOf(android.text.InputFilter.LengthFilter(MAX_DEVICE_NAME))
         }
         AlertDialog.Builder(this)
             .setTitle(R.string.rename_device_title)
@@ -953,7 +1070,7 @@ class MainActivity : AppCompatActivity() {
             .setView(input)
             .setPositiveButton(android.R.string.ok) { _, _ ->
                 val name = input.text.toString().trim()
-                if (name.isNotEmpty()) {
+                if (name.isNotEmpty() && !isStatusText(name)) {
                     send("set_device_name", JSONObject().put("name", name))
                 }
             }
@@ -1460,7 +1577,8 @@ class MainActivity : AppCompatActivity() {
         val svc = SyncService.instance
         if (svc == null || !svc.request(line)) {
             pending += line
-            ui.textDeviceName.text = getString(R.string.starting)
+            // 名字已知就别拿状态文字盖掉它（那正是「改名框里出现正在启动同步服务…」的来源）。
+            if (selfName.isEmpty()) ui.textDeviceName.text = getString(R.string.starting)
         }
     }
 
@@ -1686,7 +1804,7 @@ class MainActivity : AppCompatActivity() {
         when (obj.optString("event")) {
             "ready" -> {
                 val d = obj.optJSONObject("data") ?: return
-                ui.textDeviceName.text = d.optString("name")
+                setSelfName(d.optString("name"))
                 ui.textFingerprint.text = d.optString("fingerprint")
                 flushPending()
                 send("status")
@@ -1853,7 +1971,8 @@ class MainActivity : AppCompatActivity() {
             // 完全无从判断是网络问题、权限问题还是别的什么。
             "service_failed" -> {
                 val err = obj.optJSONObject("data")?.optString("error").orEmpty()
-                ui.textDeviceName.text = getString(R.string.service_failed)
+                if (selfName.isEmpty()) ui.textDeviceName.text = getString(R.string.service_failed)
+                ui.textHeroStatus.text = getString(R.string.service_failed)
                 ui.textFingerprint.text = err
                 snack(getString(R.string.service_failed))
                 return
@@ -1900,7 +2019,7 @@ class MainActivity : AppCompatActivity() {
             "set_device_name" -> {
                 val name = result?.optString("name").orEmpty()
                 if (name.isNotEmpty()) {
-                    ui.textDeviceName.text = name
+                    setSelfName(name)
                     snack(getString(R.string.rename_device_done, name))
                 }
                 return
@@ -2040,6 +2159,11 @@ class MainActivity : AppCompatActivity() {
         }
 
         if (result == null) return
+        // status 响应带本机名字与指纹：界面重建（服务早已 ready、不会再推 ready）时只能靠它恢复标题。
+        if (method == "status") {
+            result.optString("name").takeIf { it.isNotBlank() }?.let { setSelfName(it) }
+            result.optString("fingerprint").takeIf { it.isNotBlank() }?.let { ui.textFingerprint.text = it }
+        }
         result.optInt("port", 0).takeIf { it > 0 }?.let { LinkStats.listenPort = it }
         result.optString("code").takeIf { it.isNotEmpty() }?.let { showQr(it, result.optLong("expires_at")) }
         result.optJSONArray("devices")?.let { renderDevices(it) }

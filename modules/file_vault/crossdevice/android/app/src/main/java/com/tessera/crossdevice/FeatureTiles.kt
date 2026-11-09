@@ -46,9 +46,20 @@ class TileGrid @JvmOverloads constructor(
     private var cellH = minCellH
     private var items: List<FeatureTile> = emptyList()
     private var onOpen: ((FeatureTile, View) -> Unit)? = null
+    private var onReorder: ((List<String>) -> Unit)? = null
+    private var onMenu: ((FeatureTile, View) -> Unit)? = null
 
     fun setOnOpen(listener: (FeatureTile, View) -> Unit) {
         onOpen = listener
+    }
+
+    /**
+     * 长按拖动排序：按住一格拖到另一格上松手，被拖的格插到目标格的位置，新顺序交给宿主保存。
+     * 长按后原地松手（没拖到别的格）弹出这一格的菜单（关闭 / 编辑布局 / 管理已关闭的内容）。
+     */
+    fun setOnCustomize(reorder: (List<String>) -> Unit, menu: (FeatureTile, View) -> Unit) {
+        onReorder = reorder
+        onMenu = menu
     }
 
     fun submit(tiles: List<FeatureTile>) {
@@ -104,6 +115,54 @@ class TileGrid @JvmOverloads constructor(
         card.contentDescription = "$title，${item.badge}"
         card.tooltipText = title
         card.setOnClickListener { onOpen?.invoke(item, it) }
+        card.setOnLongClickListener { startTileDrag(it, item) }
+        card.setOnDragListener { target, ev -> onTileDrag(target, ev) }
+    }
+
+    private fun startTileDrag(v: View, item: FeatureTile): Boolean {
+        v.performHapticFeedback(android.view.HapticFeedbackConstants.LONG_PRESS)
+        val data = android.content.ClipData.newPlainText("tessera-tile", item.key)
+        val ok = v.startDragAndDrop(data, View.DragShadowBuilder(v), item.key, 0)
+        if (ok) v.alpha = 0.35f else onMenu?.invoke(item, v)
+        return true
+    }
+
+    private fun onTileDrag(target: View, ev: android.view.DragEvent): Boolean {
+        val from = ev.localState as? String ?: return false
+        val to = target.tag as? String ?: return false
+        when (ev.action) {
+            android.view.DragEvent.ACTION_DRAG_STARTED -> return true
+            android.view.DragEvent.ACTION_DRAG_ENTERED -> if (from != to) {
+                target.animate().scaleX(0.94f).scaleY(0.94f).setDuration(90).start()
+            }
+            android.view.DragEvent.ACTION_DRAG_EXITED -> target.animate().scaleX(1f).scaleY(1f).setDuration(90).start()
+            android.view.DragEvent.ACTION_DROP -> {
+                target.animate().scaleX(1f).scaleY(1f).setDuration(90).start()
+                if (from == to) {
+                    // 长按原地松手：不是拖动，是要这一格的菜单。
+                    items.firstOrNull { it.key == from }?.let { onMenu?.invoke(it, target) }
+                } else {
+                    val keys = items.map { it.key }.toMutableList()
+                    val fromIdx = keys.indexOf(from)
+                    val toIdx = keys.indexOf(to)
+                    if (fromIdx >= 0 && toIdx >= 0) {
+                        keys.removeAt(fromIdx)
+                        keys.add(toIdx, from)
+                        val byKey = items.associateBy { it.key }
+                        submit(keys.mapNotNull { byKey[it] })
+                        target.performHapticFeedback(android.view.HapticFeedbackConstants.VIRTUAL_KEY)
+                        onReorder?.invoke(keys)
+                    }
+                }
+                return true
+            }
+            android.view.DragEvent.ACTION_DRAG_ENDED -> {
+                target.alpha = 1f
+                target.scaleX = 1f
+                target.scaleY = 1f
+            }
+        }
+        return true
     }
 
     override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {

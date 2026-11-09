@@ -1,9 +1,8 @@
 import { useEffect, useMemo, useRef, useState, type UIEvent } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useTheme } from 'next-themes'
-import { ClipboardList, FileLock2, Keyboard, KeyRound, Moon, NotebookText, PanelLeftClose, PanelLeftOpen, Sparkles, SlidersHorizontal, Sun } from 'lucide-react'
+import { ClipboardList, FileLock2, Keyboard, KeyRound, Moon, NotebookText, PanelLeftClose, PanelLeftOpen, Sun } from 'lucide-react'
 import { CHEAT_SHEET_EVENT } from '@/components/ShortcutCheatSheet'
-import { useDisplayMode } from '@/lib/displayMode'
 import {
   CommandDialog,
   CommandEmpty,
@@ -69,7 +68,6 @@ export function CommandPalette({
 }) {
   const { t } = useTranslation('common')
   const { theme, setTheme } = useTheme()
-  const { isProfessional, toggleMode } = useDisplayMode()
   const navItems = useMemo(
     () => [...navGroups.flatMap((group) => group.items), ...(deepLinks ?? [])],
     [deepLinks, navGroups],
@@ -230,13 +228,6 @@ export function CommandPalette({
           >
             <Keyboard />
             {t('commandPaletteActionCheatSheet')}
-          </CommandItem>
-          <CommandItem
-            value={isProfessional ? t('displayModeSwitchToSimpleHint') : t('displayModeSwitchToProfessionalHint')}
-            onSelect={() => runAndClose(() => toggleMode())}
-          >
-            {isProfessional ? <Sparkles /> : <SlidersHorizontal />}
-            {isProfessional ? t('displayModeSwitchToSimpleHint') : t('displayModeSwitchToProfessionalHint')}
           </CommandItem>
         </CommandGroup>
       </CommandList>

@@ -1,6 +1,6 @@
-import { Fragment, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Activity, Bot, Boxes, CircleHelp, ClipboardList, FolderOpen, Gauge, GripVertical, HardDrive, KeyRound, KeySquare, Lock, MonitorSmartphone, NotebookText, PanelLeftClose, PanelLeftOpen, ScrollText, Search, Settings as SettingsIcon, ShieldCheck, Sparkles, SlidersHorizontal, Star, Wrench } from 'lucide-react'
+import { Activity, Bot, Boxes, CircleHelp, ClipboardList, FolderOpen, Gauge, GripVertical, HardDrive, KeyRound, KeySquare, Lock, MonitorSmartphone, NotebookText, PanelLeftClose, PanelLeftOpen, ScrollText, LayoutDashboard, Search, Settings as SettingsIcon, ShieldCheck, Sparkles, Star, Wrench, X } from 'lucide-react'
 import {
   DndContext,
   KeyboardSensor,
@@ -14,12 +14,14 @@ import { restrictToParentElement, restrictToVerticalAxis } from '@dnd-kit/modifi
 import { SortableContext, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import { DisplayModeProvider, useDisplayMode } from '@/lib/displayMode'
+import { PaneContext, hideContent, navKey, useHiddenContent } from '@/lib/hiddenContent'
 import { LabelModeProvider } from '@/lib/labelMode'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { CommandPalette } from '@/components/CommandPalette'
 import { UnlockDialog } from '@/components/UnlockDialog'
 import { LanguageSwitcher } from '@/components/LanguageSwitcher'
 import { ContinuityBanner } from '@/components/ContinuityBanner'
+import { LayoutEditor } from '@/components/LayoutEditor'
 
 // ---- 面板按需加载 ----
 // 十几个面板合计一万七千多行且各带重依赖（NotesScreen 带 CodeMirror、tesseract.js、docx、markdown-it、
@@ -77,6 +79,9 @@ import {
   addFavorite,
   loadNavPreferences,
   moveFavorite,
+  NAV_ORDER_RESET_EVENT,
+  orderNavPanes,
+  UNHIDEABLE_PANES,
   removeFavorite,
   saveNavPreferences,
   type FavoritablePane,
@@ -266,6 +271,96 @@ function SortableFavoriteRow({
   )
 }
 
+/**
+ * 「全部功能」里的一行：整行可上下拖动排序（指针移动 4px 才算拖，单击照常打开），把手同时是键盘排序入口
+ * （Tab 到把手、空格拿起、方向键移动、空格放下）。展开态右侧有「加入常用」与「关闭」两个悬停按钮；
+ * 折叠态只剩图标，同样可拖。
+ * 只把 onPointerDown 挂在整行上、onKeyDown 只挂在把手上：整行都挂 onKeyDown 的话，在入口按钮上按回车
+ * 会冒泡成「拿起拖动」。
+ */
+function SortableNavRow({
+  item,
+  active,
+  collapsed,
+  onSelect,
+  isFavorite,
+  favoriteLabel,
+  onToggleFavorite,
+  dragLabel,
+  closeLabel,
+  onClose,
+}: {
+  item: NavItem
+  active: boolean
+  collapsed: boolean
+  onSelect: (pane: Pane) => void
+  isFavorite: boolean
+  favoriteLabel: string
+  onToggleFavorite: () => void
+  dragLabel: string
+  closeLabel: string
+  onClose?: () => void
+}) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: item.pane })
+  const row = (
+    <div
+      ref={setNodeRef}
+      style={{ transform: CSS.Transform.toString(transform), transition }}
+      onPointerDown={listeners?.onPointerDown as React.PointerEventHandler<HTMLDivElement> | undefined}
+      className={cn('group relative flex touch-none items-center', isDragging && 'z-10 cursor-grabbing opacity-80 shadow-sm')}
+    >
+      {!collapsed && (
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <button
+              type="button"
+              {...attributes}
+              onKeyDown={listeners?.onKeyDown as React.KeyboardEventHandler<HTMLButtonElement> | undefined}
+              aria-label={dragLabel}
+              className="ms-1 flex size-5 shrink-0 cursor-grab items-center justify-center rounded text-sidebar-foreground/40 opacity-0 transition-opacity hover:text-sidebar-foreground focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-sidebar-primary group-hover:opacity-100"
+            >
+              <GripVertical className="size-4" aria-hidden="true" />
+            </button>
+          </TooltipTrigger>
+          <TooltipContent>{dragLabel}</TooltipContent>
+        </Tooltip>
+      )}
+      <NavItemButton item={item} active={active} collapsed={collapsed} onSelect={onSelect} className={collapsed ? undefined : 'ps-1'} />
+      {!collapsed && (
+        <FavoriteToggleButton label={favoriteLabel} isFavorite={isFavorite} onClick={onToggleFavorite} />
+      )}
+      {!collapsed && onClose && (
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <button
+              type="button"
+              onClick={onClose}
+              aria-label={closeLabel}
+              className={cn(
+                'me-1 flex size-6 shrink-0 items-center justify-center rounded transition-opacity',
+                'text-sidebar-foreground/60 hover:bg-sidebar-accent hover:text-sidebar-foreground',
+                'focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-sidebar-primary',
+                'opacity-0 group-hover:opacity-100',
+              )}
+            >
+              <X className="size-4" aria-hidden="true" />
+            </button>
+          </TooltipTrigger>
+          <TooltipContent>{closeLabel}</TooltipContent>
+        </Tooltip>
+      )}
+    </div>
+  )
+  return collapsed ? (
+    <Tooltip>
+      <TooltipTrigger asChild>{row}</TooltipTrigger>
+      <TooltipContent side="right">{item.label}</TooltipContent>
+    </Tooltip>
+  ) : (
+    row
+  )
+}
+
 export function AppShell(props: { pendingImportPath: string | null; onPendingImportConsumed: () => void }) {
   return (
     <DisplayModeProvider>
@@ -287,7 +382,8 @@ function AppShellInner({
   // 清理套件的导航文案在自己的命名空间里。挤进 common.json 会让那个每次
   // 冷启动都要加载的文件多背五个只在一个模块里用得到的键。
   const { t: tClean } = useTranslation('pcclean')
-  const { isProfessional, toggleMode, setMode: setDisplayMode } = useDisplayMode()
+  // 简洁模式已取消（0.1.57），界面始终完整；关掉不需要的内容改用每块右上角的 ×。
+  const { isProfessional } = useDisplayMode()
   // 这里的 useMemo 修的是真失效的缓存：两个数组原先每次 render 新建，传给 <CommandPalette/> 后其
   // useMemo 依赖（这两个引用）
   // 每次父组件重渲都变，从未生效。依赖只有翻译函数 t（切语言才重建），其余时候引用必须稳定。
@@ -381,6 +477,17 @@ function AppShellInner({
   // 用户自己决定置顶哪些入口和顺序；读写与净化在 lib/navPrefs.ts（localStorage 是不可信输入，
   // 存脏必须安全退回默认，不能让侧边栏抛异常拖垮外壳）。
   const [favorites, setFavorites] = useState<FavoritablePane[]>(() => loadNavPreferences().favorites)
+  const [navOrder, setNavOrder] = useState<FavoritablePane[]>(() => loadNavPreferences().order ?? [])
+  const hiddenContent = useHiddenContent()
+  // 编辑布局：内容区每块右上角出现 ×（LayoutEditor），侧边栏底部的按钮开关，Esc 退出。
+  const [layoutEditing, setLayoutEditing] = useState(false)
+  const mainRef = useRef<HTMLElement | null>(null)
+  const stopLayoutEditing = useCallback(() => setLayoutEditing(false), [])
+  useEffect(() => {
+    const onReset = () => setNavOrder([])
+    window.addEventListener(NAV_ORDER_RESET_EVENT, onReset)
+    return () => window.removeEventListener(NAV_ORDER_RESET_EVENT, onReset)
+  }, [])
   const favoriteSet = useMemo(() => new Set<Pane>(favorites), [favorites])
   // 用户自己置顶的入口最可能被点，空闲时先把代码块取好。
   useEffect(() => {
@@ -388,13 +495,13 @@ function AppShellInner({
   }, [favorites])
   const changeFavorites = useCallback((next: FavoritablePane[]) => {
     setFavorites(next)
-    saveNavPreferences({ favorites: next })
+    saveNavPreferences({ ...loadNavPreferences(), favorites: next })
   }, [])
   const toggleFavorite = useCallback(
     (target: FavoritablePane, makeFavorite: boolean) => {
       setFavorites((current) => {
         const next = makeFavorite ? addFavorite(current, target) : removeFavorite(current, target)
-        if (next !== current) saveNavPreferences({ favorites: next })
+        if (next !== current) saveNavPreferences({ ...loadNavPreferences(), favorites: next })
         return next
       })
     },
@@ -414,6 +521,29 @@ function AppShellInner({
       changeFavorites(moveFavorite(favorites, dragged.id as FavoritablePane, over.id as FavoritablePane))
     },
     [changeFavorites, favorites],
+  )
+
+  /**
+   * 「全部功能」：NAV_GROUPS 平铺后按用户拖出来的顺序排，去掉用户关掉的入口（设置不可关）。
+   * 关掉的入口仍可从命令面板（Ctrl+K）打开，在 设置 › 外观 ›「已关闭的内容」恢复。
+   */
+  const orderedNavItems = useMemo(() => {
+    const all = NAV_GROUPS.flatMap((group) => group.items)
+    return orderNavPanes(all, navOrder).filter(
+      (item) => UNHIDEABLE_PANES.includes(item.pane as FavoritablePane) || !(navKey(item.pane) in hiddenContent),
+    )
+  }, [NAV_GROUPS, navOrder, hiddenContent])
+  const handleNavDragEnd = useCallback(
+    (event: DragEndEvent) => {
+      const { active: dragged, over } = event
+      if (!over || dragged.id === over.id) return
+      // 以完整列表（含已关掉的）为基准挪动，关掉的入口恢复后回到它原来的相对位置。
+      const full = orderNavPanes(NAV_GROUPS.flatMap((group) => group.items), navOrder).map((i) => i.pane as FavoritablePane)
+      const next = moveFavorite(full, dragged.id as FavoritablePane, over.id as FavoritablePane)
+      setNavOrder(next)
+      saveNavPreferences({ ...loadNavPreferences(), order: next })
+    },
+    [NAV_GROUPS, navOrder],
   )
 
   /** 常用区显示的条目。顺序完全由 favorites 决定，不跟着 NAV_GROUPS 的排布走。 */
@@ -709,103 +839,72 @@ function AppShellInner({
             {t('navAllHeading')}
           </p>
         )}
-        {NAV_GROUPS.map((group) => (
-          <div key={group.label} className="mb-1">
-            {!navCollapsed && (
-              <p className="px-4 pb-1 pt-2 text-2xs font-medium uppercase tracking-wider text-muted-foreground">
-                {group.label}
-              </p>
-            )}
-            {group.items.map((item) => {
-              const active = isNavItemActive(item.pane, pane)
-              const isFavorite = favoriteSet.has(item.pane)
-              const navRow = (
-                <div className="group flex items-center">
-                  <NavItemButton
+        <DndContext
+          sensors={dndSensors}
+          collisionDetection={closestCenter}
+          modifiers={[restrictToVerticalAxis, restrictToParentElement]}
+          onDragEnd={handleNavDragEnd}
+        >
+          <SortableContext items={orderedNavItems.map((item) => item.pane)} strategy={verticalListSortingStrategy}>
+            <div className="mb-1">
+              {orderedNavItems.map((item) => {
+                const isFavorite = favoriteSet.has(item.pane)
+                const canClose = !UNHIDEABLE_PANES.includes(item.pane as FavoritablePane)
+                return (
+                  <SortableNavRow
+                    key={item.pane}
                     item={item}
-                    active={active}
+                    active={isNavItemActive(item.pane, pane)}
                     collapsed={navCollapsed}
                     onSelect={handleNavSelect}
+                    isFavorite={isFavorite}
+                    favoriteLabel={
+                      isFavorite ? t('navRemoveFavorite', { name: item.label }) : t('navAddFavorite', { name: item.label })
+                    }
+                    onToggleFavorite={() => toggleFavorite(item.pane as FavoritablePane, !isFavorite)}
+                    dragLabel={t('navReorderItem', { name: item.label })}
+                    closeLabel={t('navCloseItem', { name: item.label })}
+                    onClose={canClose ? () => hideContent(navKey(item.pane), item.label) : undefined}
                   />
-                  {!navCollapsed && (
-                    <FavoriteToggleButton
-                      label={
-                        isFavorite
-                          ? t('navRemoveFavorite', { name: item.label })
-                          : t('navAddFavorite', { name: item.label })
-                      }
-                      isFavorite={isFavorite}
-                      onClick={() => toggleFavorite(item.pane as FavoritablePane, !isFavorite)}
-                    />
-                  )}
-                </div>
-              )
-              return navCollapsed ? (
-                <Tooltip key={item.pane}>
-                  <TooltipTrigger asChild>{navRow}</TooltipTrigger>
-                  <TooltipContent side="right">{item.label}</TooltipContent>
-                </Tooltip>
-              ) : (
-                <Fragment key={item.pane}>{navRow}</Fragment>
-              )
-            })}
-          </div>
-        ))}
+                )
+              })}
+            </div>
+          </SortableContext>
+        </DndContext>
         </div>
         {/* 下段：常驻。`shrink-0` 保证它不会被上面那段挤扁——没有它的话，
             flex 会先压缩这两颗按钮再考虑让中段滚。 */}
         <div className="shrink-0 border-t border-sidebar-border pt-1">
         {(() => {
-          const modeToggleHint = isProfessional ? t('displayModeSwitchToSimpleHint') : t('displayModeSwitchToProfessionalHint')
-          if (navCollapsed) {
-            const collapsedButton = (
-              <button
-                type="button"
-                onClick={toggleMode}
-                aria-label={modeToggleHint}
-                className="flex w-full items-center justify-center px-2 py-2 text-sidebar-foreground transition-colors hover:bg-sidebar-accent/50"
+          const editLabel = layoutEditing ? t('layoutEditDone') : t('layoutEditStart')
+          const editButton = (
+            <button
+              type="button"
+              onClick={() => setLayoutEditing((v) => !v)}
+              aria-label={editLabel}
+              aria-pressed={layoutEditing}
+              className={cn(
+                'flex w-full items-center gap-2 py-2 text-sm transition-colors hover:bg-sidebar-accent/50',
+                navCollapsed ? 'justify-center px-2' : 'px-4',
+                layoutEditing ? 'text-sidebar-primary font-medium' : 'text-sidebar-foreground',
+              )}
+            >
+              <LayoutDashboard className="h-4 w-4 shrink-0" />
+              <span
+                className={cn(
+                  'overflow-hidden whitespace-nowrap transition-all duration-200',
+                  navCollapsed ? 'w-0 opacity-0' : 'w-auto opacity-100',
+                )}
               >
-                {isProfessional ? <SlidersHorizontal className="h-4 w-4 shrink-0" /> : <Sparkles className="h-4 w-4 shrink-0" />}
-              </button>
-            )
-            return (
-              <Tooltip>
-                <TooltipTrigger asChild>{collapsedButton}</TooltipTrigger>
-                <TooltipContent side="right">{modeToggleHint}</TooltipContent>
-              </Tooltip>
-            )
-          }
+                {editLabel}
+              </span>
+            </button>
+          )
           return (
-            <div className="px-2 pb-1">
-              <div className="flex rounded-md border border-sidebar-border bg-sidebar-accent/20 p-0.5 text-sm" role="radiogroup" aria-label={t('displayModeGroupLabel')}>
-                <button
-                  type="button"
-                  role="radio"
-                  aria-checked={!isProfessional}
-                  onClick={() => setDisplayMode('simple')}
-                  className={cn(
-                    'flex flex-1 items-center justify-center gap-1 rounded py-1 transition-colors',
-                    !isProfessional ? 'bg-sidebar text-sidebar-primary font-medium shadow-sm' : 'text-sidebar-foreground/70 hover:text-sidebar-foreground',
-                  )}
-                >
-                  <Sparkles className="h-3 w-3 shrink-0" />
-                  {t('displayModeSimple')}
-                </button>
-                <button
-                  type="button"
-                  role="radio"
-                  aria-checked={isProfessional}
-                  onClick={() => setDisplayMode('professional')}
-                  className={cn(
-                    'flex flex-1 items-center justify-center gap-1 rounded py-1 transition-colors',
-                    isProfessional ? 'bg-sidebar text-sidebar-primary font-medium shadow-sm' : 'text-sidebar-foreground/70 hover:text-sidebar-foreground',
-                  )}
-                >
-                  <SlidersHorizontal className="h-3 w-3 shrink-0" />
-                  {t('displayModeProfessional')}
-                </button>
-              </div>
-            </div>
+            <Tooltip>
+              <TooltipTrigger asChild>{editButton}</TooltipTrigger>
+              <TooltipContent side="right">{t('layoutEditHint')}</TooltipContent>
+            </Tooltip>
           )
         })()}
         {(() => {
@@ -847,13 +946,15 @@ function AppShellInner({
           文档型页面（帮助/设置）由 PageShell 自己滚，工作台页面（PageShell fill）
           则一格都不滚、把高度分给左右两栏。滚动条留在 main 上的话，两种页面
           只能二选一——而它们的需求正好相反。 */}
-      <main className="flex min-h-0 flex-1 flex-col overflow-hidden">
+      <main ref={mainRef} className="relative flex min-h-0 flex-1 flex-col overflow-hidden">
+        <LayoutEditor rootRef={mainRef} pane={pane} editing={layoutEditing} onDone={stopLayoutEditing} />
         {/* 「接着刚才」：别的设备上还有没做完的事。放在面板之上、Suspense 之外——
             它说的不是"这一页有什么"，而是"别的设备上有什么"，跟当前面板无关；
             放进 Suspense 里会在每次切面板时跟着 fallback 闪一下。 */}
         <ContinuityBanner />
         {/* 一个 Suspense 包住全部面板就够：同一时刻只有一个面板挂载，
             切换时旧的先卸载、新的再加载，边界不会被两个面板同时触发。 */}
+        <PaneContext.Provider value={pane}>
         <Suspense fallback={<PaneFallback />}>
           {pane === 'files' && <FilesPane isProfessional={isProfessional} />}
           {pane === 'clipboard' && <ClipboardScreen ensureFreshlyUnlocked={ensureFreshlyUnlocked} isProfessional={isProfessional} />}
@@ -881,6 +982,7 @@ function AppShellInner({
           {pane === 'diagnostics' && <DiagnosticLogScreen />}
           {pane === 'help' && <HelpScreen />}
         </Suspense>
+        </PaneContext.Provider>
       </main>
 
       <UnlockDialog open={unlockDialogOpen} onOpenChange={handleUnlockDialogOpenChange} onUnlocked={handleUnlocked} />

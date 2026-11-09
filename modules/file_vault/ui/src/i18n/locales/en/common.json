@@ -136,5 +136,11 @@
   "searchHotkey": "Search: Ctrl+F or /, ↑↓ to move, Enter to open",
   "searchNoResults": "No matches",
   "searchHub": "Search devices, files, sync history, functions",
-  "searchGroupFeatures": "Functions"
+  "searchGroupFeatures": "Functions",
+  "closeSectionLabel": "Close \"{{name}}\" (restore in Settings › Appearance)",
+  "navReorderItem": "Drag to move \"{{name}}\" (keyboard: Space to pick up, Up/Down to move, Space to drop)",
+  "navCloseItem": "Remove \"{{name}}\" from the sidebar (still opens with Ctrl+K; restore in Settings › Appearance)",
+  "layoutEditStart": "Edit layout",
+  "layoutEditDone": "Done",
+  "layoutEditHint": "Click the × on any block to close it; restore in Settings › Appearance (Esc to exit)"
 }

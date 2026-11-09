@@ -365,5 +365,12 @@
   "fileHookStatusUnknown": "Не удалось получить состояние движка сочетаний клавиш",
   "fileHookRetry": "Повторить",
   "fileHookApprovalDisabled": "Автозапуск отключён в Диспетчере задач Windows › Автозагрузка приложений",
-  "fileHookReenable": "Включить снова"
+  "fileHookReenable": "Включить снова",
+  "hiddenContentTitle": "Закрытое содержимое",
+  "hiddenContentEmpty": "Ничего не закрыто. Наведите курсор на пункт боковой панели или раздел страницы и нажмите ×.",
+  "hiddenContentRestoreAll": "Вернуть всё ({{count}})",
+  "hiddenContentRestore": "Вернуть",
+  "hiddenContentKindNav": "Пункт боковой панели",
+  "hiddenContentKindSection": "Раздел страницы «{{pane}}»",
+  "navResetOrder": "Сбросить порядок боковой панели"
 }
