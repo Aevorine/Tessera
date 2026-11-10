@@ -1,3 +1,4 @@
+import { fileURLToPath } from 'node:url'
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
@@ -15,7 +16,7 @@ const SCREENS = {
   'pcclean/CleanItemList.tsx': '清理项列表，一次扫描能出几万条',
 }
 
-const SRC = new URL('../src/components/', import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1')
+const SRC = fileURLToPath(new URL('../src/components/', import.meta.url))
 
 test('七个长列表界面都必须走虚拟化', () => {
   const missing = []

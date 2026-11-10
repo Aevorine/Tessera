@@ -5,12 +5,13 @@
  * 范围刻意收窄到无可见文字的纯图标控件，有文字的按钮自解释，强制只会制造豁免清单。
  */
 
+import { fileURLToPath } from 'node:url'
 import { readdirSync, readFileSync, statSync } from 'node:fs'
 import { join } from 'node:path'
 import test from 'node:test'
 import assert from 'node:assert/strict'
 
-const COMPONENT_DIR = new URL('../src/components/', import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1')
+const COMPONENT_DIR = fileURLToPath(new URL('../src/components/', import.meta.url))
 
 /** 这些文件本身就是提示机制的实现，不参与检查。 */
 const INFRASTRUCTURE = new Set(['ActionButton.tsx', 'IconToolbar.tsx', 'tooltip.tsx'])

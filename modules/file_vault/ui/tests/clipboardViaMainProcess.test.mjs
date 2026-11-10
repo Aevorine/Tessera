@@ -1,3 +1,4 @@
+import { fileURLToPath } from 'node:url'
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync, readdirSync } from 'node:fs'
@@ -11,8 +12,8 @@ import { join } from 'node:path'
  * 修法是走主进程 `electron.clipboard`（不看权限和焦点）；写回 navigator.clipboard 症状会照旧且界面无提示，故用测试钉住。
  */
 
-const SRC = new URL('../src/', import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1')
-const ELECTRON = new URL('../electron/', import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1')
+const SRC = fileURLToPath(new URL('../src/', import.meta.url))
+const ELECTRON = fileURLToPath(new URL('../electron/', import.meta.url))
 
 /** 唯一允许直接碰网页剪贴板的地方：兜底链条自己就在那儿。 */
 const CLIPBOARD_LIB = 'clipboard.ts'

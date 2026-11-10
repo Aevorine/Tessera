@@ -1,3 +1,4 @@
+import { fileURLToPath } from 'node:url'
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync, readdirSync, statSync } from 'node:fs'
@@ -76,7 +77,7 @@ test('扫描器自己要认得出那个真实的写法（守卫的自检）', ()
 })
 
 test('src 下所有 tsx 都没有会被渲染出来的裸注释', () => {
-  const files = allTsx(new URL('../src', import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1'))
+  const files = allTsx(fileURLToPath(new URL('../src', import.meta.url)))
   assert.ok(files.length > 50, `只扫到 ${files.length} 个 tsx，路径大概解析错了`)
   const bad = []
   for (const file of files) {

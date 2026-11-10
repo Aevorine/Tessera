@@ -1,3 +1,4 @@
+import { fileURLToPath } from 'node:url'
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync, readdirSync } from 'node:fs'
@@ -6,7 +7,7 @@ import { join } from 'node:path'
 // 字号只有三档：页面主标题 text-2xl（仅 <PageTitle>）、功能名称 text-sihao（仅 <FeatureTitle>）、
 // 正文 text-sm（16px）。其余 text-lg/xl/3xl 都越界；确需超大字的在 ALLOWED 逐条列名并写理由。
 
-const COMPONENTS_DIR = new URL('../src/components/', import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1')
+const COMPONENTS_DIR = fileURLToPath(new URL('../src/components/', import.meta.url))
 
 /** 刻度外的字号。text-2xs 是徽章专用，已在 index.css 里定义为合法档位。 */
 const OFF_SCALE = /\btext-(lg|xl|3xl|4xl|5xl)\b/g
@@ -192,7 +193,7 @@ test('页面标题栏只由 PageHeader 产出，不许各写各的容器', () =>
 test('中西文字体族只在一处定义，界面里不许再各自覆盖', () => {
   // 西文 Times New Roman + 中文宋体靠 CSS 逐字符回退，顺序反了英文也变宋体；
   // 局部 font-family 覆盖会悄悄破坏它且只在单个界面显现。
-  const css = readFileSync(new URL('../src/index.css', import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1'), 'utf8')
+  const css = readFileSync(fileURLToPath(new URL('../src/index.css', import.meta.url)), 'utf8')
   const stack = css.match(/--font-sans:\s*([^;]+);/)
   assert.ok(stack, 'index.css 里必须有 --font-sans')
   const value = stack[1]

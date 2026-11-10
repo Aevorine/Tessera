@@ -1,3 +1,4 @@
+import { fileURLToPath } from 'node:url'
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
@@ -5,7 +6,7 @@ import { readFileSync } from 'node:fs'
 // Electron 保险丝是构建时烧进可执行文件的开关：配错无编译错误、测试也不红，只会让某条运行时路径悄悄失效，
 // 往往到真发版、真点更新才暴露。这些用例为此而设。
 
-const ROOT = new URL('..', import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1')
+const ROOT = fileURLToPath(new URL('..', import.meta.url))
 
 function readText(rel) {
   return readFileSync(ROOT + rel, 'utf8')

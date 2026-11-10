@@ -1,3 +1,4 @@
+import { fileURLToPath } from 'node:url'
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync, readdirSync } from 'node:fs'
@@ -9,7 +10,7 @@ import { join } from 'node:path'
 //   2. 标题必须留在 DOM 里且是 sr-only：删掉读屏用户就失去页面名，可见则重复又回来。
 //   3. 两个槽位都空时不画那条带子，否则页面顶部剩一条空横线。
 
-const SRC_DIR = new URL('../src/', import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1')
+const SRC_DIR = fileURLToPath(new URL('../src/', import.meta.url))
 const PAGE_TSX = join(SRC_DIR, 'components', 'ui', 'page.tsx')
 
 function stripComments(src) {
