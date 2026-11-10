@@ -109,6 +109,9 @@ type TransferOffer struct {
 
 // Config 配置一个节点。
 type Config struct {
+	// Mobile：本机按手机对待（HELLO 里公布 MobileFeature）。安卓上不用设，按系统自动判定。
+	Mobile bool
+
 	Identity    *identity.Identity
 	Store       *store.Store
 	ListenAddr  string // 默认 ":0"（系统分配端口）
@@ -267,6 +270,8 @@ type Node struct {
 
 	// netWatch 是后台网络变化检测的基线，见 netwatch.go。
 	netWatch netWatchState
+	// frozenUntil 见 Freeze。
+	frozenUntil atomic.Int64
 
 	// offline 记每台设备最近一次自动重连失败的原因（连上即清），
 	// 给界面回答"它为什么显示离线"。
@@ -865,10 +870,33 @@ func (n *Node) helloMsg(lastRecv uint64) *wire.Hello {
 // protoFeatures 本机在 HELLO 里公布的能力；手机端多带一个平台标记，对端据此放慢心跳。
 func (n *Node) protoFeatures() []string {
 	f := []string{crypto.PQFeature, wire.ClipXferFeature, wire.ClipHistFeature}
-	if runtime.GOOS == "android" {
+	if runtime.GOOS == "android" || n.cfg.Mobile {
 		f = append(f, MobileFeature)
 	}
 	return f
+}
+
+// Freeze 让本节点在 d 内不读帧、不发心跳，连接保持不动：模拟手机息屏后进程被系统挂起。
+// 只给测试和诊断用。
+func (n *Node) Freeze(d time.Duration) {
+	n.frozenUntil.Store(time.Now().Add(d).UnixNano())
+}
+
+// thaw 在冻结期内阻塞到解冻；会话结束或节点停止则提前返回。
+func (s *Session) thaw() {
+	for {
+		left := time.Until(time.Unix(0, s.node.frozenUntil.Load()))
+		if left <= 0 {
+			return
+		}
+		select {
+		case <-time.After(left):
+		case <-s.done:
+			return
+		case <-s.node.ctx.Done():
+			return
+		}
+	}
 }
 
 // ---------- 会话登记 ----------
@@ -931,6 +959,7 @@ func (n *Node) newSession(peer *store.Peer, car carrier, via string, sc *crypto.
 	n.mu.Unlock()
 	n.clearOfflineReason(peer.DeviceID)
 	n.setState(peer.DeviceID, StateConnected)
+	n.store.MarkSeen(peer.DeviceID, true)
 	// 刚连上就把本机正在做的事补发一次，否则对端要等最多一个重播周期。
 	// 放在另一个 goroutine 里：这里是握手路径上，写入阻塞会拖慢连接建立。
 	go n.sendContinuityOnConnect(s)
@@ -954,6 +983,7 @@ func (n *Node) dropSession(s *Session) {
 		// “电脑已经不在线了”本身就是“那边没事了”最直接的证据。
 		n.dropContinuity(s.peer.DeviceID)
 		n.setState(s.peer.DeviceID, StateDisconnected)
+		n.store.MarkSeen(s.peer.DeviceID, false)
 		// 断链即刻留痕：原因 + 活了多久 + 最后一次活动距今 + 路由，宿主写进结构化日志，
 		// 用户和后续排查都能当场知道"空闲时死链"是何时、为何被发现的。
 		reason := "连接结束"
@@ -969,6 +999,7 @@ func (n *Node) dropSession(s *Session) {
 			"via":          s.via,
 			"initiator":    s.initiator,
 			"transferring": s.xferActive.Load() > 0,
+			"mobile":       s.mobilePeer(),
 		}})
 		return
 	}

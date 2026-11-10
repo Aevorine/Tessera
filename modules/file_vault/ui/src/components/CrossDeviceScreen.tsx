@@ -73,7 +73,7 @@ import { buildPairLink, parsePairInput } from '@/lib/pairLink'
 import { copyText } from '@/lib/clipboard'
 import { ClipTimelinePanel } from '@/components/crossdevice/ClipTimelinePanel'
 import { LatencySparkline } from '@/components/crossdevice/LatencySparkline'
-import { FeatureGrid, type FeatureTileSpec } from '@/components/feature/FeatureGrid'
+import { FeatureGroupGrid, type FeatureGroupSpec, type FeatureTileSpec } from '@/components/feature/FeatureGrid'
 import { FeaturePanel } from '@/components/feature/FeaturePanel'
 import { HubSearchResults, type HubSearchHandle } from '@/components/crossdevice/HubSearchResults'
 import { hubSearcher, type HubEntry, type HubGroup } from '@/lib/search/fields/hub'
@@ -453,6 +453,13 @@ function humanDuration(sec: number): string {
   if (sec < 3600) return `${Math.floor(sec / 60)}m ${sec % 60}s`
   return `${Math.floor(sec / 3600)}h ${Math.floor((sec % 3600) / 60)}m`
 }
+
+/** 主页功能格的分类：设备 · 同步 · 连接。 */
+const TILE_GROUPS = [
+  { id: 'devices', label: 'groupDevices', tiles: ['devices', 'pair', 'self'] },
+  { id: 'sync', label: 'groupSync', tiles: ['clipboard', 'synclog', 'activity', 'options'] },
+  { id: 'network', label: 'groupNetwork', tiles: ['metrics', 'diag', 'crossnet'] },
+] as const
 
 export function CrossDeviceScreen() {
   const { t } = useTranslation('crossdevice')
@@ -1787,6 +1794,11 @@ export function CrossDeviceScreen() {
     },
   ]
   const panelTile = tiles.find((x) => x.id === panel) ?? null
+  const tileGroups: FeatureGroupSpec[] = TILE_GROUPS.map((g) => ({
+    id: g.id,
+    label: t(g.label),
+    tiles: g.tiles.flatMap((id) => tiles.filter((x) => x.id === id)),
+  }))
 
   const tileHits = hubSearch.active
     ? hubSearcher.search(tiles.map((x) => ({ key: `tile:${x.id}`, group: 'features', title: x.title, sub: x.badge, icon: x.icon })), hubQuery)
@@ -2952,7 +2964,7 @@ export function CrossDeviceScreen() {
             onExitTop={() => hubBoxRef.current?.focus()}
           />
         ) : (
-          <FeatureGrid tiles={tiles} onOpen={openPanel} className="min-h-[220px] flex-1" />
+          <FeatureGroupGrid groups={tileGroups} onOpen={openPanel} className="flex-1" />
         )}
       </div>
 

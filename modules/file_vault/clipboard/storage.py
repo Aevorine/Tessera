@@ -337,6 +337,8 @@ def connect(db_path: Path, key: bytes) -> sqlite3.Connection:
     conn.execute(f"PRAGMA key = \"{_hex_key(key)}\"")
     conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("PRAGMA synchronous=NORMAL")
+    # 检查点之后把 WAL 截回 4 MB：不设上限时它只增不减（实测剪贴板库的 WAL 留在 52 MB）。
+    conn.execute("PRAGMA journal_size_limit=4194304")
     # 先建表——migration 函数要求表已存在（依赖 PRAGMA table_info）
     conn.executescript(_SCHEMA)
     # 再跑列迁移（对已有数据库升级，对新数据库无操作）

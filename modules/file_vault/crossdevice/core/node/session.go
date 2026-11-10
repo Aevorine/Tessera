@@ -33,10 +33,19 @@ const (
 	// MobileFeature 由手机端在 HELLO 里公布，老版本不认识就忽略。
 	MobileFeature = "plat-mobile"
 
-	// 快速判活：发一次心跳等回声，超时 = 4×RTT + 300ms，夹在 [700ms, 3s]。下限留给手机 Wi-Fi
-	// 省电（DTIM）每个方向可能多压一两百毫秒；上限覆盖中继。
+	// 快速判活：发一次心跳等回声，超时 = SRTT + 4×RTTVAR + 300ms（RFC 6298 的 RTO 形式），
+	// 夹在 [700ms, 3s]。上限覆盖中继。
 	probeTimeoutMin = 700 * time.Millisecond
 	probeTimeoutMax = 3 * time.Second
+
+	// 对端是手机时的耐心：息屏后系统挂起 CPU、Wi-Fi 省电跳过信标，进程常整秒不应答，
+	// 但连接本身完好，醒来照常收发。实测 1.4 秒判死一天误拆上百次，每次重连又花 6–13 秒。
+	// 空闲时这么久一个字节都没来才判死；期间持续探测（探测包本身也在叫醒对端）。
+	mobileIdleGrace = 20 * time.Second
+	// 刚发过内容或刚换过网：对端该很快有动静，等得短一些。
+	mobileProbeGrace = 6 * time.Second
+	// 手机静默超过这么久，界面才显示「链路较差」。
+	mobileDegradeAfter = 4 * time.Second
 
 	// 旧会话建立超过这么久、对端又拨进来：是对端那头丢了旧连接（换网、休眠、进程重启），
 	// 不是互拨。两条都比这新才按互拨决胜。
@@ -90,12 +99,17 @@ type Session struct {
 	name      atomic.Value // string，见 PeerName
 	missed    atomic.Int32
 	rttMS     atomic.Int64
+	// srttUS / rttvarUS 是平滑往返时间与其抖动（微秒），只由读循环写。
+	srttUS   atomic.Int64
+	rttvarUS atomic.Int64
 	// lastEcho 是最近一次收到心跳回声的时刻（UnixNano），probeLiveness 靠它判活。
 	lastEcho atomic.Int64
 	// lastActive 是最近一次这条连接上有字节流动的时刻（UnixNano）：收到任何一帧，或发出一个
 	// 文件块（发块会被流控卡住，写得动说明对端在消费）。心跳判活只认回声，而对端忙着收大块时
 	// 回声会晚到，不等于链路断了。
 	lastActive atomic.Int64
+	// lastRead 只记入站帧（lastActive 还含本端发块），判对端死活用它。
+	lastRead atomic.Int64
 
 	// pending 是等待 CLIP_DATA 回应的按需拉取请求。
 	pmu     sync.Mutex
@@ -148,9 +162,31 @@ func (s *Session) RTT() time.Duration {
 	return time.Duration(s.rttMS.Load()) * time.Millisecond
 }
 
+// noteRTT 按 RFC 6298 更新平滑往返时间：单次抖动不会把探测超时带偏。
+func (s *Session) noteRTT(rtt time.Duration) {
+	us := rtt.Microseconds()
+	srtt := s.srttUS.Load()
+	if srtt == 0 {
+		s.srttUS.Store(us)
+		s.rttvarUS.Store(us / 2)
+		return
+	}
+	dev := srtt - us
+	if dev < 0 {
+		dev = -dev
+	}
+	s.rttvarUS.Store((3*s.rttvarUS.Load() + dev) / 4)
+	s.srttUS.Store((7*srtt + us) / 8)
+}
+
+// mobilePeer 报告这条会话是否有一端是手机（见 MobileFeature）。
+func (s *Session) mobilePeer() bool {
+	return runtime.GOOS == "android" || slices.Contains(s.peerFeatures, MobileFeature)
+}
+
 // probeTimeout 按实测往返时间给判活探测定超时（见 probeTimeoutMin/Max）。
 func (s *Session) probeTimeout() time.Duration {
-	d := 4*s.RTT() + 300*time.Millisecond
+	d := time.Duration(s.srttUS.Load()+4*s.rttvarUS.Load())*time.Microsecond + 300*time.Millisecond
 	if d < probeTimeoutMin {
 		return probeTimeoutMin
 	}
@@ -233,7 +269,9 @@ func (s *Session) run() {
 			}
 			return
 		}
+		s.thaw()
 		s.touch()
+		s.lastRead.Store(time.Now().UnixNano())
 		if err := s.dispatch(f); err != nil {
 			s.node.logf("处理 %s 帧出错: %v", f.Type, err)
 			// 单条消息处理失败不应拖垮整条连接——除非是解密/帧结构错误，
@@ -329,6 +367,7 @@ func (s *Session) heartbeatLoop() {
 			return
 		case <-t.C:
 		}
+		s.thaw()
 		if s.busy() {
 			// 大块收发中：沿用宽松判据，回声晚到不等于链路断。
 			if err := s.sendHeartbeat(); err != nil {
@@ -351,8 +390,14 @@ func (s *Session) heartbeatLoop() {
 		if alive {
 			continue
 		}
-		s.node.setState(s.peer.DeviceID, StateDegraded)
-		if alive, err = s.pingOnce(); err != nil {
+		if s.mobilePeer() {
+			// 手机偶尔慢一两秒不算「链路较差」，拖过 mobileDegradeAfter 才改状态。
+			alive, err = s.probeUntil(mobileIdleGrace, mobileDegradeAfter)
+		} else {
+			s.node.setState(s.peer.DeviceID, StateDegraded)
+			alive, err = s.pingOnce()
+		}
+		if err != nil {
 			s.close(fmt.Errorf("发送失败: %v", err))
 			return
 		}
@@ -362,7 +407,7 @@ func (s *Session) heartbeatLoop() {
 			}
 			continue
 		}
-		s.node.logf("%s 两次心跳无回音，判定链路已断", s.PeerName())
+		s.node.logf("%s 多次心跳无回音，判定链路已断", s.PeerName())
 		s.node.setState(s.peer.DeviceID, StateReconnecting)
 		s.close(errors.New("心跳超时"))
 		return
@@ -371,10 +416,44 @@ func (s *Session) heartbeatLoop() {
 
 // heartbeatEvery 本会话的空闲心跳间隔（见 heartbeatFast / heartbeatMobile）。
 func (s *Session) heartbeatEvery() time.Duration {
-	if runtime.GOOS == "android" || slices.Contains(s.peerFeatures, MobileFeature) {
+	if s.mobilePeer() {
 		return heartbeatMobile
 	}
 	return heartbeatFast
+}
+
+// probeUntil 反复探测，直到有回音（true）或连续 grace 没有任何入站字节（false）。
+// 每次等待从 probeTimeout 起倍增到 probeTimeoutMax；探了 degradeAfter 还没回音时把状态标成
+// 「链路较差」（回声一到 onHeartbeat 会改回来）。
+func (s *Session) probeUntil(grace, degradeAfter time.Duration) (bool, error) {
+	wait := s.probeTimeout()
+	began := time.Now()
+	for {
+		left := grace - time.Since(s.lastInbound())
+		if left <= 0 {
+			return false, nil
+		}
+		if time.Since(began) >= degradeAfter {
+			s.node.setState(s.peer.DeviceID, StateDegraded)
+		}
+		start := time.Now()
+		if err := s.sendHeartbeat(); err != nil {
+			return false, err
+		}
+		if s.waitAlive(start, min(wait, left)) {
+			return true, nil
+		}
+		wait = min(wait*2, probeTimeoutMax)
+	}
+}
+
+// lastInbound 是最近一次收到对端字节的时刻；还没收到过就按会话建立时刻算。
+func (s *Session) lastInbound() time.Time {
+	last := s.lastRead.Load()
+	if last == 0 {
+		return s.createdAt
+	}
+	return time.Unix(0, last)
 }
 
 // busy 报告本会话是否有分块传输在进行（收或发）。
@@ -488,6 +567,7 @@ func (s *Session) onHeartbeat(f *wire.Frame) error {
 	}
 	if rtt := time.Since(time.Unix(0, int64(hb.Nonce))); rtt > 0 && rtt < time.Minute {
 		s.rttMS.Store(rtt.Milliseconds())
+		s.noteRTT(rtt)
 	}
 	if s.node.State(s.peer.DeviceID) == StateDegraded {
 		s.node.setState(s.peer.DeviceID, StateConnected)

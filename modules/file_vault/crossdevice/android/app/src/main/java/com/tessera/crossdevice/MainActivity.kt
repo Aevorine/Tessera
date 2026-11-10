@@ -2707,6 +2707,7 @@ class MainActivity : AppCompatActivity() {
         super.onStart()
         if (::lockGate.isInitialized) lockGate.onStart()
         activityVisible = true
+        TransferBoost.foreground(this, true)
         if (appearanceConfig.interfaceMode == InterfaceMode.PROFESSIONAL && panels.isOpen(P_PRO)) {
             metricsHandler.post(refreshMetrics)
         }
@@ -2733,6 +2734,7 @@ class MainActivity : AppCompatActivity() {
     override fun onStop() {
         if (::lockGate.isInitialized) lockGate.onStop(isChangingConfigurations)
         activityVisible = false
+        TransferBoost.foreground(this, false)
         metricsHandler.removeCallbacks(refreshMetrics)
         statusPollHandler.removeCallbacks(refreshStatusPoll)
         myCodeTimer.pause()

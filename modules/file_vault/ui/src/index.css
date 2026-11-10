@@ -7,6 +7,8 @@
 @import "./vendor/shadcn-tailwind.css";
 
 @custom-variant dark (&:is(.dark *));
+/* 矮窗口（720p 笔记本）：分组功能格改用横排紧凑格，三类一屏放得下。 */
+@custom-variant short (@media (max-height: 840px));
 
 /* 自适应质量只削减装饰成本，不改变布局、颜色或交互反馈。 */
 :root[data-quality="balanced"] {
