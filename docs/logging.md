@@ -40,11 +40,14 @@
 | crossdevice | `state` | 设备连接状态变化 | `device`（ID 前 8 位）、`state` |
 | crossdevice | `link_down` | 一条连接断了（发现即记） | `code`、`idle_ms`（最后一次有字节到判死）、`uptime_ms`、`rtt_ms`、`route`、`transferring` |
 | crossdevice | `transfer_waiting` / `transfer_retry` / `transfer_done` / `transfer_error` / `transfer_canceled` / `transfer_recv_done` | 文件发送自愈过程与结果 | `attempt`、`ext`、`size`、`elapsed_ms`、`error`、`delivery_confirmed`、`skipped`、`receipt_location`（仅位置类型，不含路径） |
+| crossdevice | `clip_push` | 每次自动剪贴板同步（0.1.58 起） | `ms`（系统通知剪贴板变化 → 发出）、`sent`（送达几台）、`skipped`（`echo` = 刚从别的设备收到的内容，`clip_sync_off` = 自动同步关着）、`failed`、`kind`（首选格式，不含内容） |
 | crossdevice | `daemon_exit` / `spawn_failed` / `ready` / `daemon_restarting` | 守护进程起停 | `code` |
 | crossdevice | `tray_send_clip` | 托盘「发送剪贴板」 | `sent`、`errors` |
 | filehook | `startup_status` / `menu_toggle` / `state` | 快捷键引擎启动对账、菜单开关 | `autostart`、`autostart_registered`、`autostart_approved`、`autostart_intent`、`restored` |
 | updater | `check` / `install` | 检查更新、安装更新 | `status`、`version`、`errorCode` |
 | renderer | `ui_failure` / `process_gone` / `unresponsive` | 界面未捕获异常、渲染进程崩溃、卡死 | `module`、`code`、`msg` |
+
+0.1.58 起 `link_down` 多一个 `mobile` 字段（对端是不是手机 / 平板）：对手机空闲 20 秒无任何字节才判 `heartbeat_timeout`，此时 `idle_ms` 应在 20000 上下；电脑之间仍是 3.4 秒左右。同一设备的 `state` 在它不在线时不再每轮重试翻一次。
 
 `link_down` 的 `code`：`heartbeat_timeout`（空闲时两次心跳无回音）、`probe_failed`（发送后的链路探测无回音）、`read_error` / `write_error`（收发失败）、`peer_closed`（对端正常关闭）、`peer_fatal`、`revoked`、`expired`、`node_stopped`、`other`。
 

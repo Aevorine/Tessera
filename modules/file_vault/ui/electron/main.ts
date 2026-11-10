@@ -382,6 +382,8 @@ let clipCheckAgain = false
  * 上一条还在发的时候用户又复制了新内容：记下来，等上一条回来立刻补发最新的。
  */
 let clipSyncQueued = false
+/** 最近一次系统剪贴板变化通知到达的时刻（performance.now），算「复制 → 发出」耗时用。 */
+let clipEventAt = 0
 
 /** 把当前剪贴板发给所有已连接设备。失败静默——同步是锦上添花，不该弹错误框。 */
 async function pushClipboardNow(): Promise<void> {
@@ -402,8 +404,18 @@ async function pushClipboardNow(): Promise<void> {
       return
     }
     if (!local) return
-    await crossDevice?.call('send_clip', local).catch(() => {
-      /* 没有在线设备、或守护进程正在重启：重连后会自己补发最新一条 */
+    const startedAt = clipEventAt
+    clipEventAt = 0
+    const res = await crossDevice
+      ?.call<{ sent?: number; skipped?: string; errors?: string[] }>('send_clip', local)
+      .catch(() => null) // 没有在线设备、或守护进程正在重启：重连后会自己补发最新一条
+    // 只记耗时与结果，不记内容：「复制了却没同步」时靠它分清是没发出去还是对端没收。
+    logEvent('crossdevice', 'info', 'clip_push', undefined, {
+      ms: startedAt ? Math.round((performance.now() - startedAt) * 10) / 10 : undefined,
+      sent: res?.sent ?? 0,
+      skipped: res?.skipped,
+      failed: res?.errors?.length ?? (res ? 0 : 1),
+      kind: local.preferred,
     })
   } finally {
     clipSyncInFlight = false
@@ -453,6 +465,7 @@ function checkClipboardOnce(fromEvent = false): Promise<boolean> {
 
 /** clip_changed 到达：立即读；写入方刚放手时偶尔读不到，短间隔补读三次。 */
 function onClipChanged(): void {
+  clipEventAt = performance.now()
   void (async () => {
     for (let tries = 0; tries < 4; tries++) {
       if (await checkClipboardOnce(true)) return

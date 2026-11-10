@@ -1,12 +1,12 @@
 """跟踪最近一个不属于本应用进程树的前台窗口，供"点击即粘贴"在发 Ctrl+V 前恢复焦点。
 
-用 150ms 轮询而非 WinEventHook：更简单，人手切窗口远慢于此。
+150ms 轮询前台窗口句柄（一次系统调用，微秒级）；只有句柄变了才判断它属不属于自己。
+判断要枚举全系统进程（psutil 的 children），曾经每轮都做，后端空闲时因此常占单核约 10%。
 backend_server.py 是 Electron 主进程的子进程，可见窗口在兄弟 renderer 进程里，
 所以"属于自己"要按"父进程的任意后代"判断，而不只是自身祖先链。
 """
 
 import threading
-import time
 from typing import Optional, Set
 
 import psutil
@@ -45,18 +45,20 @@ class ForegroundTracker:
             self._thread.join(timeout=1)
 
     def _run(self) -> None:
+        last_hwnd = 0
         while not self._stop.is_set():
             try:
                 hwnd = win32gui.GetForegroundWindow()
-                if hwnd:
+                # 句柄没变就不用再判：前台窗口不换，归属也不会变。
+                if hwnd and hwnd != last_hwnd:
+                    last_hwnd = hwnd
                     _, pid = win32process.GetWindowThreadProcessId(hwnd)
-                    # 每次重新计算自己的进程家族而不缓存：Electron 的 renderer/GPU 子进程可能重启或新开，
-                    # 缓存会漏掉新 pid；开销只是几次系统调用，且在后台线程。
+                    # 每次切换都重新计算进程家族而不缓存：Electron 的 renderer/GPU 子进程可能重启或新开。
                     if pid not in _collect_own_pids():
                         self._last_external_hwnd = hwnd
             except Exception:
                 pass
-            time.sleep(_POLL_INTERVAL_S)
+            self._stop.wait(_POLL_INTERVAL_S)
 
     def get_last_external_hwnd(self) -> Optional[int]:
         hwnd = self._last_external_hwnd

@@ -335,6 +335,24 @@ func (s *Store) RememberAddr(id, addr string) {
 	}
 }
 
+// MarkSeen 记下「此刻见过这台设备」。RememberAddr 只在本机拨出成功时更新，而手机多半是
+// 拨进来的那一方，界面上的「上次在线」因此会停在很久以前。
+// persist 为 false 时只改内存，随下一次落盘带走：断线那一刻可能正在退出，不该再写盘。
+func (s *Store) MarkSeen(id string, persist bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	p, ok := s.d.Peers[id]
+	if !ok {
+		if p, ok = s.ephemeral[id]; !ok {
+			return
+		}
+	}
+	p.LastSeen = time.Now()
+	if persist && p.Trust != "temp" {
+		_ = s.flushLocked()
+	}
+}
+
 // NextSeq 分配一个单调递增的消息序号。
 func (s *Store) NextSeq() uint64 {
 	s.mu.Lock()

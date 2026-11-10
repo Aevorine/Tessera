@@ -21,6 +21,8 @@ const (
 	// 两次检查之间墙上时间走了这么久，就当系统睡过一觉。单调时钟在 Windows 上
 	// 不计休眠时间，所以这里必须比墙上时间。
 	sleepGap = 15 * time.Second
+	// 系统通知到达后等这么久再取指纹。
+	netChangeSettle = 150 * time.Millisecond
 	// 网络变化后现有会话的判活超时按 RTT 自适应，见 Session.probeTimeout。
 )
 
@@ -56,6 +58,9 @@ func (n *Node) netWatchSync() {
 func (n *Node) netWatchLoop() {
 	defer n.wg.Done()
 	n.netWatchSync()
+	// 系统有变化通知时靠通知；定时那一路只剩查休眠（比墙钟，不碰系统）和读缓存。
+	osChanged, cancel, _ := netif.Subscribe()
+	defer cancel()
 	t := time.NewTicker(netWatchInterval)
 	defer t.Stop()
 	lastTick := time.Now().Round(0)
@@ -63,6 +68,17 @@ func (n *Node) netWatchLoop() {
 		select {
 		case <-n.ctx.Done():
 			return
+		case <-osChanged:
+			// 换网时通知成串到达（旧地址撤销、新地址就绪），等它们落定再看。
+			select {
+			case <-n.ctx.Done():
+				return
+			case <-time.After(netChangeSettle):
+			}
+			select {
+			case <-osChanged:
+			default:
+			}
 		case <-t.C:
 		}
 		now := time.Now().Round(0) // 去掉单调时钟读数，比的是墙上时间
@@ -92,7 +108,15 @@ func (s *Session) probeLiveness(timeout time.Duration) {
 		return
 	}
 	defer s.probing.Store(false)
-	alive, err := s.pingOnce()
+	var alive bool
+	var err error
+	if s.mobilePeer() {
+		// 手机息屏时整秒不应答是常态，单次探测超时不能当断线。
+		timeout = mobileProbeGrace
+		alive, err = s.probeUntil(timeout, mobileDegradeAfter)
+	} else {
+		alive, err = s.pingOnce()
+	}
 	if err != nil {
 		s.close(fmt.Errorf("发送失败: %v", err))
 		return

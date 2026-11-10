@@ -12,6 +12,7 @@ import (
 	"net"
 	"strings"
 	"sync"
+	"time"
 )
 
 // Iface 是网卡的最小描述，刻意不含 MAC（用不上，且正是 Android 封掉的内容）。
@@ -104,32 +105,86 @@ func List() []Iface {
 	return fromStdlib()
 }
 
-func fromStdlib() []Iface {
-	ifaces, err := net.Interfaces()
-	if err != nil {
-		return nil
-	}
-	out := make([]Iface, 0, len(ifaces))
-	for _, ifi := range ifaces {
-		addrs, err := ifi.Addrs()
-		if err != nil {
-			// 单张网卡取地址失败不该带走整份清单——多网卡机器上很常见。
-			continue
-		}
-		cidrs := make([]string, 0, len(addrs))
-		for _, a := range addrs {
-			if ipn, ok := a.(*net.IPNet); ok {
-				cidrs = append(cidrs, ipn.String())
+// 系统清单的缓存：只有订阅到系统变化通知（osWatch）时才启用，通知一到即作废；
+// staleAfter 是通知万一漏掉时的兜底。
+const staleAfter = 30 * time.Second
+
+var cache struct {
+	sync.Mutex
+	list  []Iface
+	at    time.Time
+	valid bool
+	gen   uint64
+}
+
+var (
+	subMu sync.Mutex
+	subs  []chan struct{}
+)
+
+// Subscribe 返回一个通道：系统报告地址或接口变化时收到一次信号（合并、不阻塞）。
+// ok 为 false 表示本平台没有系统通知，调用方须自己定时查。用完调 cancel。
+func Subscribe() (ch <-chan struct{}, cancel func(), ok bool) {
+	c := make(chan struct{}, 1)
+	subMu.Lock()
+	subs = append(subs, c)
+	subMu.Unlock()
+	return c, func() {
+		subMu.Lock()
+		defer subMu.Unlock()
+		for i, x := range subs {
+			if x == c {
+				subs = append(subs[:i], subs[i+1:]...)
+				return
 			}
 		}
-		out = append(out, Iface{
-			Index:     ifi.Index,
-			Name:      ifi.Name,
-			Up:        ifi.Flags&net.FlagUp != 0,
-			Loopback:  ifi.Flags&net.FlagLoopback != 0,
-			Multicast: ifi.Flags&net.FlagMulticast != 0,
-			Addrs:     cidrs,
-		})
+	}, osWatch()
+}
+
+func notifyChanged() {
+	cache.Lock()
+	cache.valid = false
+	cache.gen++
+	cache.Unlock()
+	subMu.Lock()
+	for _, ch := range subs {
+		select {
+		case ch <- struct{}{}:
+		default:
+		}
+	}
+	subMu.Unlock()
+}
+
+func fromStdlib() []Iface {
+	if !osWatch() {
+		return enumerate()
+	}
+	cache.Lock()
+	if cache.valid && time.Since(cache.at) < staleAfter {
+		out := cloneList(cache.list)
+		cache.Unlock()
+		return out
+	}
+	gen := cache.gen
+	cache.Unlock()
+
+	list := enumerate()
+
+	cache.Lock()
+	// 枚举途中又来了通知：这份可能已经旧了，不入缓存。
+	if cache.gen == gen {
+		cache.list, cache.at, cache.valid = list, time.Now(), true
+	}
+	cache.Unlock()
+	return cloneList(list)
+}
+
+func cloneList(in []Iface) []Iface {
+	out := make([]Iface, len(in))
+	for i, v := range in {
+		v.Addrs = append([]string(nil), v.Addrs...)
+		out[i] = v
 	}
 	return out
 }

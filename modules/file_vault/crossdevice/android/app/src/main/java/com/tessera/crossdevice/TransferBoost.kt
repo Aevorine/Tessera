@@ -46,16 +46,40 @@ object TransferBoost {
 
     val active: Boolean get() = wifiLock?.isHeld == true
 
+    private var foregroundLock: WifiManager.WifiLock? = null
+
+    /**
+     * 界面在前台时关掉 Wi-Fi 省电：否则网卡每个 DTIM 周期才醒一次，剪贴板同步和心跳的往返
+     * 从几毫秒变成几十上百毫秒。只在界面可见时持有（屏幕本来就亮着），切走即放；不拿唤醒锁。
+     */
+    fun foreground(context: Context, visible: Boolean) {
+        val ctx = context.applicationContext
+        main.post {
+            if (!visible) {
+                runCatching { foregroundLock?.takeIf { it.isHeld }?.release() }
+                return@post
+            }
+            if (foregroundLock == null) {
+                val wm = ctx.getSystemService(Context.WIFI_SERVICE) as? WifiManager
+                foregroundLock = runCatching {
+                    wm?.createWifiLock(wifiMode(), "$TAG:fg")?.apply { setReferenceCounted(false) }
+                }.getOrNull()
+            }
+            runCatching { foregroundLock?.takeIf { !it.isHeld }?.acquire() }
+        }
+    }
+
+    @Suppress("DEPRECATION")
+    private fun wifiMode(): Int = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+        WifiManager.WIFI_MODE_FULL_LOW_LATENCY
+    } else {
+        WifiManager.WIFI_MODE_FULL_HIGH_PERF
+    }
+
     private fun acquire(ctx: Context) {
         if (wifiLock == null) {
             val wm = ctx.getSystemService(Context.WIFI_SERVICE) as? WifiManager
-            @Suppress("DEPRECATION")
-            val mode = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                WifiManager.WIFI_MODE_FULL_LOW_LATENCY
-            } else {
-                WifiManager.WIFI_MODE_FULL_HIGH_PERF
-            }
-            wifiLock = runCatching { wm?.createWifiLock(mode, TAG)?.apply { setReferenceCounted(false) } }.getOrNull()
+            wifiLock = runCatching { wm?.createWifiLock(wifiMode(), TAG)?.apply { setReferenceCounted(false) } }.getOrNull()
         }
         if (wakeLock == null) {
             val pm = ctx.getSystemService(Context.POWER_SERVICE) as? PowerManager

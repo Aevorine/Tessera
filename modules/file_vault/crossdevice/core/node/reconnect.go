@@ -47,6 +47,14 @@ type candidate struct {
 
 // Connect 连接一台已配对设备，多路径并行竞速，第一条成功的立即启用。
 func (n *Node) Connect(ctx context.Context, deviceID string) (*Session, error) {
+	return n.connect(ctx, deviceID, false)
+}
+
+// quietAfter：后台保活连续失败这么多次后，后续重试不再播报「连接中」。对端不在时每轮重试都
+// 翻一次 连接中→离线，界面跟着闪、日志一天几千行；真连上了（握手开始）照常播报。
+const quietAfter = 3
+
+func (n *Node) connect(ctx context.Context, deviceID string, quiet bool) (*Session, error) {
 	if s, ok := n.SessionFor(deviceID); ok && s.Alive() {
 		// 已连上（多半对方先拨过来）。必须把状态改回 CONNECTED：互拨决胜中输掉的那条会唤醒重连
 		// 循环并置为 RECONNECTING，而另一条其实连着，不修则 UI 一直显示"重连中"。
@@ -65,7 +73,9 @@ func (n *Node) Connect(ctx context.Context, deviceID string) (*Session, error) {
 		return nil, &ConnectError{Code: OfflineRevoked, Err: fmt.Errorf("设备 %s 已撤销或授权到期", peer.Name)}
 	}
 
-	n.setState(deviceID, StateConnecting)
+	if !quiet {
+		n.setState(deviceID, StateConnecting)
+	}
 	cands := n.candidatesFor(peer)
 	if len(cands) == 0 {
 		n.setState(deviceID, StateDisconnected)
@@ -428,7 +438,7 @@ func (n *Node) KeepConnected(deviceID string) {
 			// 唤醒信号必须在拨号之前取：拨号竞速最长十几秒，期间对端上线发出的唤醒若落在拨号中，
 			// 拨号后再取就是新 channel，唤醒丢失，只能干等退避。
 			wake := n.netChanged(deviceID)
-			sess, err := n.Connect(n.ctx, deviceID)
+			sess, err := n.connect(n.ctx, deviceID, attempt >= quietAfter)
 			if err == nil {
 				attempt = 0
 				select {
