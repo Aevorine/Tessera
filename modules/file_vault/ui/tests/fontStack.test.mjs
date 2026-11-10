@@ -1,3 +1,4 @@
+import { fileURLToPath } from 'node:url'
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
@@ -6,7 +7,7 @@ import { readFileSync } from 'node:fs'
 // 所以顺序是前提而非风格：Times New Roman 在前，拉丁字母/数字/半角标点由它渲染，汉字落到宋体；
 // 宋体在前则连英文数字也变成宋体自带的难看拉丁字形，界面只是「字有点怪」，无报错。
 
-const CSS_PATH = new URL('../src/index.css', import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1')
+const CSS_PATH = fileURLToPath(new URL('../src/index.css', import.meta.url))
 
 const CJK_FAMILIES = ['SimSun', '宋体', 'Songti SC', 'Noto Serif CJK SC']
 

@@ -1,3 +1,4 @@
+import { fileURLToPath } from 'node:url'
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync, readdirSync } from 'node:fs'
@@ -6,7 +7,7 @@ import { join } from 'node:path'
 // 规则：`<StatTile>` 渲染就必须带 onClick——数字答“有多少”，点击答“是哪些”。
 // 曾有界面（笔记）漏加而长期纯展示，这个文件是拦截器。
 
-const COMPONENTS_DIR = new URL('../src/components/', import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1')
+const COMPONENTS_DIR = fileURLToPath(new URL('../src/components/', import.meta.url))
 
 /** StatTile 在这个项目里全是自闭合标签，一路扫到 `/>` 就是一次完整用法。 */
 const STAT_TILE_USAGE = /<StatTile\b[\s\S]*?\/>/g

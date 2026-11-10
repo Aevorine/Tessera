@@ -1,3 +1,4 @@
+import { fileURLToPath } from 'node:url'
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
@@ -5,7 +6,7 @@ import { readFileSync } from 'node:fs'
 // 体检页文案键全是拼出来的，check-i18n-keys.mjs 只认静态字面量查不到；漏键只会在界面
 // 显示原始键名，tsc/eslint 都是绿的。这里从 security_health.py 抠键，逐语言核对。
 
-const ROOT = new URL('..', import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1')
+const ROOT = fileURLToPath(new URL('..', import.meta.url))
 const PY = ROOT + '../security_health.py'
 const LANGS = ['zh', 'en', 'fr', 'es', 'ru', 'ar']
 

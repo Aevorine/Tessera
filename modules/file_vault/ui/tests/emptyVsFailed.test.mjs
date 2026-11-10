@@ -1,3 +1,4 @@
+import { fileURLToPath } from 'node:url'
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync, readdirSync } from 'node:fs'
@@ -7,7 +8,7 @@ import { join } from 'node:path'
 // 用户会看到一句错话，且不报错、测试全绿。正确写法是空状态条件带上 `!loading && !loadError`，
 // 另有 `{loadError && <出错了 + 重试/>}`。本文件守「空状态渲染条件必须带错误标志」。
 
-const COMPONENTS_DIR = new URL('../src/components/', import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1')
+const COMPONENTS_DIR = fileURLToPath(new URL('../src/components/', import.meta.url))
 
 /** 「这个列表是空的」这种渲染条件。只看 JSX 里 `{...length === 0 &&` 这种形态。 */
 const EMPTY_RENDER = /\{[^{}\n]*\.length === 0 &&/g

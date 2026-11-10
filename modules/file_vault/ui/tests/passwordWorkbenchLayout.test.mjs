@@ -7,13 +7,14 @@
  * 肉眼看不出「要坏了」（加第六颗按钮的人只觉得再加一个而已），故机器检查。
  */
 
+import { fileURLToPath } from 'node:url'
 import { readFileSync } from 'node:fs'
 import test from 'node:test'
 import assert from 'node:assert/strict'
 
-const SCREEN = new URL('../src/components/PasswordScreen.tsx', import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1')
-const PAGE = new URL('../src/components/ui/page.tsx', import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1')
-const METRICS = new URL('../src/lib/passwordMetrics.ts', import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1')
+const SCREEN = fileURLToPath(new URL('../src/components/PasswordScreen.tsx', import.meta.url))
+const PAGE = fileURLToPath(new URL('../src/components/ui/page.tsx', import.meta.url))
+const METRICS = fileURLToPath(new URL('../src/lib/passwordMetrics.ts', import.meta.url))
 
 const screen = readFileSync(SCREEN, 'utf8')
 const page = readFileSync(PAGE, 'utf8')
@@ -97,7 +98,7 @@ test('指标是一张可扩展的表，不是写死在组件里的三个 filter'
 
 test('生成器用的是密码学随机数，不是 Math.random', () => {
   const gen = readFileSync(
-    new URL('../src/lib/passwordGenerator.ts', import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1'),
+    fileURLToPath(new URL('../src/lib/passwordGenerator.ts', import.meta.url)),
     'utf8',
   )
   assert.match(gen, /crypto\.getRandomValues/)

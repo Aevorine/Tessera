@@ -1,3 +1,4 @@
+import { fileURLToPath } from 'node:url'
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync, readdirSync } from 'node:fs'
@@ -6,7 +7,7 @@ import { join } from 'node:path'
 // README 目录是访客第一个会点的东西，标题改名而目录没改则点了不跳，不报错不留痕。
 // 曾一次查出 10 条断链（"指纹解锁"改叫"生物识别解锁"等），六种语言全中；六份 README 共 200 多个标题，无法人工对锚点。
 
-const REPO_ROOT = new URL('../../../../', import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1')
+const REPO_ROOT = fileURLToPath(new URL('../../../../', import.meta.url))
 
 /** GitHub 生成锚点的规则：小写、去掉标点、空格转连字符（连字符与下划线保留）。 */
 function slug(heading) {

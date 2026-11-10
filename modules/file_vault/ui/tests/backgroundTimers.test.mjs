@@ -1,3 +1,4 @@
+import { fileURLToPath } from 'node:url'
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync, readdirSync } from 'node:fs'
@@ -7,7 +8,7 @@ import { join } from 'node:path'
 // CrossDeviceScreen 的四个定时器都写了 `if (document.visibilityState !== 'visible') return`，
 // 但这只是约定（ProfessionalMetricsPanel 就漏了）；本文件把约定变成机制。
 
-const COMPONENTS_DIR = new URL('../src/components/', import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1')
+const COMPONENTS_DIR = fileURLToPath(new URL('../src/components/', import.meta.url))
 
 /** setInterval(..., N) 里 N >= 这个值的算"低频轮询"，不强制判可见性——
  *  几分钟一次的心跳在后台跑一次的代价可以忽略，强制它反而是噪音。 */

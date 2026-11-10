@@ -1,3 +1,4 @@
+import { fileURLToPath } from 'node:url'
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync, readdirSync } from 'node:fs'
@@ -11,7 +12,7 @@ import { join } from 'node:path'
  * 本守卫只查一件事：`<PageShell>` 不许再用窄档。
  */
 
-const COMPONENTS_DIR = new URL('../src/components/', import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1')
+const COMPONENTS_DIR = fileURLToPath(new URL('../src/components/', import.meta.url))
 
 /** 允许用别的档位的地方，每一条都要写明理由。 */
 const ALLOWED = new Map([

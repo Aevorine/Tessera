@@ -1,3 +1,4 @@
+import { fileURLToPath } from 'node:url'
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync, readdirSync, statSync } from 'node:fs'
@@ -9,7 +10,7 @@ import { join } from 'node:path'
 // 编译和行为测试全绿。本文件守三条原因，探针守结果（真像素、真滚动）：静态层每次 npm test 都跑、便宜、能指到行；
 // 探针抓得广但要拉浏览器、约两分钟。
 
-const SRC = new URL('../src', import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1')
+const SRC = fileURLToPath(new URL('../src', import.meta.url))
 
 function allSources(dir, out = []) {
   for (const name of readdirSync(dir)) {
