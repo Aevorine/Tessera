@@ -76,6 +76,7 @@
   "clipboard.entry_not_found": "No se encontró este elemento del portapapeles",
   "clipboard.entry_truncated_cannot_paste": "El contenido de este elemento era demasiado grande y solo se guardó un resumen - no se puede pegar el contenido completo",
   "clipboard.paste_failed": "Error al pegar",
+  "clipboard.paste_busy": "{{app}} está usando el portapapeles y no lo liberó en 1,5 segundos. Vuelve a hacer clic en un momento; si ocurre a menudo, desactiva la supervisión del portapapeles en {{app}}",
   "clipboard.blacklist_app_name_required": "Introduce un nombre de aplicación",
   "clipboard.export_failed": "Error al exportar: {{detail}}",
   "clipboard.import_failed": "Error al importar: {{detail}}",
@@ -192,7 +193,8 @@
   "recovery_codes.json_codes_redacted": "Este archivo se exportó sin códigos: solo contiene metadatos, así que no hay nada que importar.",
   "recovery_codes.json_redacted_cannot_encrypt": "Las exportaciones sin códigos y las cifradas son excluyentes: una es para leerse, la otra para guardarse.",
   "recovery_codes.nothing_to_export": "No hay nada que exportar.",
-  "backend.no_response": "El servicio en segundo plano no responde. Inténtalo de nuevo; si persiste, reinicia Tessera.",
+  "backend.no_response": "El servicio en segundo plano no responde. Inténtalo de nuevo; si persiste, reinicia Tessera."
+,
   "recovery_codes.invalid_format": "El archivo del almacén de códigos de recuperación no tiene un formato legible. Puede que se interrumpiera al guardarlo o que otro programa lo modificara: restaura este archivo desde una copia de seguridad.",
   "recovery_codes.unsupported_format_version": "Este almacén de códigos de recuperación viene de una versión más reciente de Tessera y esta versión no puede leerlo. Actualiza la aplicación a la última versión y vuelve a abrirlo.",
   "recovery_codes.content_corrupted": "Hay contenido dañado en el almacén de códigos de recuperación y no se puede leer. Los registros intactos se siguen mostrando; la parte dañada hay que restaurarla desde una copia de seguridad.",

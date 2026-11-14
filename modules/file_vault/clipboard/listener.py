@@ -176,7 +176,25 @@ def open_clipboard_with_retry(hwnd: Optional[int] = None) -> bool:
     return False
 
 
-def run_clipboard_transaction(operation, hwnd: Optional[int] = None):
+def clipboard_holder() -> Optional[str]:
+    """此刻占着剪贴板的程序名（如 "PixPin.exe"），没人占或查不到返回 None。
+
+    写回失败时拿它告诉用户「被谁占着」：剪贴板是全系统一把锁，截图工具、剪贴板管理器、
+    下载器（监视复制的链接）、远程桌面、输入法都会在复制瞬间打开它读内容。只取进程名，不取内容。
+    """
+    try:
+        hwnd = ctypes.windll.user32.GetOpenClipboardWindow()
+        if not hwnd:
+            return None
+        _, pid = win32process.GetWindowThreadProcessId(hwnd)
+        if not pid:
+            return None
+        return psutil.Process(pid).name()
+    except Exception:
+        return None
+
+
+def run_clipboard_transaction(operation, hwnd: Optional[int] = None, budget_s: float = 0.0):
     """把"打开 -> 操作 -> 关闭"整段作为一次事务重试，而非只重试打开。
 
     实测：open_clipboard_with_retry() 返回 True 后，Get/SetClipboardData 仍有约 2% 概率抛 1418
@@ -185,6 +203,8 @@ def run_clipboard_transaction(operation, hwnd: Optional[int] = None):
     `operation` 在剪贴板已打开时调用，返回值透传；全部尝试失败则抛最后一次异常，由调用方决定降级或上
     报。
     """
+    if budget_s > 0:
+        return _run_with_budget(operation, hwnd, budget_s)
     last_exc = None
     for attempt in range(_OPEN_RETRY_COUNT):
         if not open_clipboard_with_retry(hwnd):
@@ -203,6 +223,37 @@ def run_clipboard_transaction(operation, hwnd: Optional[int] = None):
                     pass
         if attempt < _OPEN_RETRY_COUNT - 1:
             time.sleep(_OPEN_RETRY_INTERVAL_S)
+    raise last_exc if last_exc is not None else OSError("clipboard transaction failed")
+
+
+def _run_with_budget(operation, hwnd: Optional[int], budget_s: float):
+    """用户主动触发的写回（点击即粘贴）用：在 budget_s 内退避重试（10 ms 起，翻倍到 200 ms 封顶）。
+
+    默认那组 3×3×50 ms 约 0.45 s 就放弃，是给后台读取用的；用户点了粘贴，别的程序占着剪贴板
+    0.5–1 秒（截图工具、剪贴板管理器读大图）很常见，放弃得太快就是「粘贴失败」。
+    """
+    deadline = time.monotonic() + budget_s
+    delay = 0.01
+    last_exc = None
+    while True:
+        try:
+            win32clipboard.OpenClipboard(hwnd)
+        except Exception as exc:  # noqa: BLE001
+            last_exc = exc
+        else:
+            try:
+                return operation()
+            except Exception as exc:  # noqa: BLE001
+                last_exc = exc
+            finally:
+                try:
+                    win32clipboard.CloseClipboard()
+                except Exception:
+                    pass
+        if time.monotonic() + delay > deadline:
+            break
+        time.sleep(delay)
+        delay = min(delay * 2, 0.2)
     raise last_exc if last_exc is not None else OSError("clipboard transaction failed")
 
 
