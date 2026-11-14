@@ -395,7 +395,7 @@ class ClipboardService:
                 dib = png_bytes_to_dib(Path(row["image_path"]).read_bytes())
             except Exception:
                 logger.exception("failed to prepare clipboard image for paste")
-                return {"ok": False, "error": "clipboard.paste_failed"}
+                return {"ok": False, "error": "clipboard.paste_failed", "diag_detail": "image_decode"}
             self.mark_self_write(dib)
             wrote = paste.write_image_dib(dib)
         else:
@@ -413,7 +413,12 @@ class ClipboardService:
             wrote = paste.write_text(text, html=html, rtf=rtf)
 
         if not wrote:
-            return {"ok": False, "error": "clipboard.paste_failed"}
+            holder = paste.last_write_holder
+            if holder:
+                # 被别的程序占着：说出是谁，用户才知道是暂时的、该等一下还是去关掉那个程序。
+                return {"ok": False, "error": "clipboard.paste_busy", "error_params": {"app": holder},
+                        "diag_detail": "holder=%s" % holder}
+            return {"ok": False, "error": "clipboard.paste_failed", "diag_detail": "write_failed"}
 
         pasted = False
         if auto_paste:

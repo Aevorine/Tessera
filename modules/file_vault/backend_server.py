@@ -5931,12 +5931,16 @@ def dispatch(request: dict) -> dict:
         if result is batch_engine.ASYNC_DEFERRED:
             return batch_engine.ASYNC_DEFERRED
         # ok:false 不抛异常，以前日志里完全不可见。只记错误码，
-        # 不记 params 和 result 其余字段（可能含路径、凭据）。
+        # 不记 params 和 result 其余字段（可能含路径、凭据）。接口可在 diag_detail 里放
+        # 一句不含用户内容的原因（如占着剪贴板的进程名），它只进故障日志，不回给界面。
         if isinstance(result, dict) and result.get("ok") is False:
+            diag_detail = str(result.pop("diag_detail", "") or "")
             _record_rpc_failure(
                 method, "%s 调用失败" % method,
-                str(result.get("error") or ""), "", "warn",
+                str(result.get("error") or ""), diag_detail, "warn",
             )
+        elif isinstance(result, dict):
+            result.pop("diag_detail", None)
         return {"id": request_id, "result": result}
     except Exception as exc:
         if isinstance(exc, errors.VaultError):

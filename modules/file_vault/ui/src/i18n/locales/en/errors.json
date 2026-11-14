@@ -76,6 +76,7 @@
   "clipboard.entry_not_found": "This clipboard entry could not be found",
   "clipboard.entry_truncated_cannot_paste": "This entry's content was too large and only a summary was saved, so the full content can't be pasted",
   "clipboard.paste_failed": "Paste failed",
+  "clipboard.paste_busy": "The clipboard is in use by {{app}} and wasn't released within 1.5 seconds. Click again in a moment; if this happens often, turn off clipboard monitoring in {{app}}",
   "clipboard.blacklist_app_name_required": "Please enter an app name",
   "clipboard.export_failed": "Export failed: {{detail}}",
   "clipboard.import_failed": "Import failed: {{detail}}",
@@ -192,7 +193,8 @@
   "recovery_codes.json_codes_redacted": "This file was exported without codes - it holds only metadata, so there is nothing to import.",
   "recovery_codes.json_redacted_cannot_encrypt": "Redacted and encrypted exports are mutually exclusive: one is meant to be read, the other to be stored.",
   "recovery_codes.nothing_to_export": "Nothing to export.",
-  "backend.no_response": "The app isn't getting a response from its background service. Try again - if it keeps happening, restart Tessera.",
+  "backend.no_response": "The app isn't getting a response from its background service. Try again - if it keeps happening, restart Tessera."
+,
   "recovery_codes.invalid_format": "The recovery codes vault file isn't in a readable format. It may have been interrupted while saving, or changed by another program - restore this file from a backup.",
   "recovery_codes.unsupported_format_version": "This recovery codes vault comes from a newer version of Tessera and this version cannot read it. Update the app to the latest version, then open it again.",
   "recovery_codes.content_corrupted": "Part of the recovery codes vault is damaged and cannot be read. The undamaged records still show normally; the damaged part has to be restored from a backup.",

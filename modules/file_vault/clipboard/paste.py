@@ -12,7 +12,16 @@ import win32clipboard
 import win32con
 import win32gui
 
-from modules.file_vault.clipboard.listener import run_clipboard_transaction
+from core.logging import get_logger
+from modules.file_vault.clipboard.listener import clipboard_holder, run_clipboard_transaction
+
+logger = get_logger(__name__)
+
+# 点击即粘贴写回剪贴板的等待上限。用户在等结果，1.5 秒内拿不到锁再报「被谁占着」。
+WRITE_BUDGET_S = 1.5
+
+# 最近一次写回失败时占着剪贴板的程序（进程名），给 service 拼错误信息用；成功则清空。
+last_write_holder: Optional[str] = None
 
 _FOCUS_SETTLE_S = 0.08
 
@@ -34,12 +43,9 @@ def write_text(text: str, html: Optional[str] = None, rtf: Optional[bytes] = Non
             win32clipboard.SetClipboardData(rtf_fmt, rtf)
         return True
 
-    try:
-        return run_clipboard_transaction(_write)
-    except Exception:
-        # 重试全部用完之后才走到这里。函数签名承诺的是 bool，不该让这类外部
-        # 竞争以异常的形式一路崩到"点击粘贴"这个功能的调用方那边。
-        return False
+    # 重试全部用完才失败。函数签名承诺的是 bool，不该让这类外部竞争以异常的形式
+    # 一路崩到"点击粘贴"这个功能的调用方那边。
+    return _write_with_budget(_write)
 
 
 def write_image_dib(dib: bytes) -> bool:
@@ -50,9 +56,24 @@ def write_image_dib(dib: bytes) -> bool:
         win32clipboard.SetClipboardData(win32clipboard.CF_DIB, dib)
         return True
 
+    return _write_with_budget(_write)
+
+
+def _write_with_budget(write) -> bool:
+    global last_write_holder
+    started = time.monotonic()
     try:
-        return run_clipboard_transaction(_write)
-    except Exception:
+        ok = bool(run_clipboard_transaction(write, budget_s=WRITE_BUDGET_S))
+        last_write_holder = None
+        return ok
+    except Exception as exc:  # noqa: BLE001
+        last_write_holder = clipboard_holder()
+        # 以前这里什么都不记，故障日志只有一句「调用失败」，看不出原因。只记异常类型、错误码与占用方进程名。
+        logger.warning(
+            "clipboard write failed after %.2fs: %s (winerror=%s) holder=%s",
+            time.monotonic() - started, type(exc).__name__,
+            getattr(exc, "winerror", None) or (exc.args[0] if exc.args else None), last_write_holder,
+        )
         return False
 
 

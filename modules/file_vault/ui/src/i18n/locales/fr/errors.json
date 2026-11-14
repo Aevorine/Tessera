@@ -76,6 +76,7 @@
   "clipboard.entry_not_found": "Cet élément du presse-papiers est introuvable",
   "clipboard.entry_truncated_cannot_paste": "Le contenu de cet élément était trop volumineux et seul un résumé a été enregistré - impossible de coller le contenu complet",
   "clipboard.paste_failed": "Échec du collage",
+  "clipboard.paste_busy": "Le presse-papiers est utilisé par {{app}} et n'a pas été libéré en 1,5 seconde. Cliquez à nouveau dans un instant ; si cela arrive souvent, désactivez la surveillance du presse-papiers dans {{app}}",
   "clipboard.blacklist_app_name_required": "Veuillez saisir un nom d'application",
   "clipboard.export_failed": "Échec de l'exportation : {{detail}}",
   "clipboard.import_failed": "Échec de l'importation : {{detail}}",
@@ -192,7 +193,8 @@
   "recovery_codes.json_codes_redacted": "Ce fichier a été exporté sans les codes : il ne contient que des métadonnées, il n'y a donc rien à importer.",
   "recovery_codes.json_redacted_cannot_encrypt": "Exportation expurgée et exportation chiffrée s'excluent : l'une est faite pour être lue, l'autre pour être conservée.",
   "recovery_codes.nothing_to_export": "Rien à exporter.",
-  "backend.no_response": "Le service en arrière-plan ne répond pas. Réessayez - si cela persiste, redémarrez Tessera.",
+  "backend.no_response": "Le service en arrière-plan ne répond pas. Réessayez - si cela persiste, redémarrez Tessera."
+,
   "recovery_codes.invalid_format": "Le fichier du coffre de codes de récupération n'est pas dans un format lisible. Il a peut-être été interrompu pendant l'enregistrement, ou modifié par un autre programme - restaurez ce fichier depuis une sauvegarde.",
   "recovery_codes.unsupported_format_version": "Ce coffre de codes de récupération provient d'une version plus récente de Tessera et cette version ne peut pas le lire. Mettez l'application à jour, puis rouvrez-le.",
   "recovery_codes.content_corrupted": "Une partie du coffre de codes de récupération est endommagée et illisible. Les enregistrements intacts s'affichent normalement ; la partie endommagée doit être restaurée depuis une sauvegarde.",

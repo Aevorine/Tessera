@@ -76,6 +76,7 @@
   "clipboard.entry_not_found": "找不到这条剪贴板记录",
   "clipboard.entry_truncated_cannot_paste": "这条记录内容过大，当时只保存了摘要，无法粘贴完整内容",
   "clipboard.paste_failed": "粘贴失败",
+  "clipboard.paste_busy": "剪贴板正被{{app}}占用，1.5秒内没拿到。稍后再点一次；经常出现可在{{app}}里关掉它的剪贴板监视",
   "clipboard.blacklist_app_name_required": "请填写应用名称",
   "clipboard.export_failed": "导出失败：{{detail}}",
   "clipboard.import_failed": "导入失败：{{detail}}",
@@ -192,7 +193,8 @@
   "recovery_codes.json_redacted_cannot_encrypt": "脱敏导出和加密导出不能同时选：脱敏是给人看的，加密是存起来的。",
   "recovery_codes.nothing_to_export": "没有可导出的内容。",
   "common.unknown": "发生未知错误（{{code}}）",
-  "backend.no_response": "后台服务一直没有响应。请重试；如果反复出现，请重启 Tessera。",
+  "backend.no_response": "后台服务一直没有响应。请重试；如果反复出现，请重启 Tessera。"
+,
   "recovery_codes.invalid_format": "恢复码库文件的格式不对，读不出来。它可能在保存时被打断，或者被别的程序改过——请从备份恢复这个文件。",
   "recovery_codes.unsupported_format_version": "这个恢复码库来自更新版本的 Tessera，当前版本读不了。请先把应用升级到最新版，再打开它。",
   "recovery_codes.content_corrupted": "恢复码库里有内容已经损坏，读不出来。没坏的记录照常显示；坏掉的这部分需要从备份恢复。",
