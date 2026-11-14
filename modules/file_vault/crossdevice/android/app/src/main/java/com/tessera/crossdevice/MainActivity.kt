@@ -291,6 +291,7 @@ class MainActivity : AppCompatActivity() {
         refreshSystemPermissionsStatus()
         lockGate = AppLockGate(this).also { it.attach() }
         ContextCompat.startForegroundService(this, Intent(this, SyncService::class.java))
+        if (BackgroundHealth.consumeUnseenStop(this)) snack(getString(R.string.autostart_stopped_snack))
         SyncService.listeners.add(onEvent)
 
         ui.btnRefreshNearby.setOnClickListener { send("list_nearby") }
@@ -1313,6 +1314,9 @@ class MainActivity : AppCompatActivity() {
             }
         }
         ui.btnBatteryOptFix.setOnClickListener { openBatteryOptSettings() }
+        ui.btnAutostartFix.setOnClickListener {
+            if (!BackgroundHealth.openAutostartSettings(this)) snack(getString(R.string.battery_opt_settings_unreachable))
+        }
     }
 
     /**
@@ -1366,8 +1370,20 @@ class MainActivity : AppCompatActivity() {
         ui.statusBatteryOpt.text = getString(
             if (batteryOk) R.string.battery_opt_status_on else R.string.battery_opt_status_off
         )
+        // 后台同步被系统停过（Android 15 时限 / 厂商冻结 / 后台启动被拒）：直说时间，给自启动入口。
+        val stoppedAt = BackgroundHealth.lastStopAt(this)
+        val stoppedRecently = stoppedAt > 0 && System.currentTimeMillis() - stoppedAt < 7L * 24 * 3600 * 1000
+        ui.statusAutostart.text = when {
+            stoppedRecently -> getString(
+                R.string.autostart_status_stopped,
+                java.text.DateFormat.getDateTimeInstance(java.text.DateFormat.SHORT, java.text.DateFormat.SHORT)
+                    .format(java.util.Date(stoppedAt)),
+            )
+            BackgroundHealth.isHonorOrHuawei() -> getString(R.string.autostart_status_vendor)
+            else -> getString(R.string.autostart_status_ok)
+        }
         // 两条里没开的数目挂到「安全」格上，不打开面板也看得见。
-        permIssues = (if (notifOn) 0 else 1) + (if (batteryOk) 0 else 1)
+        permIssues = (if (notifOn) 0 else 1) + (if (batteryOk) 0 else 1) + (if (stoppedRecently) 1 else 0)
         refreshTiles()
 
         // 两个按钮常驻显示：厂商系统的通知折叠、横幅、锁屏显示等开关查不出来，权限已开时按钮仍是调这些细节

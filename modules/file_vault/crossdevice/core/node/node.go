@@ -3,6 +3,7 @@
 package node
 
 import (
+	"slices"
 	"bytes"
 	"context"
 	"encoding/hex"
@@ -179,7 +180,7 @@ type Node struct {
 	ln    *transport.Endpoint
 	tcpLn net.Listener // 局域网直连的 TCP 通道，可能为 nil（见 startTCP）
 
-	// tcpBad 记着哪些设备最近试 TCP 失败过（旧版本没有这条通道、或被防火墙
+	// tcpBad 按「设备|地址」记最近试 TCP 失败过的地址（旧版本没有这条通道、或被防火墙
 	// 丢包），在 tcpBackoff 之内不再对它们先试 TCP。
 	tcpMu  sync.Mutex
 	tcpBad map[string]time.Time
@@ -277,6 +278,9 @@ type Node struct {
 	// 给界面回答"它为什么显示离线"。
 	offMu   sync.Mutex
 	offline map[string]OfflineReason
+	// mobileSeen 记哪些设备在本次运行里以手机身份（HELLO 带 MobileFeature）连上过，
+	// 用来把「同网段地址没回应」翻译成「手机上的 Tessera 被系统暂停了」。只在内存里。
+	mobileSeen map[string]bool
 
 	wg sync.WaitGroup
 }
@@ -916,6 +920,14 @@ func (a activityRW) Read(p []byte) (int, error) {
 }
 
 func (n *Node) newSession(peer *store.Peer, car carrier, via string, sc *crypto.SecureConn, initiator bool, peerFeatures []string) *Session {
+	if slices.Contains(peerFeatures, MobileFeature) {
+		n.offMu.Lock()
+		if n.mobileSeen == nil {
+			n.mobileSeen = make(map[string]bool)
+		}
+		n.mobileSeen[peer.DeviceID] = true
+		n.offMu.Unlock()
+	}
 	s := &Session{
 		node:         n,
 		peer:         peer,

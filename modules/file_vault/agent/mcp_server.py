@@ -349,7 +349,7 @@ def handle(request: dict) -> Optional[dict]:
         return _result(request_id, {
             "protocolVersion": PROTOCOL_VERSION,
             "capabilities": {"tools": {}},
-            "serverInfo": {"name": SERVER_NAME, "version": "0.1.58"},
+            "serverInfo": {"name": SERVER_NAME, "version": "0.1.59"},
         })
 
     if method == "ping":

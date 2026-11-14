@@ -16,7 +16,12 @@
     <!-- 前台服务：设备要能"断联后自动连回来"，进程就必须活着。
          Android 14 起必须声明与实际用途相符的 serviceType，否则启动即抛异常。 -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+    <!-- 常驻同步用 connectedDevice 类型而不是 dataSync：Android 15 起 dataSync 前台服务每 24 小时
+         只许后台跑 6 小时，到点系统叫停、之后连重启都被拒，直到用户再打开应用——手机表现为
+         「打开应用能同步，放一阵就再也连不上电脑」。connectedDevice（与本机配对的电脑保持连接）
+         没有这个时限；它要求同时持有 CHANGE_NETWORK_STATE / CHANGE_WIFI_MULTICAST_STATE 之一（均为普通权限）。 -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE" />
+    <uses-permission android:name="android.permission.CHANGE_NETWORK_STATE" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
     <!-- 前台服务本身杀不掉进程，但小米/华为/OPPO/vivo 这类系统的省电策略会无视
@@ -112,7 +117,7 @@
             android:name=".SyncService"
             android:exported="false"
             android:stopWithTask="false"
-            android:foregroundServiceType="dataSync" />
+            android:foregroundServiceType="connectedDevice" />
 
         <!-- 安装意图必须给 content:// URI。Android 7 起把 file:// 递给别的应用
              会直接抛 FileUriExposedException，而崩在这一步的表现是"点了更新没反应"。 -->

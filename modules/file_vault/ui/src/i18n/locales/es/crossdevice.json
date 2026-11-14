@@ -263,6 +263,7 @@
   "offline.metered": "Red de uso medido: se omitió el relé según tu ajuste",
   "offline.refused": "Accesible, pero Tessera no está abierto allí",
   "offline.timeout": "Sin respuesta; probablemente no está en la misma red",
+  "offline.mobile_asleep": "El teléfono no responde: lo más probable es que el sistema haya pausado Tessera en segundo plano. Abre Tessera en el teléfono una vez para reconectar; para evitarlo, permite la actividad en segundo plano en «Ejecución en segundo plano» del teléfono",
   "offline.unreachable": "Red inaccesible",
   "offline.auth": "Conectado pero falló la verificación de identidad; puede que haya que volver a emparejar",
   "offline.revoked": "Revocado o autorización caducada",

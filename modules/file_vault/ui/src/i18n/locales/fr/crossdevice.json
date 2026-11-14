@@ -263,6 +263,7 @@
   "offline.metered": "Réseau facturé à l'usage : relais ignoré selon vos réglages",
   "offline.refused": "Joignable, mais Tessera n'y est pas lancé",
   "offline.timeout": "Aucune réponse ; probablement pas sur le même réseau",
+  "offline.mobile_asleep": "Le téléphone ne répond pas : le système a très probablement mis Tessera en pause en arrière-plan. Ouvrez Tessera une fois sur le téléphone pour vous reconnecter ; pour éviter cela, autorisez l'activité en arrière-plan dans « Exécution en arrière-plan » sur le téléphone",
   "offline.unreachable": "Réseau injoignable",
   "offline.auth": "Connecté mais l'identité n'a pas été vérifiée ; un nouvel appairage peut être nécessaire",
   "offline.revoked": "Révoqué ou autorisation expirée",

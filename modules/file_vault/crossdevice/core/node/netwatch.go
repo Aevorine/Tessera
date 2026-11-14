@@ -138,6 +138,7 @@ const (
 	OfflineMetered          = "metered"            // 计量网络下按策略跳过了中继
 	OfflineRefused          = "refused"            // 地址通，但对方没在监听（软件没开）
 	OfflineTimeout          = "timeout"            // 没有回应（多半不在这个网络里）
+	OfflineMobileAsleep     = "mobile_asleep"      // 手机的局域网地址没回应：多半是 Tessera 在后台被系统暂停
 	OfflineUnreachable      = "unreachable"        // 网络不可达
 	OfflineAuth             = "auth"               // 连上了但身份校验没过，多半要重新配对
 	OfflineRevoked          = "revoked"
@@ -202,9 +203,29 @@ func (n *Node) noteConnectFailure(deviceID string, err error) {
 	if errors.As(err, &ce) {
 		code = ce.Code
 	}
+	if (code == OfflineTimeout || code == OfflineRefused) && n.looksLikeAsleepPhone(deviceID) {
+		code = OfflineMobileAsleep
+	}
 	n.offMu.Lock()
 	n.offline[deviceID] = OfflineReason{Code: code, Msg: err.Error(), At: time.Now()}
 	n.offMu.Unlock()
+}
+
+// looksLikeAsleepPhone：这台设备本次运行里以手机身份连上过，且它上次成功的地址就在本机网段——
+// 那么「超时 / 拒绝」不是「不在这个网络 / 没装」，而多半是手机息屏后系统暂停 / 停止了 Tessera
+// （Android 15 前台服务时限、厂商省电冻结）。电脑这边无能为力，要提示用户在手机上处理。
+func (n *Node) looksLikeAsleepPhone(deviceID string) bool {
+	n.offMu.Lock()
+	mobile := n.mobileSeen[deviceID]
+	n.offMu.Unlock()
+	if !mobile {
+		return false
+	}
+	p, err := n.store.GetPeer(deviceID)
+	if err != nil || p.LastGoodAddr == "" {
+		return false
+	}
+	return onLink(p.LastGoodAddr)
 }
 
 func (n *Node) clearOfflineReason(deviceID string) {

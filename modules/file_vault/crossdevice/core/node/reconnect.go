@@ -296,7 +296,8 @@ const (
 func (n *Node) dialAndHandshake(ctx context.Context, peer *store.Peer, addr, via string) (*Session, error) {
 	// 局域网直连先试 TCP：大文件可跑满网线，而 QUIC 在 Windows 上被每包一次系统调用钉在
 	// 40~50 MiB/s（见 tcpcarrier.go）。公网打洞出的地址是 UDP 的 NAT 映射，TCP 打不进，直接 QUIC。
-	if via != viaHolePunch && n.tcpUsable(peer.DeviceID) {
+	// 只对同网段地址试 TCP：网外地址的 TCP 可能被本机代理 TUN 假接通（见 linkscope.go）。
+	if via != viaHolePunch && onLink(addr) && n.tcpUsable(peer.DeviceID, addr) {
 		sess, err := n.dialTCPAndHandshake(ctx, peer, addr, via)
 		if err == nil {
 			n.clearTCPFailure(peer.DeviceID)
@@ -306,7 +307,7 @@ func (n *Node) dialAndHandshake(ctx context.Context, peer *store.Peer, addr, via
 			return nil, err
 		}
 		// 对端是旧版本（拒绝连接）或防火墙丢了包：记一笔，回落到 QUIC。
-		n.noteTCPFailure(peer.DeviceID)
+		n.noteTCPFailure(peer.DeviceID, addr)
 	}
 
 	// 必须从本机监听的那个套接字拨出去，不能另开一个（原因见 core/transport 头部）。
