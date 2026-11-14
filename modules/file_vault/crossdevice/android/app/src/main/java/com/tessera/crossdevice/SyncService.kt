@@ -88,12 +88,43 @@ class SyncService : Service() {
         super.onCreate()
         instance = this
         createChannel()
-        startForeground(NOTIF_ID, buildNotification())
+        if (!enterForeground()) {
+            // 系统不许此刻从后台起前台服务（Android 12+ 后台启动限制、厂商冻结后被 STICKY 拉起）：
+            // 硬起会抛异常把进程带崩，随后 STICKY 再拉、再崩。安静退出，等用户打开应用时再起。
+            instance = null
+            stopSelf()
+            return
+        }
         acquireMulticastLock()
         watchNetworkChanges()
         startAgent()
         // 输入法模式：Tessera 键盘是默认输入法时，后台也读得到剪贴板，复制即同步。
         clipWatcher = ClipWatcher(this) { payload -> call("send_clip", payload) }.also { it.start() }
+    }
+
+    /**
+     * 以 connectedDevice 类型进前台（见 AndroidManifest 注释：dataSync 在 Android 15 有 6 小时上限）。
+     * 被拒时记下原因与时间，界面「后台运行」卡片据此提示用户，而不是让手机悄悄掉线。
+     */
+    private fun enterForeground(): Boolean {
+        val type = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q)
+            android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE else 0
+        return runCatching {
+            androidx.core.app.ServiceCompat.startForeground(this, NOTIF_ID, buildNotification(), type)
+        }.onFailure {
+            BackgroundHealth.noteStopped(this, "start_denied", "${it.javaClass.simpleName}: ${it.message}")
+            DiagnosticLog.record(this, "sync", "后台同步服务被系统拒绝启动", "${it.javaClass.simpleName}: ${it.message}")
+        }.isSuccess
+    }
+
+    /**
+     * Android 15 前台服务到时回调。connectedDevice 本无时限，这里防的是厂商系统另加的限制：
+     * 不在几秒内停下系统会判 ANR 并杀进程。记下来、体面地停，用户打开应用即恢复。
+     */
+    override fun onTimeout(startId: Int, fgsType: Int) {
+        BackgroundHealth.noteStopped(this, "fgs_timeout", "type=$fgsType")
+        DiagnosticLog.record(this, "sync", "后台同步到达系统时限被停止", "type=$fgsType")
+        stopSelf()
     }
 
     /**
@@ -340,7 +371,9 @@ class SyncService : Service() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         // 上次启动失败过就再试一次。用户重新打开界面时会再发一次 startForegroundService，
         // 那正是重试的好时机——否则一次失败就永久卡住，只能重装。
+        if (instance == null) return START_NOT_STICKY // onCreate 里进前台被拒，已在退出
         startAgent()
+        BackgroundHealth.noteRunning(this)
         // STICKY：被系统回收后自动重建，这是「自动重连」在进程层面的兜底。
         return START_STICKY
     }

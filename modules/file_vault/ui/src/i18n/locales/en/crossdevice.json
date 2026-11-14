@@ -263,6 +263,7 @@
   "offline.metered": "Metered network: relay skipped by your setting",
   "offline.refused": "Reachable, but Tessera is not running there",
   "offline.timeout": "No response; probably not on the same network",
+  "offline.mobile_asleep": "The phone isn't answering: Tessera was most likely paused in the background by the system. Open Tessera on the phone once to reconnect; to stop it happening, allow background activity under \"Background running\" on the phone",
   "offline.unreachable": "Network unreachable",
   "offline.auth": "Connected but identity check failed; re-pairing may be needed",
   "offline.revoked": "Revoked or authorisation expired",

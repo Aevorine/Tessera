@@ -263,6 +263,7 @@
   "offline.metered": "按流量计费的网络，按设置跳过了中转",
   "offline.refused": "地址通，但对方没开 Tessera",
   "offline.timeout": "没有回应，多半不在同一个网络",
+  "offline.mobile_asleep": "手机没有回应：Tessera 多半在后台被系统暂停了。在手机上打开一次 Tessera 即可恢复；长期解决：在手机 Tessera 设置的「系统权限与后台运行」里允许后台活动",
   "offline.unreachable": "网络不可达",
   "offline.auth": "连上了但身份校验没过，可能要重新配对",
   "offline.revoked": "已撤销或授权到期",

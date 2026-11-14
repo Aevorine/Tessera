@@ -7,6 +7,7 @@ import (
 	"io"
 	"net"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/Aevorine/Tessera/crossdevice/core/store"
@@ -138,38 +139,48 @@ func (n *Node) handleIncomingTCP(c net.Conn) {
 	sess.run()
 }
 
-// tcpUsable 报告对这台设备现在值不值得先试 TCP。
-func (n *Node) tcpUsable(deviceID string) bool {
+// tcpKey：TCP 失败按「设备 + 地址」记，不按设备记。一条过期地址（对端换过的网段）失败，
+// 不能连累同一台设备真正在局域网里的地址也一起退回慢的 QUIC。
+func tcpKey(deviceID, addr string) string { return deviceID + "|" + addr }
+
+// tcpUsable 报告对这台设备的这个地址现在值不值得先试 TCP。
+func (n *Node) tcpUsable(deviceID, addr string) bool {
 	if n.cfg.DisableTCP {
 		return false
 	}
 	n.tcpMu.Lock()
 	defer n.tcpMu.Unlock()
-	until, bad := n.tcpBad[deviceID]
+	k := tcpKey(deviceID, addr)
+	until, bad := n.tcpBad[k]
 	if !bad {
 		return true
 	}
 	if time.Now().After(until) {
-		delete(n.tcpBad, deviceID)
+		delete(n.tcpBad, k)
 		return true
 	}
 	return false
 }
 
-// noteTCPFailure 记一次 TCP 失败：一阵子内不再对这台设备先试 TCP。
-func (n *Node) noteTCPFailure(deviceID string) {
+// noteTCPFailure 记一次 TCP 失败：一阵子内不再对这个地址先试 TCP。
+func (n *Node) noteTCPFailure(deviceID, addr string) {
 	n.tcpMu.Lock()
 	if n.tcpBad == nil {
 		n.tcpBad = make(map[string]time.Time)
 	}
-	n.tcpBad[deviceID] = time.Now().Add(tcpBackoff)
+	n.tcpBad[tcpKey(deviceID, addr)] = time.Now().Add(tcpBackoff)
 	n.tcpMu.Unlock()
 }
 
-// clearTCPFailure 在 TCP 成功之后清掉失败记录。
+// clearTCPFailure 在 TCP 成功之后清掉这台设备的全部失败记录（它此刻能走 TCP）。
 func (n *Node) clearTCPFailure(deviceID string) {
+	prefix := deviceID + "|"
 	n.tcpMu.Lock()
-	delete(n.tcpBad, deviceID)
+	for k := range n.tcpBad {
+		if strings.HasPrefix(k, prefix) {
+			delete(n.tcpBad, k)
+		}
+	}
 	n.tcpMu.Unlock()
 }
 

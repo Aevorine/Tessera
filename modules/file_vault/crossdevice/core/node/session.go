@@ -152,6 +152,21 @@ func (s *Session) Route() string {
 	return "direct"
 }
 
+// Carrier 报告这条会话底下跑的是哪种承载：tcp（局域网快路）/ quic / relay。
+// 用于诊断「为什么这台设备传得慢」：本该 TCP 的局域网对端掉到 QUIC，吞吐差一倍以上。
+func (s *Session) Carrier() string {
+	switch s.carrier.(type) {
+	case tcpCarrier:
+		return "tcp"
+	case quicCarrier:
+		return "quic"
+	}
+	if s.via == viaRelay {
+		return "relay"
+	}
+	return "other"
+}
+
 // preferred 判断互拨时这条连接是否胜出：device_id 字典序较小者作拨号方。两端各自算结果
 // 一致，两条并存的连接恰有一条为 true。
 func (s *Session) preferred() bool {

@@ -31,6 +31,11 @@
     <string name="battery_opt_status_off">电池优化：未豁免。手机的省电策略可能在退出界面后暂停同步。</string>
     <string name="battery_opt_fix_button">打开电池优化设置</string>
     <string name="battery_opt_settings_unreachable">打不开系统设置页面，这台手机可能不支持这个入口</string>
+    <string name="autostart_status_ok">后台活动：没有发现被系统停止的记录。</string>
+    <string name="autostart_status_vendor">后台活动：荣耀 / 华为手机还需在「应用启动管理」里把 Tessera 改为手动管理，并打开「允许后台活动」，否则息屏一阵后会断开与电脑的连接。</string>
+    <string name="autostart_status_stopped">后台同步在 %1$s 被系统停止过，这段时间电脑连不上这台手机。请允许后台活动（下方按钮），并保持电池优化已豁免。</string>
+    <string name="autostart_fix_button">打开自启动 / 后台活动设置</string>
+    <string name="autostart_stopped_snack">后台同步曾被系统停止，已自动恢复。为避免再次断开，请允许后台活动</string>
     <!-- 小米/华为/荣耀/OPPO/vivo 这类系统的"应用启动管理"是厂商自己加的一层，
          不在标准安卓 API 范围内，没有稳定公开的方式能从代码里直接跳转过去
          （荣耀独立后连华为那套专属跳转方式都不再适用）。只能把路写清楚，
